@@ -197,6 +197,7 @@ class AltracqRadius {
 
   static const double card = 18;
   static const double floating = 16;
+  static const double hero = 28;
   static const double navbar = 32;
   static const double pill = 999;
 }

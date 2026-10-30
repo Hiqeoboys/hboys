@@ -168,4 +168,101 @@ class AltracqIcons {
       _dome(12, 20.8, 7.2),
     ],
   );
+
+  static final AltracqIconData mountain = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(2.8, 19.2)
+        ..lineTo(9, 7.6)
+        ..lineTo(13.1, 15.1)
+        ..lineTo(15.4, 11.2)
+        ..lineTo(21.2, 19.2),
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(17.1, 6.6), radius: 1.5),
+        ),
+    ],
+  );
+
+  static final AltracqIconData trail = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(4.4, 19.6)
+        ..cubicTo(9.2, 18.2, 6.2, 13.6, 10.4, 11)
+        ..cubicTo(14.2, 8.6, 13.4, 6.4, 17.6, 5.6),
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(18.2, 5.4), radius: 2.4),
+        ),
+    ],
+  );
+
+  static final AltracqIconData compass = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(12, 12), radius: 8.2),
+        ),
+      ui.Path()
+        ..moveTo(15.4, 8.6)
+        ..lineTo(13.2, 13.2)
+        ..lineTo(8.6, 15.4)
+        ..lineTo(10.8, 10.8)
+        ..close(),
+    ],
+  );
+
+  static final AltracqIconData pin = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(12, 20.6)
+        ..cubicTo(9.4, 17.2, 5.8, 13.8, 5.8, 10.2)
+        ..cubicTo(5.8, 6.8, 8.6, 4, 12, 4)
+        ..cubicTo(15.4, 4, 18.2, 6.8, 18.2, 10.2)
+        ..cubicTo(18.2, 13.8, 14.6, 17.2, 12, 20.6)
+        ..close(),
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(12, 10.2), radius: 2.2),
+        ),
+    ],
+  );
+
+  static final AltracqIconData image = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(3.4, 5, 20.6, 19),
+            const ui.Radius.circular(3),
+          ),
+        ),
+      ui.Path()
+        ..moveTo(5.8, 16.2)
+        ..lineTo(10, 11.6)
+        ..lineTo(13.4, 15)
+        ..lineTo(15.8, 12.6)
+        ..lineTo(18.2, 15),
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(16.4, 8.6), radius: 1.2),
+        ),
+    ],
+  );
+
+  static final AltracqIconData warning = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(12, 3.8)
+        ..lineTo(21.4, 19.6)
+        ..lineTo(2.6, 19.6)
+        ..close(),
+      ui.Path()
+        ..moveTo(12, 9.2)
+        ..lineTo(12, 13.6),
+      ui.Path()
+        ..moveTo(12, 16.4)
+        ..lineTo(12, 16.7),
+    ],
+  );
 }
