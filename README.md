@@ -60,7 +60,7 @@ Ada sepuluh layar, dan inilah acuan untuk tampilan dan alurnya:
 3. **Siap Naik**: cek kesiapan rombongan. Tiap anggota dicentang (kunci grup sudah diterima, peta sudah diunduh, izin aktif). Ada juga kontak darurat dan tombol mulai pendakian.
 4. **Pelacakan**: jalan tanpa sinyal. Berisi timer, enam metrik, grafik elevasi, tombol jeda/selesai, dan indikator profil daya.
 5. **Peta Offline**: peta topografi, jalur terverifikasi, posisi pengguna, pos, sumber air, kompas, mode ikuti, panel pos berikutnya, dan navigasi kembali lewat jejak.
-6. **Grup Chat**: strip lokasi anggota (termasuk yang baterainya kritis), bubble pesan, kartu berbagi lokasi, pesan suara, dan status kirim bertingkat.
+6. **Grup Chat**: strip status anggota, bubble pesan, kartu berbagi lokasi, pesan suara, dan status kirim yang jujur sesuai kemampuan saat ini.
 7. **SOS**: hitung mundur 3 detik, tombol "Batal, saya aman", pilihan kategori, tangga status, tombol 115/112, dan penafian.
 8. **Kartu Pendakian**: ringkasan pendakian di atas foto, tiga gaya (Profil, Tengah, Peta), ekspor PNG transparan, lalu simpan atau bagikan.
 9. **Profil (belum masuk)**: statistik lokal, manfaat punya akun, tombol masuk dengan Google atau Apple.
@@ -147,7 +147,7 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 
 **Sudah dijalankan dan lulus**
 
-- Semua tes otomatis: 258 tes aplikasi, 23 tes `mesh_protocol`, 11 tes `geo_utils`. Analyzer bersih.
+- Semua tes otomatis: 266 tes aplikasi, 23 tes `mesh_protocol`, 11 tes `geo_utils`. Analyzer bersih.
 - `data_pipeline/scripts/validate_trails.py` lolos untuk data contoh dan gagal untuk data yang sengaja dirusak.
 - APK debug sudah dibangun, dipasang, dan dicoba di emulator Android: rekam jejak, titik GPS tersimpan, sesi selesai. Baris database memakai stempel waktu UTC.
 - Permukaan kaca navigasi bawah (blur latar + saturasi) terlihat benar di emulator pada mode terang dan gelap, dan otomatis jatuh ke isi pekat saat kebijakan efek mati.
@@ -159,12 +159,15 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 - Angka langkah dan kalori tampil "—" beserta catatan, karena sensor langkah belum dibaca dan berat badan pengguna belum ada. Tidak ada angka contoh.
 - Peta memakai desain baru: kartu status jalur, tombol kompas/pusatkan, sheet panduan dengan pil status, sheet offline (katalog kosong yang jujur, estimasi SDK, catatan atribusi), dan sheet kompas dengan koreksi arah manual. Di emulator, sheet offline dan kompas terlihat pada mode terang dan gelap, kompas menampilkan `0° U`, dan logo/atribusi Mapbox tidak tertutup navbar. Kartu panduan disembunyikan saat sheet modal terbuka.
 - Atribusi Mapbox tetap tampil: logo dan tombol `ⓘ` terlihat di atas navbar; scale bar bawaan dimatikan karena tidak ada di rancangan dan menabrak status bar.
+- Grup Chat memakai grup terbaru dan daftar anggota nyata dari server, dengan bubble pesan dari database perangkat. Pengiriman teks menyimpan pesan UTF-8 secara lokal dan berhenti pada status jujur `Tersimpan di HP · belum terkirim` karena belum ada transport chat. Di emulator, keadaan `Belum masuk` terlihat pada mode terang dan gelap; tata letak chat lengkap diuji lewat 8 tes widget. Rinciannya di `docs/grup_chat.md`.
 - Migrasi `0001` dan `0002` sudah diterapkan di proyek Supabase (dicek lewat REST dan RPC).
 - Inisialisasi Supabase di aplikasi berhasil dengan kredensial publishable.
 
 **Sudah ditulis, belum diuji**
 
 - Login Google/Apple dari awal sampai akhir. Penyedia OAuth belum diaktifkan di dasbor Supabase.
+- Grup Chat dengan grup nyata di perangkat. Penyedia OAuth belum aktif dan belum ada sesi atau grup di emulator, jadi strip anggota, bubble, composer, dan pengiriman lokal baru diuji widget, bukan dicoba di perangkat.
+- Pengiriman pesan ke anggota lain, pesan suara, media gambar/berkas, serta pembagian lokasi dan baterai anggota. Pesan teks hanya tersimpan lokal, tombol suara nonaktif, dan kartu lokasi hanya merender payload lokasi yang benar-benar tersimpan.
 - Permukaan tile peta Mapbox. Di emulator, permukaan peta tampil tidak konsisten (kadang putih kosong, kadang basemap gelap dengan galat `GFXSTREAM GL`), sehingga warna style, layer jalur, dan kecocokan kamera belum bisa dinilai. Perlu dicoba di perangkat sungguhan.
 - Unduhan peta offline nyata. Katalog paket masih kosong dan tidak ada data gunung fiktif yang dibundel, jadi estimasi byte dan unduhan style pack/tile region belum pernah dijalankan; alurnya baru diuji dengan layanan palsu.
 - Keterbacaan mode gelap di layar Peta. Style peta masih `OUTDOORS` untuk semua tema, sehingga kaca gelap di atas peta terang berisiko berkontras rendah; style peta gelap masuk lingkup M12.
