@@ -1,0 +1,17 @@
+# Normalisasi akhiran baris agar repo konsisten lintas platform.
+* text=auto eol=lf
+
+# Skrip shell wajib LF, kalau tidak CI Linux gagal menjalankannya.
+*.sh text eol=lf
+
+# Berkas biner: jangan disentuh normalisasi.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.ico binary
+*.jar binary
+*.keystore binary
+*.sqlite binary
