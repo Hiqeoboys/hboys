@@ -72,6 +72,16 @@ class IosLocalTrackingBackend implements TrackingBackend {
   }
 
   @override
+  Future<void> pause() async {
+    await _runtime?.pause();
+  }
+
+  @override
+  Future<void> resume() async {
+    await _runtime?.resume();
+  }
+
+  @override
   Future<void> requestStatus() async {
     final status = _lastStatus;
     if (status != null) {

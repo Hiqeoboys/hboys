@@ -94,6 +94,22 @@ class AndroidForegroundTrackingBackend implements TrackingBackend {
   }
 
   @override
+  Future<void> pause() async {
+    if (!await isRunning()) return;
+    FlutterForegroundTask.sendDataToTask({
+      TrackingTaskProtocol.commandKey: TrackingTaskProtocol.pauseCommand,
+    });
+  }
+
+  @override
+  Future<void> resume() async {
+    if (!await isRunning()) return;
+    FlutterForegroundTask.sendDataToTask({
+      TrackingTaskProtocol.commandKey: TrackingTaskProtocol.resumeCommand,
+    });
+  }
+
+  @override
   Future<void> requestStatus() async {
     if (!await isRunning()) return;
     FlutterForegroundTask.sendDataToTask({

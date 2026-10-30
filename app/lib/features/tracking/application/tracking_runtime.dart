@@ -53,6 +53,7 @@ class TrackingRuntimeUpdate {
     required this.pointCount,
     required this.profile,
     required this.batteryPercent,
+    required this.isPaused,
   });
 
   final TrackingSession session;
@@ -60,6 +61,7 @@ class TrackingRuntimeUpdate {
   final int pointCount;
   final PowerProfile profile;
   final int? batteryPercent;
+  final bool isPaused;
 }
 
 class TrackingRuntimeError {
@@ -101,9 +103,11 @@ class TrackingRuntime {
   int? _batteryPercent;
   bool _started = false;
   bool _stopped = false;
+  bool _paused = false;
 
   PowerProfile get profile => _power.profile;
   TrackingSession get session => _recording.session;
+  bool get isPaused => _paused;
 
   Future<void> start() async {
     if (_started) return;
@@ -152,13 +156,30 @@ class TrackingRuntime {
       _batteryPercent = level;
       final before = _power.profile;
       final after = _power.update(level, charging: charging);
-      if (_started && after != before) {
+      if (_started && !_paused && after != before) {
         await _startLocation();
         _emit();
       }
     } catch (error) {
       _onError(TrackingRuntimeError('Gagal membaca baterai: $error'));
     }
+  }
+
+  /// Menghentikan aliran GPS tanpa menutup sesi. Waktu bergerak tidak
+  /// bertambah karena celah antar titik melebihi [AutoPauseDetector.maxGap].
+  Future<void> pause() async {
+    if (!_started || _stopped || _paused) return;
+    _paused = true;
+    await _subscription?.cancel();
+    _subscription = null;
+    _emit();
+  }
+
+  Future<void> resume() async {
+    if (!_started || _stopped || !_paused) return;
+    _paused = false;
+    await _startLocation();
+    _emit();
   }
 
   Future<TrackingSession> stop() async {
@@ -193,6 +214,7 @@ class TrackingRuntime {
           pointCount: _recording.pointCount,
           profile: _power.profile,
           batteryPercent: _batteryPercent,
+          isPaused: _paused,
         ),
       );
     } catch (_) {

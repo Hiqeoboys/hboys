@@ -108,9 +108,10 @@ class TrackingTaskHandler extends TaskHandler {
     }
     _lastNotificationAt = now;
     await FlutterForegroundTask.updateService(
-      notificationTitle: 'Merekam pendakian',
-      notificationText:
-          '${_distanceText(status.distanceM)} • ${_durationText(status.elapsedSeconds)} • ${status.profile.name}',
+      notificationTitle: status.isPaused ? 'Rekaman dijeda' : 'Merekam pendakian',
+      notificationText: status.isPaused
+          ? 'Jeda • ${_distanceText(status.distanceM)} • ${_durationText(status.elapsedSeconds)}'
+          : '${_distanceText(status.distanceM)} • ${_durationText(status.elapsedSeconds)} • ${status.profile.name}',
     );
   }
 
@@ -136,9 +137,24 @@ class TrackingTaskHandler extends TaskHandler {
     final command = data[TrackingTaskProtocol.commandKey];
     if (command == TrackingTaskProtocol.stopCommand) {
       unawaited(_finishAndStopService());
+    } else if (command == TrackingTaskProtocol.pauseCommand) {
+      unawaited(_setPaused(true));
+    } else if (command == TrackingTaskProtocol.resumeCommand) {
+      unawaited(_setPaused(false));
     } else if (command == TrackingTaskProtocol.statusCommand) {
       _sendStatus(TrackingTaskProtocol.updateType);
     }
+  }
+
+  Future<void> _setPaused(bool paused) async {
+    final runtime = _runtime;
+    if (runtime == null) return;
+    if (paused) {
+      await runtime.pause();
+    } else {
+      await runtime.resume();
+    }
+    await _updateNotification(force: true);
   }
 
   Future<void> _finishAndStopService() async {

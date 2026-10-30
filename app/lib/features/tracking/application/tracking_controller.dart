@@ -22,6 +22,7 @@ enum TrackingPhase {
   idle,
   preparing,
   recording,
+  paused,
   stopping,
   finished,
   error,
@@ -55,7 +56,10 @@ class TrackingController extends ChangeNotifier {
   String? get error => _error;
   String? get notice => _notice;
   bool get isRecording =>
-      _phase == TrackingPhase.recording || _phase == TrackingPhase.preparing;
+      _phase == TrackingPhase.recording ||
+      _phase == TrackingPhase.paused ||
+      _phase == TrackingPhase.preparing;
+  bool get isPaused => _phase == TrackingPhase.paused;
   bool get isBusy =>
       _phase == TrackingPhase.initializing ||
       _phase == TrackingPhase.preparing ||
@@ -168,6 +172,34 @@ class TrackingController extends ChangeNotifier {
     }
   }
 
+  Future<void> pause() async {
+    final backend = _backend;
+    if (backend == null || _phase != TrackingPhase.recording) return;
+    try {
+      await backend.pause();
+      if (_phase == TrackingPhase.recording) {
+        _phase = TrackingPhase.paused;
+      }
+    } catch (error) {
+      _error = 'Gagal menjeda rekaman: $error';
+    }
+    notifyListeners();
+  }
+
+  Future<void> resume() async {
+    final backend = _backend;
+    if (backend == null || _phase != TrackingPhase.paused) return;
+    try {
+      await backend.resume();
+      if (_phase == TrackingPhase.paused) {
+        _phase = TrackingPhase.recording;
+      }
+    } catch (error) {
+      _error = 'Gagal melanjutkan rekaman: $error';
+    }
+    notifyListeners();
+  }
+
   Future<void> stop() async {
     final backend = _backend;
     if (backend == null) return;
@@ -201,6 +233,7 @@ class TrackingController extends ChangeNotifier {
           paceSecPerKm: _status!.paceSecPerKm,
           verticalSpeedMph: _status!.verticalSpeedMph,
           batteryPercent: _status!.batteryPercent,
+          isPaused: false,
         );
       }
     } catch (error) {
@@ -271,7 +304,7 @@ class TrackingController extends ChangeNotifier {
         _status = status;
         _phase = status.sessionStatus == TrackingSessionStatus.completed
             ? TrackingPhase.finished
-            : TrackingPhase.recording;
+            : (status.isPaused ? TrackingPhase.paused : TrackingPhase.recording);
         _error = null;
       case TrackingStoppedEvent(:final status, :final warning):
         if (status != null) _status = status;

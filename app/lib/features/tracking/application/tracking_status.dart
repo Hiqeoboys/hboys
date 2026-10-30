@@ -19,6 +19,7 @@ class TrackingStatus {
     this.paceSecPerKm,
     this.verticalSpeedMph,
     this.batteryPercent,
+    this.isPaused = false,
   });
 
   final String sessionId;
@@ -35,6 +36,7 @@ class TrackingStatus {
   final double? paceSecPerKm;
   final double? verticalSpeedMph;
   final int? batteryPercent;
+  final bool isPaused;
 
   factory TrackingStatus.fromRuntimeUpdate(TrackingRuntimeUpdate update) {
     final snapshot = update.snapshot;
@@ -54,6 +56,7 @@ class TrackingStatus {
       paceSecPerKm: snapshot?.paceSecPerKm,
       verticalSpeedMph: snapshot?.verticalSpeedMph,
       batteryPercent: update.batteryPercent,
+      isPaused: update.isPaused,
     );
   }
 
@@ -73,6 +76,7 @@ class TrackingStatus {
         'paceSecPerKm': paceSecPerKm,
         'verticalSpeedMph': verticalSpeedMph,
         'batteryPercent': batteryPercent,
+        'isPaused': isPaused,
       };
 
   factory TrackingStatus.fromMap(Map<Object?, Object?> map) {
@@ -118,6 +122,7 @@ class TrackingStatus {
       paceSecPerKm: optionalNumber('paceSecPerKm')?.toDouble(),
       verticalSpeedMph: optionalNumber('verticalSpeedMph')?.toDouble(),
       batteryPercent: optionalNumber('batteryPercent')?.toInt(),
+      isPaused: map['isPaused'] == true,
     );
   }
 }

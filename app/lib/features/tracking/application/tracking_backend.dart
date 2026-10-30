@@ -5,6 +5,8 @@ class TrackingTaskProtocol {
   static const commandKey = 'command';
   static const stopCommand = 'stop';
   static const statusCommand = 'status';
+  static const pauseCommand = 'pause';
+  static const resumeCommand = 'resume';
 
   static const startedType = 'started';
   static const updateType = 'update';
@@ -52,6 +54,10 @@ abstract interface class TrackingBackend {
   Future<void> start();
 
   Future<TrackingStopResult> stop();
+
+  Future<void> pause();
+
+  Future<void> resume();
 
   Future<void> requestStatus();
 
