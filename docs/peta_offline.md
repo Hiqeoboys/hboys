@@ -1,9 +1,8 @@
 # Peta, unduhan offline, dan atribusi Mapbox
 
-Status dokumen: **implementasi ditulis dan sebagian diuji otomatis. Semua
-perilaku Mapbox native, build Android/iOS, unduhan offline nyata, kompas
-perangkat, dan uji lapangan BELUM DIUJI.** Lihat bagian akhir untuk pemisahan
-yang jelas.
+Status dokumen: **sebagian diuji otomatis dan terlihat di emulator. Tile peta,
+unduhan offline nyata, kompas perangkat fisik, dan uji lapangan BELUM DIUJI.**
+Lihat bagian akhir untuk pemisahan yang jelas.
 
 Dokumen ini mencatat batasan resmi Mapbox yang dibaca pada **2026-10-25**
 sebelum kode ditulis, lalu aturan yang diterapkan aplikasi.
@@ -70,8 +69,11 @@ Saat peta tampil, termasuk saat memakai data offline:
 
 `MapWidget` menampilkan ornamen atribusi bawaannya. Layar peta aplikasi
 menempatkan indikator memuat dan pesan galat di **atas** peta, dan tidak
-menaruh kontrol di sudut bawah tempat logo/atribusi berada. Teks atribusi juga
-ditampilkan di bawah peta. Perilaku visual ini belum diuji di perangkat.
+menaruh kontrol di sudut bawah tempat logo/atribusi berada. Scale bar bawaan
+dimatikan karena tidak ada di rancangan dan menabrak status bar. Logo Mapbox
+dan tombol atribusi `ⓘ` terlihat di atas navbar pada emulator (mode terang dan
+gelap), tetapi teks atribusi lengkap dan perilaku saat mode pesawat belum
+diuji di perangkat.**
 
 ## 2. Batas yang diterapkan aplikasi
 
@@ -120,9 +122,11 @@ guardrail.
 - GeoJSON jalur dan jejak: `app/lib/features/map/domain/track_geojson.dart`
 - Antarmuka layanan offline: `app/lib/features/map/application/offline_map_service.dart`
 - Pengatur estimasi/unduhan: `app/lib/features/map/application/offline_download_controller.dart`
+- Kesiapan offline untuk Siap Naik: `app/lib/features/map/application/offline_readiness.dart`
 - Implementasi Mapbox: `app/lib/infrastructure/map/mapbox_offline_map_service.dart`
 - Layar peta: `app/lib/features/map/presentation/map_page.dart`
-- Panel offline: `app/lib/features/map/presentation/offline_package_panel.dart`
+- Sheet pengelolaan offline: `app/lib/features/map/presentation/offline_sheet.dart`
+- Sheet kompas: `app/lib/features/compass/presentation/compass_sheet.dart`
 
 Alur unduhan:
 
@@ -213,8 +217,8 @@ ditempatkan di subdirektori, direktori itu harus ditambahkan ke `pubspec.yaml`.
 - Di luar Android/iOS (misalnya Windows), peta tidak dibuat. Pemilihan jalur,
   kompas, dan deteksi keluar jalur tetap tampil bila katalog berisi data.
 
-Build native Mapbox dan perilaku token belum diverifikasi di mesin ini karena
-Android SDK, token Mapbox, dan perangkat tidak tersedia.
+APK debug dengan token Mapbox sudah dibangun dan dipasang di emulator Android.
+Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
 
 ## 7. Kompas dan deteksi keluar jalur
 
@@ -232,35 +236,52 @@ Android SDK, token Mapbox, dan perangkat tidak tersedia.
 - Jejak rekaman diambil dari sesi aktif `TrackingController` dan digambar
   sebagai LineString GeoJSON; jalur paket digambar dari GeoJSON katalog.
   Jalur dengan `verified=false` selalu diberi label belum terverifikasi.
+- Heading dibulatkan setelah dinormalisasi supaya 359,7° tampil sebagai 0°,
+  bukan 360°. Ada tes regresi untuk ini.
 
 ## 8. Sudah dijalankan vs belum diuji
 
 **Sudah dijalankan di mesin pengembang:**
 
-- `flutter analyze` bersih setelah perubahan peta/kompas/off-trail.
-- Tes unit domain paket peta, estimator tile, guardrail, parser katalog,
-  GeoJSON jalur/jejak, controller unduhan, matematika kompas, dan pemulihan
-  sesi.
-- Tes widget: panel kompas (heading, kalibrasi manual, reset), panel
-  keluar jalur (menunggu GPS, keluar/kembali jalur, badge verifikasi), panel
-  unduhan offline (estimasi tile/byte, tombol unduh, pelanggaran batas), dan
-  layar peta tanpa token (kartu setup, katalog kosong, pemilihan paket,
-  deteksi memakai titik GPS palsu, tidak ada panggilan Mapbox).
-- `./tools/test_all.sh` dijalankan pada akhir pekerjaan: 136 tes Flutter
-  lulus, analyzer paket bersih, validator pipeline `0 galat, 1 peringatan`
-  (jalur contoh_gunung belum terverifikasi). Tidak ada perangkat, token
-  Mapbox, atau Android SDK di mesin ini; build native belum dibuat.
+- `flutter analyze lib test` bersih; seluruh suite aplikasi **258 tes lulus**.
+  Tes paket terpisah: `geo_utils` 11 lulus, `mesh_protocol` 23 lulus.
+- Tes unit: domain paket, estimator tile, guardrail, parser katalog, GeoJSON
+  jalur/jejak, pengatur unduhan (termasuk perlombaan status-vs-estimasi),
+  matematika kompas (termasuk pembulatan 359,7° → 0°), kesiapan offline, dan
+  pemulihan sesi.
+- Tes widget `offline_sheet_test.dart` (7 tes): katalog kosong yang jujur
+  tanpa panggilan estimasi/status, teks "Belum diunduh di perangkat ini.",
+  format estimasi SDK, unduhan selesai dengan catatan SDK, status SDK siap,
+  pelanggaran `maxTiles`, catatan atribusi di footer, serta keadaan memuat,
+  galat, dan "Muat ulang".
+- Tes widget `compass_sheet_test.dart` (6 tes): offset tersimpan, simpan arah
+  acuan, input tidak valid, reset, pembulatan arah, dan platform tanpa sensor.
+- Tes widget `map_page_test.dart` dan tes deteksi keluar jalur memakai titik
+  GPS uji; tidak ada panggilan Mapbox di lingkungan tes.
+- APK debug dibangun, dipasang, dan dijalankan di emulator Android. Terlihat:
+  kartu status jalur, tombol kompas/pusatkan, kartu panduan, sheet offline
+  (keadaan kosong + catatan atribusi) pada mode terang dan gelap, serta sheet
+  kompas dengan sensor perangkat (menampilkan `0° U`) dan kolom koreksi arah
+  manual. Logo Mapbox dan tombol atribusi `ⓘ` terlihat di atas navbar; scale
+  bar dimatikan. Kartu panduan disembunyikan saat sheet modal terbuka.
 
 **Ditulis tetapi belum dijalankan/diuji:**
 
-- Pembuatan `MapWidget`, pemuatan style Mapbox, pemasangan source/layer
-  GeoJSON, dan `cameraForCoordinateBounds` di perangkat.
-- Estimasi byte dan unduhan nyata (style pack + tile region), termasuk
-  perilaku 750 tile pack, jaringan lambat, penyimpanan penuh, dan resume.
-- Tampilan atribusi Mapbox di perangkat serta perilaku saat mode pesawat.
-- Pembacaan kompas nyata, kalibrasi OS, dan akurasi perangkat.
+- Permukaan tile peta di perangkat sungguhan. Di emulator, permukaan peta
+  tampil tidak konsisten (kadang putih kosong, kadang basemap gelap) dengan
+  galat `GFXSTREAM GL error 0x501`; warna style, layer jalur, dan kecocokan
+  kamera karena itu belum bisa dinilai.
+- Estimasi byte dan unduhan nyata (style pack + tile region). Katalog saat ini
+  `{"packs": []}`, jadi tidak ada paket yang bisa diunduh; alur unduhan hanya
+  diuji dengan layanan palsu. Perilaku 750 tile pack, jaringan lambat,
+  penyimpanan penuh, resume, dan penghapusan region belum diuji.
+- Kompas fisik: kalibrasi OS, akurasi sebenarnya, dan pengaruh medan. Emulator
+  hanya melaporkan heading statis.
 - Deteksi keluar jalur dengan GPS nyata dan akurasi bervariasi.
-- Build Android/iOS dan pengaturan token di build rilis.
+- Keterbacaan mode gelap di layar Peta. Style peta masih `OUTDOORS` untuk
+  semua tema, sehingga kaca gelap di atas peta terang bisa berkontras rendah;
+  style peta gelap direncanakan pada M12.
+- Build iOS, build rilis, dan token Mapbox untuk rilis.
 - Semua skenario di `docs/field_tests/map_offline.md`.
 
 Jangan menandai fitur ini "berfungsi" sampai uji lapangan di dokumen tersebut

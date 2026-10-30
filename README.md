@@ -147,7 +147,7 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 
 **Sudah dijalankan dan lulus**
 
-- Semua tes otomatis: 240 tes aplikasi, 23 tes `mesh_protocol`, 7 tes `geo_utils`. Analyzer bersih.
+- Semua tes otomatis: 258 tes aplikasi, 23 tes `mesh_protocol`, 11 tes `geo_utils`. Analyzer bersih.
 - `data_pipeline/scripts/validate_trails.py` lolos untuk data contoh dan gagal untuk data yang sengaja dirusak.
 - APK debug sudah dibangun, dipasang, dan dicoba di emulator Android: rekam jejak, titik GPS tersimpan, sesi selesai. Baris database memakai stempel waktu UTC.
 - Permukaan kaca navigasi bawah (blur latar + saturasi) terlihat benar di emulator pada mode terang dan gelap, dan otomatis jatuh ke isi pekat saat kebijakan efek mati.
@@ -157,13 +157,17 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 - Siap Naik memakai data nyata: grup terbaru sebagai pendakian berikutnya, daftar anggota dari server, status kunci grup, izin lokasi, dan kontak darurat dari database lokal. Keadaan tamu dan mode terang/gelap terlihat di emulator.
 - Lacak memakai titik GPS nyata dan tersimpan: metrik, grafik ketinggian dari titik tersimpan, serta tombol Mulai/Jeda/Lanjut/Selesai. Di emulator, jeda menghentikan aliran GPS dan membekukan waktu bergerak, lanjut menyalakan kembali aliran sehingga jarak, pace, dan kec. vertikal berubah lagi, dan selesai menutup sesi lewat dialog konfirmasi. Mode terang dan gelap terlihat.
 - Angka langkah dan kalori tampil "—" beserta catatan, karena sensor langkah belum dibaca dan berat badan pengguna belum ada. Tidak ada angka contoh.
+- Peta memakai desain baru: kartu status jalur, tombol kompas/pusatkan, sheet panduan dengan pil status, sheet offline (katalog kosong yang jujur, estimasi SDK, catatan atribusi), dan sheet kompas dengan koreksi arah manual. Di emulator, sheet offline dan kompas terlihat pada mode terang dan gelap, kompas menampilkan `0° U`, dan logo/atribusi Mapbox tidak tertutup navbar. Kartu panduan disembunyikan saat sheet modal terbuka.
+- Atribusi Mapbox tetap tampil: logo dan tombol `ⓘ` terlihat di atas navbar; scale bar bawaan dimatikan karena tidak ada di rancangan dan menabrak status bar.
 - Migrasi `0001` dan `0002` sudah diterapkan di proyek Supabase (dicek lewat REST dan RPC).
 - Inisialisasi Supabase di aplikasi berhasil dengan kredensial publishable.
 
 **Sudah ditulis, belum diuji**
 
 - Login Google/Apple dari awal sampai akhir. Penyedia OAuth belum diaktifkan di dasbor Supabase.
-- Tile peta Mapbox. Di emulator masih kosong, jadi perlu dicoba di perangkat sungguhan.
+- Permukaan tile peta Mapbox. Di emulator, permukaan peta tampil tidak konsisten (kadang putih kosong, kadang basemap gelap dengan galat `GFXSTREAM GL`), sehingga warna style, layer jalur, dan kecocokan kamera belum bisa dinilai. Perlu dicoba di perangkat sungguhan.
+- Unduhan peta offline nyata. Katalog paket masih kosong dan tidak ada data gunung fiktif yang dibundel, jadi estimasi byte dan unduhan style pack/tile region belum pernah dijalankan; alurnya baru diuji dengan layanan palsu.
+- Keterbacaan mode gelap di layar Peta. Style peta masih `OUTDOORS` untuk semua tema, sehingga kaca gelap di atas peta terang berisiko berkontras rendah; style peta gelap masuk lingkup M12.
 - Pelacakan latar belakang untuk durasi panjang, perilaku saat layar terkunci, dan perbedaan antarmerek Android.
 - Akumulasi waktu bergerak saat benar-benar berjalan. Di emulator, `adb emu geo fix` melaporkan kecepatan 0 sehingga auto-pause berhenti menambah waktu bergerak setelah beberapa detik; jarak dan pace tetap dihitung dari titik. Perlu uji lapangan dengan GPS sungguhan.
 - Status jeda tidak bertahan jika proses layanan dimatikan. Sesi yang dipulihkan kembali dalam keadaan merekam, dan waktu selama jeda tidak dihitung karena celah antar titik melewati batas auto-pause.
@@ -172,7 +176,7 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 - Alur SOS yang sebenarnya, penerusan ke kontak darurat, dan uji lapangan.
 - Mesh BLE (Rilis 2). Yang ada baru paket protokolnya saja, belum ada `BleTransport`.
 - Kriptografi belum diaudit. Cara pembungkusan kunci grup adalah rancangan sendiri, jadi jangan dianggap setara dengan enkripsi end-to-end yang sudah ditinjau ahli keamanan.
-- Pelaporan kesiapan antaranggota dan status unduhan peta offline belum ada. Siap Naik karena itu hanya menghitung kesiapan dari perangkat sendiri, menampilkan "Belum melapor" untuk anggota lain, dan tidak mengklaim peta siap sebelum penyimpanan status unduhan dibuat.
+- Pelaporan kesiapan antaranggota belum ada. Status unduhan peta offline kini dibaca dari penyimpanan SDK di perangkat sendiri, tetapi belum dilaporkan ke anggota lain; Siap Naik karena itu hanya menghitung kesiapan perangkat sendiri dan menampilkan "Belum melapor" untuk anggota lain.
 
 ## Keamanan dan privasi
 
