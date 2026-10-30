@@ -8,17 +8,21 @@ import '../../../core/constants/emergency_numbers.dart';
 import '../../../core/platform/phone_dialer.dart';
 import '../../../core/utils/clock.dart';
 import '../../../design/app_theme.dart';
+import '../../../design/motion/visual_effect_policy.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/header_icon_button.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../../../infrastructure/database/app_database.dart';
 import '../../../infrastructure/database/database_connection.dart';
 import '../../../infrastructure/database/repositories/drift_safety_repository.dart';
+import '../../../infrastructure/power/power_profile_manager.dart';
 import '../application/sos_location.dart';
 import '../domain/safety_repository.dart';
 import '../domain/sos_category.dart';
 import '../domain/sos_event.dart';
 import '../domain/sos_status_tracker.dart';
 import '../domain/sos_trigger_controller.dart';
+import 'slide_to_call.dart';
 
 const double _ringSize = 188;
 
@@ -45,6 +49,8 @@ class SosPage extends StatefulWidget {
 }
 
 class _SosPageState extends State<SosPage> {
+  static final DeviceTier _deviceTier = VisualEffectPolicy.probeDeviceTier();
+
   late final SosTriggerController _trigger = SosTriggerController(
     countdownDuration: const Duration(seconds: 3),
   );
@@ -65,6 +71,9 @@ class _SosPageState extends State<SosPage> {
   DateTime? _holdStarted;
   Future<SosFix?>? _fixFuture;
   Timer? _ticker;
+
+  /// Kunci trek geser yang sedang dipakai, supaya hanya satu yang aktif.
+  String? _activeSlider;
 
   @override
   void initState() {
@@ -391,6 +400,69 @@ class _SosPageState extends State<SosPage> {
     );
   }
 
+  /// Menutup layar. Bila SOS sedang berjalan, pengguna diminta konfirmasi dulu
+  /// dan pembatalan memakai jalur [_cancel] yang sudah ada supaya status lokal
+  /// tidak menggantung.
+  Future<void> _requestClose() async {
+    if (_cancelling) return;
+    if (!_active) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Batalkan SOS?'),
+        content: const Text(
+          'SOS yang sedang berjalan akan ditandai batal di HP ini. '
+          'Tidak ada pesan yang terkirim ke siapa pun.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Biarkan aktif'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Batalkan SOS'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _cancel();
+    // Layar tetap terbuka bila status batal gagal disimpan supaya catatannya
+    // terlihat; selain itu tombol tutup melanjutkan maksud pengguna.
+    if (!mounted || _notice != null) return;
+    Navigator.of(context).pop();
+  }
+
+  /// Jalur tanpa geser untuk pembaca layar: konfirmasi dulu, baru buka nomor.
+  Future<void> _confirmDial(String number, String label) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Telepon $label?'),
+        content: const Text(
+          'Altracq membuka aplikasi telepon dengan nomor terisi. '
+          'Panggilan tidak dilakukan otomatis.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Buka telepon'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _dial(number);
+  }
+
   double _ringProgress() {
     final now = widget.clock.nowUtc();
     switch (_state) {
@@ -470,77 +542,93 @@ class _SosPageState extends State<SosPage> {
         builder: (context) {
           final colors = AltracqColors.of(context);
           final theme = Theme.of(context);
-          return AnnotatedRegion<SystemUiOverlayStyle>(
-            value: SystemUiOverlayStyle.light,
-            child: Scaffold(
-              backgroundColor: colors.background,
-              body: SafeArea(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(
-                          AltracqSpacing.lg,
-                          20,
-                          AltracqSpacing.lg,
-                          AltracqSpacing.sm,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: <Widget>[
-                            _header(theme, colors),
-                            const SizedBox(height: 20),
-                            Center(child: _ring(theme, colors)),
-                            const SizedBox(height: AltracqSpacing.lg),
-                            Text(
-                              _copyText(),
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: _saveNotice != null && !_saving
-                                    ? colors.warningText
-                                    : colors.textPrimary,
-                                height: 1.4,
-                              ),
+          // SOS tidak membaca baterai; kebijakan efek di layar ini hanya
+          // mengikuti permintaan kurangi animasi dan golongan perangkat.
+          return VisualEffectPolicyScope(
+            policy: VisualEffectPolicy(
+              powerProfile: PowerProfile.normal,
+              reduceMotion: MediaQuery.disableAnimationsOf(context),
+              deviceTier: _deviceTier,
+            ),
+            child: PopScope<void>(
+              canPop: !_active,
+              onPopInvokedWithResult: (didPop, result) {
+                if (didPop) return;
+                unawaited(_requestClose());
+              },
+              child: AnnotatedRegion<SystemUiOverlayStyle>(
+                value: SystemUiOverlayStyle.light,
+                child: Scaffold(
+                  backgroundColor: colors.background,
+                  body: SafeArea(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(
+                              AltracqSpacing.lg,
+                              20,
+                              AltracqSpacing.lg,
+                              AltracqSpacing.sm,
                             ),
-                            if (_repositoryError != null && !_active) ...<Widget>[
-                              const SizedBox(height: AltracqSpacing.sm),
-                              Text(
-                                _repositoryError!,
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: colors.warningText,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: <Widget>[
+                                _header(theme, colors),
+                                const SizedBox(height: 20),
+                                Center(child: _ring(theme, colors)),
+                                const SizedBox(height: AltracqSpacing.lg),
+                                Text(
+                                  _copyText(),
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    color: _saveNotice != null && !_saving
+                                        ? colors.warningText
+                                        : colors.textPrimary,
+                                    height: 1.4,
+                                  ),
                                 ),
-                              ),
-                            ],
-                            if (_active) ...<Widget>[
-                              const SizedBox(height: AltracqSpacing.lg),
-                              _SosPillButton(
-                                key: const ValueKey('sos-cancel'),
-                                label: 'Batal, saya aman',
-                                onTap: () => unawaited(_cancel()),
-                              ),
-                              const SizedBox(height: AltracqSpacing.lg),
-                              _categoryChips(theme),
-                              const SizedBox(height: 20),
-                              _ladder(theme, colors),
-                            ],
-                            if (_state == SosTriggerState.cancelled) ...<Widget>[
-                              const SizedBox(height: AltracqSpacing.lg),
-                              _SosPillButton(
-                                key: const ValueKey('sos-reset'),
-                                label: 'Mulai SOS lagi',
-                                onTap: _reset,
-                              ),
-                              const SizedBox(height: 20),
-                              _ladder(theme, colors),
-                            ],
-                          ],
+                                if (_repositoryError != null && !_active) ...<Widget>[
+                                  const SizedBox(height: AltracqSpacing.sm),
+                                  Text(
+                                    _repositoryError!,
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colors.warningText,
+                                    ),
+                                  ),
+                                ],
+                                if (_active) ...<Widget>[
+                                  const SizedBox(height: AltracqSpacing.lg),
+                                  _SosPillButton(
+                                    key: const ValueKey('sos-cancel'),
+                                    label: 'Batal, saya aman',
+                                    onTap: () => unawaited(_cancel()),
+                                  ),
+                                  const SizedBox(height: AltracqSpacing.lg),
+                                  _categoryChips(theme),
+                                  const SizedBox(height: 20),
+                                  _ladder(theme, colors),
+                                ],
+                                if (_state == SosTriggerState.cancelled) ...<Widget>[
+                                  const SizedBox(height: AltracqSpacing.lg),
+                                  _SosPillButton(
+                                    key: const ValueKey('sos-reset'),
+                                    label: 'Mulai SOS lagi',
+                                    onTap: _reset,
+                                  ),
+                                  const SizedBox(height: 20),
+                                  _ladder(theme, colors),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                        _bottomBar(theme, colors),
+                      ],
                     ),
-                    _bottomBar(theme, colors),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -552,25 +640,21 @@ class _SosPageState extends State<SosPage> {
 
   Widget _header(ThemeData theme, AltracqColors colors) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
-        Text(
-          'SOS',
-          style: theme.textTheme.displaySmall?.copyWith(
-            color: colors.textPrimary,
-            fontWeight: FontWeight.w800,
-          ),
+        HeaderIconButton(
+          key: const ValueKey('sos-close'),
+          icon: AltracqIcons.close,
+          label: 'Tutup',
+          onTap: _cancelling ? null : () => unawaited(_requestClose()),
         ),
         const SizedBox(width: AltracqSpacing.lg),
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 3),
-            child: Text(
-              _headerHint(),
-              textAlign: TextAlign.right,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colors.textSecondary,
-              ),
+          child: Text(
+            _headerHint(),
+            textAlign: TextAlign.right,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
             ),
           ),
         ),
@@ -719,27 +803,34 @@ class _SosPageState extends State<SosPage> {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          _callTrack(
+            sliderKey: 'sos-call-115',
+            otherKey: 'sos-call-112',
+            label: 'Basarnas ${EmergencyNumbers.basarnas}',
+            number: EmergencyNumbers.basarnas,
+          ),
+          const SizedBox(height: AltracqSpacing.md),
+          _callTrack(
+            sliderKey: 'sos-call-112',
+            otherKey: 'sos-call-115',
+            label: 'Darurat ${EmergencyNumbers.unified}',
+            number: EmergencyNumbers.unified,
+          ),
+          const SizedBox(height: AltracqSpacing.md),
           Row(
             children: <Widget>[
-              Expanded(
-                child: _CallPill(
-                  key: const ValueKey('sos-call-115'),
-                  label: 'Basarnas ${EmergencyNumbers.basarnas}',
-                  semanticLabel:
-                      'Telepon Basarnas ${EmergencyNumbers.basarnas}',
-                  onTap: () => unawaited(_dial(EmergencyNumbers.basarnas)),
-                ),
+              AltracqIcon(
+                AltracqIcons.phone,
+                size: 14,
+                color: colors.textSecondary,
               ),
-              const SizedBox(width: AltracqSpacing.md),
-              Expanded(
-                child: _CallPill(
-                  key: const ValueKey('sos-call-112'),
-                  label: 'Darurat ${EmergencyNumbers.unified}',
-                  semanticLabel:
-                      'Telepon darurat ${EmergencyNumbers.unified}',
-                  onTap: () => unawaited(_dial(EmergencyNumbers.unified)),
+              const SizedBox(width: 6),
+              Text(
+                'Geser untuk menelepon',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.textSecondary,
                 ),
               ),
             ],
@@ -756,6 +847,23 @@ class _SosPageState extends State<SosPage> {
       ),
     );
   }
+
+  Widget _callTrack({
+    required String sliderKey,
+    required String otherKey,
+    required String label,
+    required String number,
+  }) =>
+      SlideToCall(
+        key: ValueKey<String>(sliderKey),
+        label: label,
+        semanticLabel: 'Telepon $label',
+        interactive: _activeSlider != otherKey,
+        onInteractionChanged: (active) =>
+            setState(() => _activeSlider = active ? sliderKey : null),
+        onTrigger: () => unawaited(_dial(number)),
+        onConfirmRequest: () => unawaited(_confirmDial(number, label)),
+      );
 }
 
 class _CategoryOption {
@@ -906,63 +1014,6 @@ class _SosPillButton extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CallPill extends StatelessWidget {
-  const _CallPill({
-    super.key,
-    required this.label,
-    required this.semanticLabel,
-    required this.onTap,
-  });
-
-  final String label;
-  final String semanticLabel;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      button: true,
-      label: semanticLabel,
-      child: Material(
-        color: AltracqColors.light.secondary,
-        shape: const StadiumBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: SizedBox(
-            height: 52,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                AltracqIcon(
-                  AltracqIcons.phone,
-                  size: 18,
-                  color: AltracqColors.light.textPrimary,
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: ExcludeSemantics(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: AltracqColors.light.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ),
           ),
         ),

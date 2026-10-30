@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../design/tokens.dart';
+import '../../../design/widgets/header_icon_button.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../../../infrastructure/database/app_database.dart';
 import '../../../infrastructure/database/database_connection.dart';
@@ -216,7 +217,7 @@ class _KartuPageState extends State<KartuPage> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   child: Row(
                     children: <Widget>[
-                      _HeaderIconButton(
+                      HeaderIconButton(
                         key: const ValueKey('kartu-close'),
                         icon: AltracqIcons.close,
                         label: 'Tutup kartu',
@@ -419,48 +420,6 @@ class _KartuPageState extends State<KartuPage> {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _HeaderIconButton extends StatelessWidget {
-  const _HeaderIconButton({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final AltracqIconData icon;
-  final String label;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: label,
-      child: SizedBox(
-        width: 44,
-        height: 44,
-        child: Material(
-          color: Colors.white.withValues(alpha: 0.08),
-          shape: const CircleBorder(
-            side: BorderSide(color: Color(0x66F6F3ED)),
-          ),
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onTap,
-            child: Center(
-              child: AltracqIcon(
-                icon,
-                size: 20,
-                color: const Color(0xFFF6F3ED),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

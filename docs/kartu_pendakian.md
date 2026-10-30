@@ -63,6 +63,8 @@ apa yang sudah dijalankan, dan apa yang belum diuji.
 
 - `app/lib/features/kartu/presentation/kartu_page.dart` — layar, pemilihan
   sesi, panel gaya, sakelar, dan aksi simpan/bagikan.
+- `app/lib/design/widgets/header_icon_button.dart` — tombol tutup bulat 44 px,
+  dipakai bersama dengan layar SOS.
 - `app/lib/features/kartu/presentation/kartu_card.dart` — tiga tata letak
   kartu, pelukis profil dan rute, penanda awal/akhir.
 - `app/lib/features/kartu/domain/kartu_data.dart` — model dari sesi dan titik,
@@ -81,7 +83,7 @@ apa yang sudah dijalankan, dan apa yang belum diuji.
 ## 4. Sudah dijalankan
 
 - `flutter analyze lib test` bersih.
-- Seluruh suite aplikasi lulus: **324 tes**.
+- Seluruh suite aplikasi lulus: **341 tes**.
 - Tes unit (10) mencakup: penolakan sesi aktif, format label jarak/tanjakan/
   waktu/tanggal, tanjakan nol dan negatif, fraksi profil dan puncak, profil
   kosong bila ketinggian kurang dari dua, normalisasi rute (batas dan rasio

@@ -63,7 +63,7 @@ perangkat apa adanya; tidak ada kontak, peta, atau angka contoh.
 ## Sudah dijalankan
 
 - `flutter analyze lib test` bersih.
-- Seluruh suite aplikasi lulus: **324 tes**, termasuk 22 tes Profil (8 unit
+- Seluruh suite aplikasi lulus: **341 tes**, termasuk 22 tes Profil (8 unit
   `profile_summary_test.dart`, 14 widget `profil_page_test.dart`) dan 2 tes
   mode gelap Peta dari M12.
 - Tes unit memastikan sesi aktif tidak dihitung, label jarak/tanjakan termasuk

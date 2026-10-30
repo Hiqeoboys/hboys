@@ -7,6 +7,12 @@ sudah dijalankan, dan apa yang belum diuji.
 
 - Layar SOS selalu memakai palet terbalik biru gelap, tidak mengikuti tema
   aplikasi. Tidak ada efek gooey di layar ini.
+- Sudut kiri atas berisi tombol tutup bulat 44 px (`HeaderIconButton`, sama
+  dengan Kartu Pendakian), bukan judul "SOS". Judul "SOS" hanya ada di tengah
+  lingkaran. Bila SOS sedang berjalan, tombol itu meminta konfirmasi
+  **Batalkan SOS?** lebih dulu, membatalkan lewat jalur yang sama dengan
+  **Batal, saya aman**, lalu menutup layar. Bila status batal gagal ditulis,
+  layar tetap terbuka supaya catatannya terbaca.
 - Pemicu memakai tekan-tahan 3 detik, lalu hitung mundur 3 detik. Melepas jari
   setelah hitung mundur dimulai tidak membatalkan; pengguna harus menekan
   **Batal, saya aman**. Pembatalan berlaku selama hitung mundur maupun setelah
@@ -31,13 +37,25 @@ sudah dijalankan, dan apa yang belum diuji.
 - Kategori CEDERA / TERSESAT / CUACA tidak dipilih otomatis. Tanpa pilihan
   pengguna, event tersimpan sebagai `SosCategory.other`. Perubahan kategori
   setelah event tersimpan ikut ditulis ke baris database yang sama.
-- Tombol **Basarnas 115** dan **Darurat 112** membuka aplikasi telepon lewat
+- **Basarnas 115** dan **Darurat 112** berupa dua trek geser kaca bertumpuk
+  (`SlideToCall`): trek 64 px, knob 56 px, ambang 85% perjalanan, knob membal
+  dengan overshoot kecil bila tidak sampai, dan haptic sedang saat memicu.
+  Ketukan biasa tidak melakukan apa pun supaya nomor darurat tidak terbuka
+  tanpa sengaja. Setelah memicu, knob tetap di ujung dan baru pulang saat
+  aplikasi kembali dari pemanggil telepon. Hanya satu trek yang menerima
+  geseran pada satu waktu. Trek membuka aplikasi telepon lewat
   `Intent.ACTION_DIAL` dengan nomor terisi. Aplikasi tidak meminta izin
   `CALL_PHONE` dan tidak pernah menelpon sendiri. Bila aplikasi telepon tidak
   dapat dibuka, nomor ditampilkan untuk diketik manual.
+- Pembaca layar mendapat jalur tanpa geser: aksi semantik pada trek membuka
+  dialog konfirmasi **Buka telepon** sebelum nomor dibuka.
+- "Kurangi animasi" mematikan lensa label di dalam knob dan mengganti spring
+  dengan perpindahan biasa. Profil daya Hemat/Kritis mengganti blur knob
+  dengan isi kaca padat. Fungsi geser tidak berubah pada kedua kondisi itu.
 - Layar menegaskan `SOS tidak menjamin pertolongan datang. Altracq tidak
   mengklaim telah menghubungi Basarnas.`
-- Tombol kembali sistem mengembalikan pengguna ke Beranda.
+- Tombol kembali sistem mengikuti aturan tombol tutup: langsung kembali bila
+  SOS diam, meminta konfirmasi bila SOS berjalan.
 
 ## 2. Yang sengaja tidak dilakukan
 
@@ -51,10 +69,16 @@ sudah dijalankan, dan apa yang belum diuji.
   database perangkat.
 - Tidak ada penjadwalan pengingat, riwayat SOS, atau pengiriman ulang otomatis.
   Membuka kembali layar memulai alur baru.
+- Tidak ada warna baru dan tidak ada warna merah pada trek geser. Seluruh isian,
+  garis tepi, dan kilau diambil dari token kaca `AltracqColors` yang sudah ada.
 
 ## 3. Berkas utama
 
 - `app/lib/features/safety/presentation/sos_page.dart` — layar SOS.
+- `app/lib/features/safety/presentation/slide_to_call.dart` — trek geser kaca
+  untuk nomor darurat.
+- `app/lib/design/widgets/header_icon_button.dart` — tombol tutup bulat 44 px,
+  dipakai bersama oleh SOS dan Kartu Pendakian.
 - `app/lib/features/safety/domain/sos_trigger_controller.dart` — mesin
   tekan-tahan, hitung mundur, dan batal.
 - `app/lib/features/safety/domain/sos_status_tracker.dart` — tangga status.
@@ -67,13 +91,15 @@ sudah dijalankan, dan apa yang belum diuji.
   penangan `ACTION_DIAL`.
 - `app/lib/app/router.dart` — rute `/sos` memakai `SosPage`.
 - `app/test/widget/sos_page_test.dart` — tes widget layar SOS.
+- `app/test/widget/slide_to_call_test.dart` — tes widget trek geser.
 
 ## 4. Sudah dijalankan
 
 - `flutter analyze lib test` bersih.
-- Seluruh suite aplikasi lulus: **324 tes**.
-- Tes widget SOS (10 tes) mencakup:
-  - layar diam jujur dan palet terbalik;
+- Seluruh suite aplikasi lulus: **341 tes**.
+- Tes widget SOS (18 tes) mencakup:
+  - layar diam jujur dan palet terbalik, termasuk tombol tutup 44 px dan dua
+    trek geser;
   - tekan-tahan 3 detik menyimpan SOS lokal dengan lokasi nyata dan hitung
     mundur 3 → 2 → 1;
   - melepas sebelum 3 detik tidak menyimpan apa pun;
@@ -83,10 +109,21 @@ sudah dijalankan, dan apa yang belum diuji.
   - tanpa perbaikan GPS tidak ada SOS yang disimpan dan tangga status tetap
     kosong;
   - kategori yang dipilih ikut tersimpan;
-  - tombol telepon mengirim nomor yang benar;
+  - geser melewati ambang membuka nomor yang benar, geser di bawah ambang dan
+    ketukan biasa tidak membuka nomor apa pun;
+  - hanya satu trek yang dapat digeser pada satu waktu;
+  - aksi semantik trek membuka dialog konfirmasi lebih dulu;
   - kegagalan membuka aplikasi telepon menampilkan nomor manual;
+  - tombol tutup menutup layar saat SOS diam, meminta konfirmasi lalu
+    membatalkan saat SOS aktif, dan tombol kembali Android mengikuti aturan
+    yang sama;
   - kegagalan penyimpanan lokal tidak diklaim berhasil.
-- Di emulator Android (mode terang aplikasi):
+- Tes widget trek geser (9 tes) mencakup: geometri diam 64/56/4 px, knob
+  mengikuti jari, balikan di bawah ambang, pemicuan sekali pada 85% beserta
+  haptic sedang, knob tetap di ujung sampai aplikasi kembali dari pemanggil,
+  lensa mati saat kurangi animasi, blur knob diganti isi padat pada profil
+  hemat, trek terkunci saat `interactive: false`, dan jalur aksi semantik.
+- Di emulator Android (mode terang aplikasi, **build sebelum revisi UI ini**):
   - layar diam, hitung mundur, status aktif, dan status batal terlihat benar
     dengan palet terbalik;
   - chip kategori tampil satu baris dan catatan jujur tidak terpotong;
@@ -101,15 +138,22 @@ sudah dijalankan, dan apa yang belum diuji.
 
 ## 5. Ditulis tetapi belum diuji di perangkat
 
+- Revisi UI layar ini (tombol tutup, trek geser, lensa knob, spring, dan haptic)
+  baru lulus tes widget; belum dilihat di emulator maupun perangkat nyata.
+- Rasa geser di jari: ambang 85%, overshoot saat knob membal, dan kekuatan
+  haptic sedang perlu dicoba langsung.
 - Seluruh sisi iOS, termasuk `ACTION_DIAL` yang tidak ada di iOS; jembatan
   akan mengembalikan `false` dan nomor ditampilkan untuk diketik manual.
 - Perilaku aplikasi telepon pada merek Android lain (layar panggilan darurat
-  khusus, dual-SIM, atau perangkat tanpa aplikasi telepon bawaan).
+  khusus, dual-SIM, atau perangkat tanpa aplikasi telepon bawaan), termasuk
+  apakah `AppLifecycleState.resumed` selalu dikirim saat kembali dari pemanggil
+  telepon sehingga knob pulang.
 - Uji lapangan: perilaku GPS di dalam hutan, waktu perbaikan lokasi lebih dari
   10 detik, dan penyimpanan saat aplikasi di latar belakang atau proses
   dimatikan.
-- Pembacaan layar pembaca (TalkBack) untuk seluruh elemen, meskipun label
-  semantik sudah diuji lewat tes widget.
+- Pembacaan layar pembaca (TalkBack) untuk seluruh elemen, termasuk aksi
+  semantik kustom pada trek geser, meskipun label semantik sudah diuji lewat
+  tes widget.
 - Pengiriman SOS ke anggota, server, atau kontak darurat, karena belum ada
   transportnya.
 
@@ -118,7 +162,7 @@ sudah dijalankan, dan apa yang belum diuji.
 ```sh
 cd app
 flutter analyze lib test
-flutter test test/widget/sos_page_test.dart
+flutter test test/widget/sos_page_test.dart test/widget/slide_to_call_test.dart
 ```
 
 Untuk mencoba di perangkat, buka Beranda, gulir ke kartu SOS, lalu tekan-tahan
