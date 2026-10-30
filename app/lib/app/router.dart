@@ -5,6 +5,7 @@ import '../features/preparation/presentation/siap_naik_page.dart';
 import '../features/shell/altracq_shell.dart';
 import '../features/shell/placeholder_screen.dart';
 import '../features/splash/presentation/splash_page.dart';
+import '../features/tracking/presentation/tracking_page.dart';
 
 /// Rute sepuluh layar.
 ///
@@ -67,8 +68,7 @@ GoRouter buildAltracqRouter() => GoRouter(
             GoRoute(
               path: '/lacak',
               name: 'lacak',
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Pelacakan'),
+              builder: (context, state) => const TrackingPage(),
             ),
           ],
         ),
