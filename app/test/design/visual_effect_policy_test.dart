@@ -57,14 +57,33 @@ void main() {
   });
 
   group('probeDeviceTier', () {
-    test('inti sedikit digolongkan perangkat lemah', () {
+    const int duaGigaKb = 2 * 1024 * 1024;
+    const int empatGigaKb = 4 * 1024 * 1024;
+
+    test('inti sangat sedikit digolongkan perangkat lemah', () {
       expect(
         VisualEffectPolicy.probeDeviceTier(processorCount: 2),
         DeviceTier.lowEnd,
       );
+    });
+
+    test('RAM di bawah 3 GB digolongkan perangkat lemah', () {
       expect(
-        VisualEffectPolicy.probeDeviceTier(processorCount: 4),
+        VisualEffectPolicy.probeDeviceTier(
+          processorCount: 4,
+          totalMemoryKb: duaGigaKb,
+        ),
         DeviceTier.lowEnd,
+      );
+    });
+
+    test('empat inti dengan RAM cukup digolongkan mampu', () {
+      expect(
+        VisualEffectPolicy.probeDeviceTier(
+          processorCount: 4,
+          totalMemoryKb: empatGigaKb,
+        ),
+        DeviceTier.capable,
       );
       expect(
         VisualEffectPolicy.probeDeviceTier(processorCount: 8),
