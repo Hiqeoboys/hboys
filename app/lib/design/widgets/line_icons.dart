@@ -285,4 +285,35 @@ class AltracqIcons {
         ..close(),
     ],
   );
+
+  static final AltracqIconData mic = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTWH(9, 3, 6, 11),
+            const ui.Radius.circular(3),
+          ),
+        )
+        ..moveTo(5.5, 11)
+        ..cubicTo(5.5, 14.5, 8.4, 17.2, 12, 17.2)
+        ..cubicTo(15.6, 17.2, 18.5, 14.5, 18.5, 11)
+        ..moveTo(12, 17.2)
+        ..lineTo(12, 21)
+        ..moveTo(8.5, 21)
+        ..lineTo(15.5, 21),
+    ],
+  );
+
+  static final AltracqIconData send = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(20, 4)
+        ..lineTo(4, 11)
+        ..lineTo(10.5, 13.5)
+        ..lineTo(20, 4)
+        ..lineTo(12.5, 20)
+        ..lineTo(10.5, 13.5),
+    ],
+  );
 }

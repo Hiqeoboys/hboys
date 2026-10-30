@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 
+import '../features/chat/presentation/chat_page.dart';
 import '../features/home/beranda_page.dart';
 import '../features/map/presentation/map_page.dart';
 import '../features/preparation/presentation/siap_naik_page.dart';
@@ -77,8 +78,7 @@ GoRouter buildAltracqRouter() => GoRouter(
             GoRoute(
               path: '/grup',
               name: 'grup',
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Grup Chat'),
+              builder: (context, state) => const ChatPage(),
             ),
           ],
         ),
