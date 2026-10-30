@@ -147,7 +147,7 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 
 **Sudah dijalankan dan lulus**
 
-- Semua tes otomatis: 322 tes aplikasi, 23 tes `mesh_protocol`, 11 tes `geo_utils`. Analyzer bersih.
+- Semua tes otomatis: 324 tes aplikasi, 23 tes `mesh_protocol`, 11 tes `geo_utils`. Analyzer bersih.
 - `data_pipeline/scripts/validate_trails.py` lolos untuk data contoh dan gagal untuk data yang sengaja dirusak.
 - APK debug sudah dibangun, dipasang, dan dicoba di emulator Android: rekam jejak, titik GPS tersimpan, sesi selesai. Baris database memakai stempel waktu UTC.
 - Permukaan kaca navigasi bawah (blur latar + saturasi) terlihat benar di emulator pada mode terang dan gelap, dan otomatis jatuh ke isi pekat saat kebijakan efek mati.
@@ -162,7 +162,7 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 - Grup Chat memakai grup terbaru dan daftar anggota nyata dari server, dengan bubble pesan dari database perangkat. Pengiriman teks menyimpan pesan UTF-8 secara lokal dan berhenti pada status jujur `Tersimpan di HP · belum terkirim` karena belum ada transport chat. Di emulator, keadaan `Belum masuk` terlihat pada mode terang dan gelap; tata letak chat lengkap diuji lewat 8 tes widget. Rinciannya di `docs/grup_chat.md`.
 - SOS memakai layar terbalik biru gelap: tekan-tahan 3 detik, hitung mundur 3 detik, lalu simpan lokal hanya bila ada perbaikan GPS nyata. Di emulator, baris database berisi penanda `perangkat-lokal`, grup kosong, koordinat dan akurasi nyata, status `active`; memilih CEDERA mengubah `category_code`, dan tombol batal menulis status `cancelled` beserta waktunya. Tangga status hanya menyalakan `Tersimpan di HP`; tombol 115 dan 112 membuka aplikasi telepon Android dengan nomor terisi tanpa menelpon. Rinciannya di `docs/sos.md`.
 - Kartu Pendakian memakai sesi selesai terbaru dari database perangkat, dengan tiga gaya (Profil, Tengah, Peta), sakelar sembunyikan titik awal/akhir, pemilih foto, ekspor PNG transparan 1080×1350, dan lembar berbagi. Di emulator, ketiga gaya tampil, sakelar menghapus penanda, PNG tersimpan di `Pictures/Altracq` (MediaStore mencatat 1080×1350; berkas terbaca RGBA dengan sudut alfa 0), lembar berbagi terbuka, dan pemilih foto terbuka. Tidak ada pesan "terkirim" setelah berbagi. Rinciannya di `docs/kartu_pendakian.md`.
-- Profil tamu memakai data lokal nyata: ringkasan hanya menjumlahkan sesi selesai, dan di emulator tampil **8 pendakian, 14.876 km, 1.469 m** dari database perangkat. Logo Google/Apple resmi tampil, kedua pil login disatukan leher kapsul gooey, dan catatan privasi serta catatan "belum tersedia" terlihat. Profil sudah masuk (identitas, penyedia, lima baris pengaturan, sheet Tampilan, Keluar) baru diuji widget, belum dicoba di perangkat. Rinciannya di `docs/profil.md`.
+- Profil tamu memakai data lokal nyata: ringkasan hanya menjumlahkan sesi selesai, dan di emulator tampil **8 pendakian, 14.876 km, 1.469 m** dari database perangkat. Logo Google/Apple resmi tampil dan catatan privasi serta catatan "belum tersedia" terlihat. Profil sudah masuk (identitas, penyedia, lima baris pengaturan, sheet Tampilan, Keluar) baru diuji widget, belum dicoba di perangkat. Rinciannya di `docs/profil.md`.
 - Migrasi `0001` dan `0002` sudah diterapkan di proyek Supabase (dicek lewat REST dan RPC).
 - Inisialisasi Supabase di aplikasi berhasil dengan kredensial publishable.
 
@@ -180,6 +180,7 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 - Seluruh sisi iOS, karena belum ada perangkat atau Xcode untuk mengujinya.
 - Kartu Pendakian: foto galeri yang benar-benar terdekode dan tampil di kartu (galeri emulator kosong; jalur pemilih foto dan `precacheImage` baru diuji widget), simpan MediaStore di Android 10 ke atas pada perangkat sungguhan (emulator API 37 berhasil), keadaan kosong di perangkat (database emulator sudah berisi sesi), lembar berbagi iOS, dan TalkBack.
 - Profil sudah masuk di perangkat. Penyedia OAuth belum aktif, jadi identitas, pil penyedia, lima baris pengaturan, sheet Tampilan, kontak darurat nyata, dan Keluar baru diuji widget. Pembacaan region Mapbox nyata juga belum berjalan karena katalog paket masih kosong. TalkBack dan ukuran teks besar belum diuji.
+- Revisi UI/UX gelombang ini di perangkat. Tombol pil solid (Perubahan 1) lulus 8 tes widget tetapi belum dilihat di emulator; Perubahan 2–5 (SOS slide-to-call, kartu ringkasan dan grid lipat di Beranda, indikator navbar tunggal, peta layar penuh) masih dikerjakan.
 - Build release/AOT, keystore, dan penandatanganan aplikasi.
 - Penerusan SOS ke anggota, server, atau kontak darurat, serta uji lapangan GPS di dalam hutan. Layar SOS dan penyimpanan lokalnya sudah diuji di emulator; jalur kirimnya belum ada.
 - Mesh BLE (Rilis 2). Yang ada baru paket protokolnya saja, belum ada `BleTransport`.
@@ -216,7 +217,7 @@ Mesh Bluetooth masih janji bersyarat. Jangkauannya bergantung pada seberapa bany
 - Mode gelap memakai palet yang dibalik: latar `#313851`, primer dan teks `#F6F3ED`, sekunder `#4B5573`, teks sekunder `#A9B0C2`, peringatan `#E0705C`. Pilihan Terang/Gelap/Ikuti sistem disimpan lokal dan langsung berlaku tanpa restart. Layar Peta mempertahankan gaya `OUTDOORS` agar paket offline tetap terpakai, dengan peredup navy 35% saat mode gelap.
 - Tipografi memakai Plus Jakarta Sans (400/500/700/800), ikon garis 1,8 px dengan ujung membulat, area sentuh minimal 44 px, dan kontras minimal 4,5:1.
 - *Liquid glass* (`BackdropFilter` sungguhan) dipakai di navbar, kartu, panel peta, dan tombol sekunder. Untuk perangkat lemah dan profil daya Hemat/Kritis, tersedia fallback tanpa blur.
-- *Gooey UI* (metaball: blur lalu ambang alpha) dipakai di navbar dan tombol utama/berpasangan. Efek ini selalu opsional. Ia mati kalau sistem meminta animasi dikurangi, saat profil daya Hemat/Kritis, atau di perangkat lemah, dan tidak pernah dipasang di kontrol SOS. Fungsi aplikasi tidak boleh bergantung padanya.
+- *Gooey UI* (metaball: blur lalu ambang alpha) hanya dipakai pada indikator navbar. Semua tombol adalah pil solid dengan tepi bersih; spesifikasi gooey untuk tombol (benjolan tepi dan leher penyambung) dibatalkan. Efek ini selalu opsional: ia mati kalau sistem meminta animasi dikurangi, saat profil daya Hemat/Kritis, atau di perangkat lemah, dan tidak pernah dipasang di kontrol SOS. Fungsi aplikasi tidak boleh bergantung padanya.
 
 ## Lisensi dan atribusi
 

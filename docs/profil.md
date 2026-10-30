@@ -36,8 +36,9 @@ perangkat apa adanya; tidak ada kontak, peta, atau angka contoh.
   `app_metadata.provider` bernilai `google` atau `apple`.
 - Logo Google dan Apple memakai aset resmi yang dibundel di
   `assets/brand/`. Logo Apple putih diturunkan dari aset tombol resmi.
-- Saat efek gooey aktif, kedua pil login dihubungkan leher kapsul 30×20 px;
-  saat efek dimatikan, bentuk tampil tanpa blur dan tanpa leher.
+- Kedua pil login adalah pil solid terpisah dengan celah 14 px, memakai
+  komponen `AltracqButton` yang sama dengan layar lain. Leher kapsul gooey
+  yang dulu menyatukan keduanya dibatalkan bersama spesifikasi gooey tombol.
 - Hapus akun belum tersedia. Dialog menjelaskan bahwa tidak ada akun atau data
   yang dihapus, lalu hanya menutup.
 - Tidak ada kontrol berbagi lokasi, tambah kontak, atau pengaturan lain yang
@@ -62,7 +63,7 @@ perangkat apa adanya; tidak ada kontak, peta, atau angka contoh.
 ## Sudah dijalankan
 
 - `flutter analyze lib test` bersih.
-- Seluruh suite aplikasi lulus: **322 tes**, termasuk 22 tes Profil (8 unit
+- Seluruh suite aplikasi lulus: **324 tes**, termasuk 22 tes Profil (8 unit
   `profile_summary_test.dart`, 14 widget `profil_page_test.dart`) dan 2 tes
   mode gelap Peta dari M12.
 - Tes unit memastikan sesi aktif tidak dihitung, label jarak/tanjakan termasuk
@@ -72,14 +73,18 @@ perangkat apa adanya; tidak ada kontak, peta, atau angka contoh.
   pengaturan, sheet kontak/peta/daya/privasi, perubahan tema tanpa mulai ulang,
   peringatan kunci perangkat, data lokal gagal dibaca, penghapusan akun yang
   jujur, dan keluar kembali ke keadaan tamu.
-- Di emulator Android API 37 (mode terang), layar tamu menampilkan data lokal
-  nyata: **8 pendakian, 14.876 km, 1.469 m**. Logo G resmi berwarna dan logo
-  Apple putih tampil, leher kapsul gooey terlihat menyatukan kedua pil, tidak
-  ada overflow, dan catatan privasi tampil di bawah tombol.
+- Di emulator Android API 37 (mode terang, build sebelum revisi UI), layar tamu
+  menampilkan data lokal nyata: **8 pendakian, 14.876 km, 1.469 m**. Logo G
+  resmi berwarna dan logo Apple putih tampil, tidak ada overflow, dan catatan
+  privasi tampil di bawah tombol. Pada build itu kedua pil masih disatukan
+  leher kapsul gooey; bentuk pil solid yang sekarang belum dilihat ulang di
+  emulator.
 - Angka jarak besar diberi titik ribuan (14.876 km) agar tetap terbaca.
 
 ## Ditulis tetapi belum diuji
 
+- Bentuk pil solid kedua tombol login (Perubahan 1 revisi UI): tepi mulus pada
+  keadaan normal, ditekan, dan nonaktif baru dipastikan lewat tes widget.
 - Profil sudah masuk di perangkat: penyedia OAuth belum diaktifkan, jadi
   identitas, pil penyedia, lima baris, sheet Tampilan, dan Keluar baru diuji
   widget, belum dicoba di perangkat.

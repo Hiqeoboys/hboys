@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 
-import '../gooey/gooey_layer.dart';
 import '../tokens.dart';
 
 /// Varian tombol mengikuti rancangan: primer isi penuh, sekunder abu, dan
 /// invers untuk tombol terang di atas kartu gelap.
 enum AltracqButtonVariant { primary, secondary, inverse }
 
+/// Tinggi tombol. 56 px berada di atas target sentuh minimum 44 px.
 const double _kButtonHeight = 56;
+
+/// Umpan balik tekan: mengecil sedikit dan meredup tipis.
+const double _kPressedScale = 0.97;
+const double _kPressedOpacity = 0.92;
+const double _kDisabledOpacity = 0.6;
 
 Color _fillFor(AltracqColors colors, AltracqButtonVariant variant) =>
     switch (variant) {
@@ -23,97 +28,25 @@ Color _foregroundFor(AltracqColors colors, AltracqButtonVariant variant) =>
       AltracqButtonVariant.inverse => colors.primary,
     };
 
-class _Pill extends StatelessWidget {
-  const _Pill({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(_kButtonHeight / 2),
-        ),
-      );
-}
-
-class _Blob extends StatelessWidget {
-  const _Blob({required this.color, required this.size});
-
-  final Color color;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      );
-}
-
-/// Badan tombol pill plus dua benjolan cair di tepi atas saat gooey menyala.
-class _PillWithBumps extends StatelessWidget {
-  const _PillWithBumps({required this.color, required this.bumps});
-
-  final Color color;
-  final bool bumps;
-
-  @override
-  Widget build(BuildContext context) {
-    const double bump = AltracqGooey.bumpSize;
-    return SizedBox(
-      height: _kButtonHeight,
-      width: double.infinity,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final double width = constraints.maxWidth;
-          return Stack(
-            clipBehavior: Clip.none,
-            children: <Widget>[
-              Positioned.fill(child: _Pill(color: color)),
-              if (bumps) ...<Widget>[
-                Positioned(
-                  left: width * 0.2 - bump / 2,
-                  top: -bump * 0.4,
-                  child: _Blob(color: color, size: bump),
-                ),
-                Positioned(
-                  left: width * 0.8 - bump / 2,
-                  top: -bump * 0.4,
-                  child: _Blob(color: color, size: bump),
-                ),
-              ],
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// Tombol primer/sekunder lebar penuh dengan siluet cair.
-///
-/// Tinggi 56 px (di atas target sentuh minimum 44 px). Saat gooey mati,
-/// tombol tetap pill biasa dan tetap berfungsi penuh.
-class AltracqButton extends StatefulWidget {
-  const AltracqButton({
-    super.key,
-    required this.label,
+/// Satu pil solid: radius sama dengan separuh tinggi, satu warna, tepi bersih.
+class _PressablePill extends StatefulWidget {
+  const _PressablePill({
+    required this.fill,
+    required this.semanticLabel,
+    required this.child,
     this.onPressed,
-    this.variant = AltracqButtonVariant.primary,
-    this.semanticLabel,
   });
 
-  final String label;
+  final Color fill;
+  final String semanticLabel;
+  final Widget child;
   final VoidCallback? onPressed;
-  final AltracqButtonVariant variant;
-  final String? semanticLabel;
 
   @override
-  State<AltracqButton> createState() => _AltracqButtonState();
+  State<_PressablePill> createState() => _PressablePillState();
 }
 
-class _AltracqButtonState extends State<AltracqButton> {
+class _PressablePillState extends State<_PressablePill> {
   bool _pressed = false;
 
   bool get _enabled => widget.onPressed != null;
@@ -125,20 +58,13 @@ class _AltracqButtonState extends State<AltracqButton> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
-    final theme = Theme.of(context);
-    final fill = _fillFor(colors, widget.variant);
-    final foreground = _foregroundFor(colors, widget.variant);
-    // Rancangan hanya memberi benjolan cair pada tombol primer; tombol invers
-    // di atas kartu gelap tetap pill bersih.
-    final gooey = GooeyLayer.enabledOf(context) &&
-        _enabled &&
-        widget.variant == AltracqButtonVariant.primary;
-
+    final double opacity = !_enabled
+        ? _kDisabledOpacity
+        : (_pressed ? _kPressedOpacity : 1);
     return Semantics(
       button: true,
       enabled: _enabled,
-      label: widget.semanticLabel ?? widget.label,
+      label: widget.semanticLabel,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onPressed,
@@ -146,44 +72,34 @@ class _AltracqButtonState extends State<AltracqButton> {
         onTapUp: _enabled ? (_) => _setPressed(false) : null,
         onTapCancel: _enabled ? () => _setPressed(false) : null,
         child: AnimatedScale(
-          scale: _pressed ? 0.97 : 1,
+          scale: _pressed ? _kPressedScale : 1,
           duration: AltracqMotion.press,
           curve: AltracqMotion.standard,
-          child: Opacity(
-            opacity: _enabled ? 1 : 0.6,
-            child: gooey
-                ? GooeyLayer(
-                    shapes: _PillWithBumps(color: fill, bumps: true),
-                    child: Center(
-                      child: ExcludeSemantics(
-                        child: Text(
-                          widget.label,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: foreground,
-                          ),
-                        ),
+          child: AnimatedOpacity(
+            opacity: opacity,
+            duration: AltracqMotion.press,
+            curve: AltracqMotion.standard,
+            child: SizedBox(
+              height: _kButtonHeight,
+              width: double.infinity,
+              child: DecoratedBox(
+                decoration: ShapeDecoration(
+                  color: widget.fill,
+                  shape: const StadiumBorder(),
+                ),
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AltracqSpacing.lg,
                       ),
-                    ),
-                  )
-                : SizedBox(
-                    height: _kButtonHeight,
-                    width: double.infinity,
-                    child: Stack(
-                      children: <Widget>[
-                        Positioned.fill(child: _Pill(color: fill)),
-                        Center(
-                          child: ExcludeSemantics(
-                            child: Text(
-                              widget.label,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: foreground,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                      child: ExcludeSemantics(child: widget.child),
                     ),
                   ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -191,9 +107,56 @@ class _AltracqButtonState extends State<AltracqButton> {
   }
 }
 
-/// Pasangan tombol berdampingan dengan celah 12 px yang dijembatani gooey
-/// menjadi leher cair. Tanpa gooey, celahnya tetap 12 px dan keduanya tetap
-/// tombol terpisah yang berfungsi penuh.
+/// Tombol lebar penuh berbentuk pil sempurna.
+class AltracqButton extends StatelessWidget {
+  const AltracqButton({
+    super.key,
+    required this.label,
+    this.onPressed,
+    this.variant = AltracqButtonVariant.primary,
+    this.semanticLabel,
+    this.leading,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final AltracqButtonVariant variant;
+  final String? semanticLabel;
+
+  /// Logo atau ikon di depan label, misalnya logo Google dan Apple.
+  final Widget? leading;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AltracqColors.of(context);
+    final theme = Theme.of(context);
+    final text = Text(
+      label,
+      maxLines: 1,
+      style: theme.textTheme.titleSmall?.copyWith(
+        color: _foregroundFor(colors, variant),
+      ),
+    );
+    return _PressablePill(
+      fill: _fillFor(colors, variant),
+      semanticLabel: semanticLabel ?? label,
+      onPressed: onPressed,
+      child: leading == null
+          ? text
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ExcludeSemantics(child: leading!),
+                const SizedBox(width: AltracqSpacing.md),
+                text,
+              ],
+            ),
+    );
+  }
+}
+
+/// Dua pil solid berdampingan dengan celah 12 px. Keduanya tombol terpisah
+/// yang utuh; tidak ada bentuk yang menjembatani celah.
 class AltracqButtonPair extends StatelessWidget {
   const AltracqButtonPair({
     super.key,
@@ -219,82 +182,36 @@ class AltracqButtonPair extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AltracqColors.of(context);
-    final gooey = GooeyLayer.enabledOf(context);
-    final leftFill = _fillFor(colors, leftVariant);
-    final rightFill = _fillFor(colors, rightVariant);
-
-    return SizedBox(
-      height: _kButtonHeight,
-      child: GooeyLayer(
-        shapes: Row(
-          children: <Widget>[
-            Expanded(
-              child: _PillWithBumps(color: leftFill, bumps: gooey),
-            ),
-            const SizedBox(width: AltracqMetrics.buttonPairGap),
-            Expanded(
-              child: _PillWithBumps(color: rightFill, bumps: gooey),
-            ),
-          ],
-        ),
-        child: Row(
-          children: <Widget>[
-            Expanded(
-              child: _PairZone(
-                label: leftLabel,
-                semanticLabel: leftSemanticLabel,
-                onTap: onLeftTap,
-                foreground: _foregroundFor(colors, leftVariant),
-              ),
-            ),
-            const SizedBox(width: AltracqMetrics.buttonPairGap),
-            Expanded(
-              child: _PairZone(
-                label: rightLabel,
-                semanticLabel: rightSemanticLabel,
-                onTap: onRightTap,
-                foreground: _foregroundFor(colors, rightVariant),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PairZone extends StatelessWidget {
-  const _PairZone({
-    required this.label,
-    required this.onTap,
-    required this.foreground,
-    this.semanticLabel,
-  });
-
-  final String label;
-  final VoidCallback? onTap;
-  final Color foreground;
-  final String? semanticLabel;
-
-  @override
-  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Semantics(
-      button: true,
-      enabled: onTap != null,
-      label: semanticLabel ?? label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Center(
-          child: ExcludeSemantics(
-            child: Text(
-              label,
-              style: theme.textTheme.titleSmall?.copyWith(color: foreground),
+    Widget pill(
+      String label,
+      String? semanticLabel,
+      AltracqButtonVariant variant,
+      VoidCallback? onTap,
+    ) =>
+        _PressablePill(
+          fill: _fillFor(colors, variant),
+          semanticLabel: semanticLabel ?? label,
+          onPressed: onTap,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: _foregroundFor(colors, variant),
             ),
           ),
+        );
+
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: pill(leftLabel, leftSemanticLabel, leftVariant, onLeftTap),
         ),
-      ),
+        const SizedBox(width: AltracqMetrics.buttonPairGap),
+        Expanded(
+          child: pill(rightLabel, rightSemanticLabel, rightVariant, onRightTap),
+        ),
+      ],
     );
   }
 }

@@ -26,27 +26,53 @@ VisualEffectPolicy policy({
       deviceTier: tier,
     );
 
+Widget button({
+  String label = 'Siapkan pendakian',
+  VoidCallback? onPressed,
+  AltracqButtonVariant variant = AltracqButtonVariant.primary,
+  Widget? leading,
+}) =>
+    Padding(
+      padding: const EdgeInsets.all(16),
+      child: AltracqButton(
+        label: label,
+        onPressed: onPressed,
+        variant: variant,
+        leading: leading,
+      ),
+    );
+
+/// Bentuk pil sempurna: satu [StadiumBorder] berarti radius = separuh tinggi.
+Finder solidPill() => find.byWidgetPredicate(
+      (widget) =>
+          widget is DecoratedBox &&
+          widget.decoration is ShapeDecoration &&
+          (widget.decoration as ShapeDecoration).shape is StadiumBorder,
+    );
+
+/// Tombol tidak boleh lagi memakai lapisan gooey (blur + pemangkasan alfa).
+void expectNoGooey(WidgetTester tester) {
+  expect(find.byType(ImageFiltered), findsNothing);
+  expect(find.byType(ColorFiltered), findsNothing);
+}
+
 void main() {
-  testWidgets('tombol primer menekan memanggil balik dan berlabel',
+  testWidgets('tombol primer adalah pil solid 56 px yang dapat ditekan',
       (tester) async {
     int taps = 0;
     await tester.pumpWidget(
       policyApp(
         VisualEffectPolicy.full,
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: AltracqButton(label: 'Siapkan pendakian', onPressed: () => taps++),
-        ),
+        button(label: 'Siapkan pendakian', onPressed: () => taps++),
       ),
     );
     final handle = tester.ensureSemantics();
 
-    expect(tester.getSize(find.byType(AltracqButton)).height, 56);
-    expect(
-      tester.getSize(find.byType(AltracqButton)).height,
-      greaterThanOrEqualTo(AltracqMetrics.minTouchTarget),
-    );
-    expect(find.byType(ImageFiltered), findsOneWidget);
+    final size = tester.getSize(find.byType(AltracqButton));
+    expect(size.height, 56);
+    expect(size.height, greaterThanOrEqualTo(AltracqMetrics.minTouchTarget));
+    expect(solidPill(), findsOneWidget);
+    expectNoGooey(tester);
 
     await tester.tap(find.text('Siapkan pendakian'));
     expect(taps, 1);
@@ -57,62 +83,123 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('tombol tanpa balik tidak merespons sentuhan', (tester) async {
+  testWidgets('tombol tanpa balik meredup dan tidak merespons sentuhan',
+      (tester) async {
     await tester.pumpWidget(
-      policyApp(
-        VisualEffectPolicy.full,
-        const Padding(
-          padding: EdgeInsets.all(16),
-          child: AltracqButton(label: 'Mati'),
-        ),
-      ),
+      policyApp(VisualEffectPolicy.full, button(label: 'Mati')),
     );
+
+    expect(
+      tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity,
+      0.6,
+    );
+    expect(solidPill(), findsOneWidget);
 
     await tester.tap(find.text('Mati'));
     await tester.pumpAndSettle();
     expect(find.text('Mati'), findsOneWidget);
   });
 
-  testWidgets('gooey mati tidak mengubah perilaku tombol', (tester) async {
+  testWidgets('umpan balik tekan: skala 0,97 dan redup tipis lalu pulih',
+      (tester) async {
+    await tester.pumpWidget(
+      policyApp(
+        VisualEffectPolicy.full,
+        button(label: 'Mulai pendakian', onPressed: () {}),
+      ),
+    );
+
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text('Mulai pendakian')));
+    await tester.pump();
+
+    expect(
+      tester.widget<AnimatedScale>(find.byType(AnimatedScale)).scale,
+      0.97,
+    );
+    expect(
+      tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity,
+      0.92,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<AnimatedScale>(find.byType(AnimatedScale)).scale,
+      1,
+    );
+    expect(
+      tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity,
+      1,
+    );
+  });
+
+  testWidgets('kebijakan efek mati tidak mengubah bentuk maupun perilaku',
+      (tester) async {
     int taps = 0;
     await tester.pumpWidget(
       policyApp(
         policy(reduceMotion: true),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: AltracqButton(label: 'Simpan', onPressed: () => taps++),
-        ),
+        button(label: 'Simpan', onPressed: () => taps++),
       ),
     );
 
-    expect(find.byType(ImageFiltered), findsNothing);
+    expect(solidPill(), findsOneWidget);
+    expectNoGooey(tester);
     await tester.tap(find.text('Simpan'));
     expect(taps, 1);
   });
 
-  testWidgets('tombol invers tetap pill bersih tanpa benjolan cair',
+  testWidgets('tombol invers tetap satu pil solid', (tester) async {
+    int taps = 0;
+    await tester.pumpWidget(
+      policyApp(
+        VisualEffectPolicy.full,
+        button(
+          label: 'Siapkan pendakian',
+          variant: AltracqButtonVariant.inverse,
+          onPressed: () => taps++,
+        ),
+      ),
+    );
+
+    expect(solidPill(), findsOneWidget);
+    expectNoGooey(tester);
+    await tester.tap(find.text('Siapkan pendakian'));
+    expect(taps, 1);
+  });
+
+  testWidgets('leading berada di dalam satu pil yang sama dengan label',
       (tester) async {
     int taps = 0;
     await tester.pumpWidget(
       policyApp(
         VisualEffectPolicy.full,
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: AltracqButton(
-            label: 'Siapkan pendakian',
-            variant: AltracqButtonVariant.inverse,
-            onPressed: () => taps++,
-          ),
+        button(
+          label: 'Lanjutkan dengan Google',
+          leading: const Icon(Icons.circle, key: ValueKey('logo-provider')),
+          onPressed: () => taps++,
         ),
       ),
     );
 
-    expect(find.byType(ImageFiltered), findsNothing);
-    await tester.tap(find.text('Siapkan pendakian'));
+    expect(solidPill(), findsOneWidget);
+    expect(find.byKey(const ValueKey('logo-provider')), findsOneWidget);
+
+    final pillRect = tester.getRect(solidPill());
+    expect(pillRect.contains(tester.getCenter(find.text('Lanjutkan dengan Google'))), isTrue);
+    expect(
+      pillRect.contains(
+        tester.getCenter(find.byKey(const ValueKey('logo-provider'))),
+      ),
+      isTrue,
+    );
+
+    await tester.tap(find.text('Lanjutkan dengan Google'));
     expect(taps, 1);
   });
 
-  testWidgets('pasangan tombol: masing-masing zona terpisah, celah 12 px',
+  testWidgets('pasangan tombol: dua pil terpisah dengan celah 12 px',
       (tester) async {
     int left = 0;
     int right = 0;
@@ -137,6 +224,13 @@ void main() {
           ),
       isTrue,
     );
+    expect(solidPill(), findsNWidgets(2));
+    expectNoGooey(tester);
+
+    expect(
+      tester.getRect(solidPill().first).overlaps(tester.getRect(solidPill().last)),
+      isFalse,
+    );
 
     await tester.tap(find.text('Jeda'));
     expect(left, 1);
@@ -145,7 +239,10 @@ void main() {
     expect(right, 1);
 
     final handle = tester.ensureSemantics();
-    expect(tester.getSemantics(find.text('Jeda')).flagsCollection.isButton, isTrue);
+    expect(
+      tester.getSemantics(find.text('Jeda')).flagsCollection.isButton,
+      isTrue,
+    );
     expect(
       tester.getSemantics(find.text('Selesai')).flagsCollection.isButton,
       isTrue,
@@ -153,7 +250,7 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('pasangan tombol tetap berfungsi saat gooey mati',
+  testWidgets('pasangan tombol tetap berfungsi saat efek dimatikan',
       (tester) async {
     int left = 0;
     int right = 0;
@@ -172,7 +269,8 @@ void main() {
       ),
     );
 
-    expect(find.byType(ImageFiltered), findsNothing);
+    expect(solidPill(), findsNWidgets(2));
+    expectNoGooey(tester);
     await tester.tap(find.text('Jeda'));
     await tester.tap(find.text('Selesai'));
     expect(left, 1);

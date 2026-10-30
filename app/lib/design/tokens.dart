@@ -245,13 +245,6 @@ class AltracqGooey {
   static const double blurSigma = 6;
   static const double alphaScale = 20;
   static const double alphaShift = -9;
-
-  /// Benjolan cair di tepi tombol primer.
-  static const double bumpSize = 12;
-
-  /// Leher cair yang menghubungkan pasangan tombol.
-  static const double neckHeight = 10;
-  static const double neckOverlap = 4;
 }
 
 /// Durasi dan kurva animasi.

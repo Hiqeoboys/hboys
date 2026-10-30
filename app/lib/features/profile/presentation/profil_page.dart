@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../design/glass/glass_surface.dart';
-import '../../../design/gooey/gooey_layer.dart';
 import '../../../design/theme_mode_controller.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/altracq_button.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../../../infrastructure/database/app_database.dart';
 import '../../../infrastructure/database/database_connection.dart';
@@ -1062,8 +1062,8 @@ class _AuthButtons extends StatelessWidget {
     required this.onApple,
   });
 
-  static const double _height = 56;
-  static const double _gap = 12;
+  /// Celah dua tombol penyedia masuk.
+  static const double _gap = 14;
 
   final bool enabled;
   final VoidCallback onGoogle;
@@ -1072,161 +1072,38 @@ class _AuthButtons extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AltracqColors.of(context);
-    final gooey = GooeyLayer.enabledOf(context);
-    final googleFill = colors.secondary;
-    final appleFill = colors.primary;
-    final shapes = SizedBox(
-      height: _height * 2 + _gap,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: <Widget>[
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _pillShape(googleFill),
+    return Column(
+      children: <Widget>[
+        AltracqButton(
+          key: const ValueKey('profil-login-google'),
+          label: 'Lanjutkan dengan Google',
+          variant: AltracqButtonVariant.secondary,
+          leading: Image.asset(
+            'assets/brand/google_g.png',
+            width: 20,
+            height: 20,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+            excludeFromSemantics: true,
           ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _pillShape(appleFill),
+          onPressed: enabled ? onGoogle : null,
+        ),
+        const SizedBox(height: _gap),
+        AltracqButton(
+          key: const ValueKey('profil-login-apple'),
+          label: 'Lanjutkan dengan Apple',
+          leading: Image.asset(
+            'assets/brand/apple_logo.png',
+            height: 20,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+            color: colors.onPrimary,
+            colorBlendMode: BlendMode.srcIn,
+            excludeFromSemantics: true,
           ),
-          if (gooey)
-            Positioned(
-              top: _height - 4,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  width: 30,
-                  height: _gap + 8,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AltracqRadius.pill),
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: <Color>[googleFill, appleFill],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-    return SizedBox(
-      height: _height * 2 + _gap,
-      child: GooeyLayer(
-        shapes: shapes,
-        child: Column(
-          children: <Widget>[
-            _AuthZone(
-              key: const ValueKey('profil-login-google'),
-              label: 'Lanjutkan dengan Google',
-              foreground: colors.textPrimary,
-              logo: Image.asset(
-                'assets/brand/google_g.png',
-                width: 20,
-                height: 20,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
-                excludeFromSemantics: true,
-              ),
-              enabled: enabled,
-              onTap: onGoogle,
-            ),
-            const SizedBox(height: _gap),
-            _AuthZone(
-              key: const ValueKey('profil-login-apple'),
-              label: 'Lanjutkan dengan Apple',
-              foreground: colors.onPrimary,
-              logo: Image.asset(
-                'assets/brand/apple_logo.png',
-                height: 20,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
-                color: colors.onPrimary,
-                colorBlendMode: BlendMode.srcIn,
-                excludeFromSemantics: true,
-              ),
-              enabled: enabled,
-              onTap: onApple,
-            ),
-          ],
+          onPressed: enabled ? onApple : null,
         ),
-      ),
-    );
-  }
-
-  Widget _pillShape(Color color) => Container(
-        height: _height,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(_height / 2),
-        ),
-      );
-}
-
-class _AuthZone extends StatelessWidget {
-  const _AuthZone({
-    super.key,
-    required this.label,
-    required this.foreground,
-    required this.logo,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final String label;
-  final Color foreground;
-  final Widget logo;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 56,
-      child: Semantics(
-        button: true,
-        enabled: enabled,
-        label: label,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: enabled ? onTap : null,
-          child: Opacity(
-            opacity: enabled ? 1 : 0.6,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AltracqSpacing.lg,
-                ),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      ExcludeSemantics(child: logo),
-                      const SizedBox(width: AltracqSpacing.md),
-                      ExcludeSemantics(
-                        child: Text(
-                          label,
-                          style:
-                              Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    color: foreground,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      ],
     );
   }
 }

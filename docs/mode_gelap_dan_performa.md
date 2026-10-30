@@ -54,7 +54,7 @@ Tidak ada fitur baru dan tidak ada data contoh yang ditambahkan.
 ## Sudah dijalankan
 
 - `flutter analyze lib test` bersih.
-- Seluruh suite aplikasi lulus: **322 tes** (dua tes baru: nilai
+- Seluruh suite aplikasi lulus: **324 tes** (dua tes baru: nilai
   `mapDimOpacityFor` dan mode gelap tanpa peta yang tidak menambah peredup).
 - APK debug dibangun dan dipasang di emulator Android API 37.
 - Mode gelap sistem (`cmd uimode night yes`) diaktifkan, lalu kedelapan layar
