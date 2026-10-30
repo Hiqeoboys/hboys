@@ -274,4 +274,15 @@ class AltracqIcons {
         ..lineTo(19, 7),
     ],
   );
+
+  static final AltracqIconData locate = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(12, 3.6)
+        ..lineTo(20, 20.4)
+        ..lineTo(12, 16.2)
+        ..lineTo(4, 20.4)
+        ..close(),
+    ],
+  );
 }

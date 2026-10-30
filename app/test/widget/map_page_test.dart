@@ -1,20 +1,39 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geo_utils/geo_utils.dart';
+import 'package:nama_app/design/app_theme.dart';
+import 'package:nama_app/features/compass/domain/compass_calibration.dart';
 import 'package:nama_app/features/map/application/map_track_source.dart';
 import 'package:nama_app/features/map/application/offline_map_service.dart';
 import 'package:nama_app/features/map/domain/map_package.dart';
 import 'package:nama_app/features/map/presentation/map_page.dart';
 import 'package:nama_app/features/tracking/domain/track_point.dart';
 
-class _CountingOfflineService implements OfflineMapService {
+class _FakeOfflineService implements OfflineMapService {
+  _FakeOfflineService({this.statusResult = OfflineRegionStatus.missing});
+
+  OfflineRegionStatus statusResult;
+  int statusCalls = 0;
   int estimateCalls = 0;
   int downloadCalls = 0;
 
   @override
+  Future<OfflineRegionStatus> regionStatus(MountainMapPackage package) async {
+    statusCalls++;
+    return statusResult;
+  }
+
+  @override
   Future<OfflineEstimate> estimate(MountainMapPackage package) async {
     estimateCalls++;
-    throw StateError('estimasi tidak diharapkan tanpa Mapbox aktif');
+    return const OfflineEstimate(
+      transferBytes: 1536,
+      storageBytes: 3072,
+      errorMargin: 0.2,
+    );
   }
 
   @override
@@ -23,28 +42,85 @@ class _CountingOfflineService implements OfflineMapService {
     required void Function(OfflineProgress progress) onProgress,
   }) async {
     downloadCalls++;
-    throw StateError('unduhan tidak diharapkan tanpa Mapbox aktif');
+    onProgress(const OfflineProgress(
+      phase: OfflinePhase.tiles,
+      completedResources: 1,
+      requiredResources: 1,
+      completedBytes: 1536,
+      erroredResources: 0,
+    ));
   }
 }
 
-class _FakeTrackSource implements MapTrackSource {
-  _FakeTrackSource(this.snapshot);
+class _StaticTrackSource implements MapTrackSource {
+  _StaticTrackSource(this.snapshots);
 
-  final MapTrackSnapshot snapshot;
+  final List<MapTrackSnapshot> snapshots;
+  int calls = 0;
 
   @override
-  Future<MapTrackSnapshot> load() async => snapshot;
+  Future<MapTrackSnapshot> load() async {
+    final index = calls < snapshots.length ? calls : snapshots.length - 1;
+    calls++;
+    return snapshots[index];
+  }
 }
 
-MountainMapPackage _package() {
+/// Sumber yang diam sampai diaktifkan, lalu melaporkan satu titik baru setiap
+/// pembacaan. Dipakai untuk menguji histeresis detektor tanpa bergantung pada
+/// waktu pemilihan paket.
+class _ArmedTrackSource implements MapTrackSource {
+  _ArmedTrackSource(this.points);
+
+  final List<TrackPoint> points;
+  bool armed = false;
+  int _index = 0;
+
+  @override
+  Future<MapTrackSnapshot> load() async {
+    if (!armed) {
+      return const MapTrackSnapshot(
+        points: <TrackPoint>[],
+        latestPoint: null,
+      );
+    }
+    final index = _index < points.length ? _index : points.length - 1;
+    final point = points[index];
+    if (_index < points.length - 1) _index++;
+    return MapTrackSnapshot(points: <TrackPoint>[point], latestPoint: point);
+  }
+}
+
+class _FakeCompassStore implements CompassOffsetStore {
+  double offset = 0;
+  int writes = 0;
+
+  @override
+  Future<double> readOffsetDegrees() async => offset;
+
+  @override
+  Future<void> writeOffsetDegrees(double offsetDegrees) async {
+    offset = offsetDegrees;
+    writes++;
+  }
+}
+
+MountainMapPackage _package({
+  String name = 'Gunung Uji',
+  bool verified = false,
+  DateTime? verifiedAtUtc,
+  int maxTiles = 5000,
+}) {
   return MountainMapPackage(
     id: 'gunung_uji',
-    name: 'Gunung Uji',
+    name: name,
     version: 2,
     dataDateUtc: DateTime.utc(2026, 10, 1),
-    verified: false,
-    offline: const OfflineConfig(
-      bounds: GeoBounds(
+    verified: verified,
+    verifiedAtUtc: verifiedAtUtc,
+    verifiedBy: verified ? 'Tim uji' : null,
+    offline: OfflineConfig(
+      bounds: const GeoBounds(
         south: -7.55,
         west: 110.35,
         north: -7.45,
@@ -53,117 +129,277 @@ MountainMapPackage _package() {
       minZoom: 10,
       maxZoom: 14,
       maxAreaKm2: 250,
-      maxTiles: 5000,
+      maxTiles: maxTiles,
     ),
-    trails: [
+    trails: <MapTrail>[
       MapTrail(
         id: 'utama',
         name: 'Jalur Utama',
-        source: 'uji',
-        verified: false,
-        points: const [
-          LatLng(-7.5, 110.4),
-          LatLng(-7.49, 110.41),
-        ],
+        source: 'uji lapangan',
+        verified: verified,
+        verifiedAtUtc: verifiedAtUtc,
+        verifiedBy: verified ? 'Tim uji' : null,
+        points: const <LatLng>[LatLng(-7.5, 110.4), LatLng(-7.49, 110.41)],
       ),
     ],
   );
 }
 
-TrackPoint _latestPoint() {
+TrackPoint _point({
+  double lat = -7.5,
+  double lon = 110.4,
+  int second = 0,
+}) {
   return TrackPoint(
-    lat: -7.5,
-    lon: 110.4,
-    timestampUtc: DateTime.utc(2026, 10, 25, 3),
+    lat: lat,
+    lon: lon,
+    timestampUtc: DateTime.utc(2026, 10, 25, 3, 0, second),
     accuracyM: 5,
   );
 }
 
-void _useTallSurface(WidgetTester tester) {
-  tester.view.physicalSize = const Size(900, 2600);
-  tester.view.devicePixelRatio = 1.0;
+MapTrackSnapshot _snapshot(List<TrackPoint> points) => MapTrackSnapshot(
+      points: points,
+      latestPoint: points.isEmpty ? null : points.last,
+    );
+
+Widget _app(MapPage page) => MaterialApp(theme: altracqLightTheme, home: page);
+
+void _setPhone(WidgetTester tester) {
+  tester.view.physicalSize = const Size(390, 844);
+  tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-Future<void> _disposePage(WidgetTester tester) async {
-  await tester.pumpWidget(const SizedBox.shrink());
-  await tester.pump();
+Future<void> _openOfflineSheet(WidgetTester tester) async {
+  await tester.tap(find.text('Kelola peta offline'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _dismissSheet(WidgetTester tester) async {
+  await tester.tapAt(const Offset(195, 20));
+  await tester.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('tanpa token menampilkan setup dan tidak memanggil Mapbox',
+  testWidgets('tanpa Mapbox menampilkan setup dan katalog kosong jujur',
       (tester) async {
-    _useTallSurface(tester);
-    final service = _CountingOfflineService();
-
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        mapboxToken: '',
-        catalogLoader: () async => MapPackageCatalog(const []),
-        offlineService: service,
-        trackSource: _FakeTrackSource(
-          const MapTrackSnapshot(points: [], latestPoint: null),
-        ),
-      ),
-    ));
+    _setPhone(tester);
+    final service = _FakeOfflineService();
+    await tester.pumpWidget(_app(MapPage(
+      catalogLoader: () async => MapPackageCatalog(const <MountainMapPackage>[]),
+      offlineService: service,
+      trackSource: _StaticTrackSource(<MapTrackSnapshot>[_snapshot(const [])]),
+    )));
     await tester.pumpAndSettle();
 
-    expect(find.text('Peta belum dikonfigurasi'), findsOneWidget);
-    expect(find.text('Belum ada paket gunung'), findsOneWidget);
+    expect(find.text('Belum ada data jalur'), findsOneWidget);
     expect(
-      find.textContaining('Unduhan offline memerlukan Mapbox yang aktif.'),
+      find.text('Katalog paket kosong · tidak ada data jalur dibundel'),
       findsOneWidget,
     );
-    expect(
-      find.text('Pilih paket dan jalur untuk mengaktifkan deteksi.'),
-      findsOneWidget,
-    );
-    expect(service.estimateCalls, 0);
-    expect(service.downloadCalls, 0);
+    expect(find.text('Peta belum tersedia'), findsOneWidget);
+    expect(find.text('Peta offline'), findsOneWidget);
+    expect(find.text('Peta offline belum siap'), findsOneWidget);
+    expect(find.text('GPS belum aktif'), findsOneWidget);
 
-    await _disposePage(tester);
+    await _openOfflineSheet(tester);
+    expect(find.text('Belum ada paket gunung'), findsOneWidget);
+    expect(find.text('PAKET TERSEDIA'), findsNothing);
+    expect(service.estimateCalls, 0);
   });
 
-  testWidgets('memilih paket menampilkan jalur dan deteksi memakai titik GPS',
+  testWidgets('memilih paket menampilkan jalur, panduan, dan status offline',
       (tester) async {
-    _useTallSurface(tester);
-    final service = _CountingOfflineService();
+    _setPhone(tester);
+    final service = _FakeOfflineService();
     final package = _package();
+    await tester.pumpWidget(_app(MapPage(
+      catalogLoader: () async => MapPackageCatalog(<MountainMapPackage>[package]),
+      offlineService: service,
+      trackSource: _StaticTrackSource(<MapTrackSnapshot>[
+        _snapshot(<TrackPoint>[_point()]),
+      ]),
+    )));
+    await tester.pumpAndSettle();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        mapboxToken: '',
-        catalogLoader: () async => MapPackageCatalog([package]),
-        offlineService: service,
-        trackSource: _FakeTrackSource(
-          MapTrackSnapshot(
-            points: [_latestPoint()],
-            latestPoint: _latestPoint(),
-          ),
-        ),
+    expect(find.text('Belum ada jalur dipilih'), findsOneWidget);
+
+    await _openOfflineSheet(tester);
+    expect(find.text('PAKET TERSEDIA'), findsOneWidget);
+    expect(find.text('Gunung Uji'), findsOneWidget);
+    expect(find.textContaining('±'), findsWidgets);
+
+    await tester.tap(find.text('Gunung Uji'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Belum diunduh'), findsOneWidget);
+    expect(find.textContaining('Perkiraan SDK'), findsOneWidget);
+
+    await _dismissSheet(tester);
+
+    expect(find.text('Jalur belum terverifikasi'), findsOneWidget);
+    expect(find.text('Jalur Utama'), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-guidance')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('map-guidance'))).data,
+      '0 m · bearing 0°',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('map-trail-state')),
+        matching: find.text('Dijalur'),
       ),
-    ));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byType(DropdownButton<String>).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Gunung Uji').last);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Data belum terverifikasi'), findsOneWidget);
-    expect(find.text('Jalur Utama'), findsWidgets);
-    expect(
-      tester.widget<Text>(find.byKey(const ValueKey('off-trail-status'))).data,
-      'Di jalur',
+      findsOneWidget,
     );
     expect(
-      find.textContaining('Perkiraan tile'),
-      findsNothing,
-      reason: 'Panel offline tidak boleh aktif tanpa Mapbox.',
+      find.descendant(
+        of: find.byKey(const ValueKey('map-offline-state')),
+        matching: find.text('Peta offline belum siap'),
+      ),
+      findsOneWidget,
     );
-    expect(service.estimateCalls, 0);
+    expect(find.text('Kelola peta offline'), findsOneWidget);
+  });
 
-    await _disposePage(tester);
+  testWidgets('paket terverifikasi menampilkan tanggal verifikasi nyata',
+      (tester) async {
+    _setPhone(tester);
+    final verifiedAt = DateTime.utc(2026, 10, 1);
+    final package = _package(
+      verified: true,
+      verifiedAtUtc: verifiedAt,
+    );
+    await tester.pumpWidget(_app(MapPage(
+      catalogLoader: () async => MapPackageCatalog(<MountainMapPackage>[package]),
+      offlineService: _FakeOfflineService(),
+      trackSource: _StaticTrackSource(<MapTrackSnapshot>[_snapshot(const [])]),
+    )));
+    await tester.pumpAndSettle();
+    await _openOfflineSheet(tester);
+    await tester.tap(find.text('Gunung Uji'));
+    await tester.pumpAndSettle();
+    await _dismissSheet(tester);
+
+    expect(find.text('Jalur terverifikasi'), findsOneWidget);
+    expect(
+      find.text('Diverifikasi 1 Okt 2026 · kondisi jalur dapat berubah'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('status region SDK siap mengubah pill peta offline',
+      (tester) async {
+    _setPhone(tester);
+    final service = _FakeOfflineService(
+      statusResult: const OfflineRegionStatus(
+        completedResources: 10,
+        requiredResources: 10,
+        completedBytes: 2048,
+        styleReady: true,
+      ),
+    );
+    await tester.pumpWidget(_app(MapPage(
+      catalogLoader: () async =>
+          MapPackageCatalog(<MountainMapPackage>[_package()]),
+      offlineService: service,
+      trackSource: _StaticTrackSource(<MapTrackSnapshot>[
+        _snapshot(<TrackPoint>[_point()]),
+      ]),
+    )));
+    await tester.pumpAndSettle();
+    await _openOfflineSheet(tester);
+    await tester.tap(find.text('Gunung Uji'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Siap dipakai offline'), findsOneWidget);
+    await _dismissSheet(tester);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('map-offline-state')),
+        matching: find.text('Peta offline'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('tiga titik jauh menampilkan peringatan di luar jalur',
+      (tester) async {
+    _setPhone(tester);
+    final source = _ArmedTrackSource(<TrackPoint>[
+      _point(lat: -7.48, second: 1),
+      _point(lat: -7.48, second: 2),
+      _point(lat: -7.48, second: 3),
+    ]);
+    await tester.pumpWidget(_app(MapPage(
+      catalogLoader: () async =>
+          MapPackageCatalog(<MountainMapPackage>[_package()]),
+      offlineService: _FakeOfflineService(),
+      trackSource: source,
+      trackPollInterval: const Duration(milliseconds: 40),
+    )));
+    await tester.pumpAndSettle();
+    await _openOfflineSheet(tester);
+    await tester.tap(find.text('Gunung Uji'));
+    await tester.pumpAndSettle();
+    await _dismissSheet(tester);
+
+    // Detektor butuh tiga titik di luar ambang; setiap pump baru menjalankan
+    // satu pembacaan karena sumber jejak dipanggil bergiliran.
+    source.armed = true;
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump();
+    }
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('map-trail-state')),
+        matching: find.text('Di luar jalur'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Kelola peta offline'), findsOneWidget);
+  });
+
+  testWidgets('tanpa titik GPS menampilkan status menunggu', (tester) async {
+    _setPhone(tester);
+    await tester.pumpWidget(_app(MapPage(
+      catalogLoader: () async =>
+          MapPackageCatalog(<MountainMapPackage>[_package()]),
+      offlineService: _FakeOfflineService(),
+      trackSource: _StaticTrackSource(<MapTrackSnapshot>[_snapshot(const [])]),
+    )));
+    await tester.pumpAndSettle();
+    await _openOfflineSheet(tester);
+    await tester.tap(find.text('Gunung Uji'));
+    await tester.pumpAndSettle();
+    await _dismissSheet(tester);
+
+    expect(find.text('Menunggu GPS'), findsOneWidget);
+  });
+
+  testWidgets('tombol kompas membuka sheet kompas', (tester) async {
+    _setPhone(tester);
+    final events = StreamController<CompassEvent>.broadcast();
+    addTearDown(events.close);
+    final store = _FakeCompassStore();
+    await tester.pumpWidget(_app(MapPage(
+      catalogLoader: () async => MapPackageCatalog(const <MountainMapPackage>[]),
+      offlineService: _FakeOfflineService(),
+      trackSource: _StaticTrackSource(<MapTrackSnapshot>[_snapshot(const [])]),
+      compassEvents: events.stream,
+      compassOffsetStore: store,
+    )));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.bySemanticsLabel('Buka kompas'));
+    await tester.pumpAndSettle();
+    expect(find.text('Koreksi arah manual'), findsOneWidget);
+
+    events.add(CompassEvent.fromList(<double>[350, 0, 10]));
+    await tester.pumpAndSettle();
+    expect(find.text('350° U'), findsOneWidget);
+    expect(find.textContaining('±10° (tinggi)'), findsOneWidget);
   });
 }

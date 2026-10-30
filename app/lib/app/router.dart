@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../features/home/beranda_page.dart';
+import '../features/map/presentation/map_page.dart';
 import '../features/preparation/presentation/siap_naik_page.dart';
 import '../features/shell/altracq_shell.dart';
 import '../features/shell/placeholder_screen.dart';
@@ -58,8 +59,7 @@ GoRouter buildAltracqRouter() => GoRouter(
             GoRoute(
               path: '/peta',
               name: 'peta',
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Peta Offline'),
+              builder: (context, state) => MapPage(),
             ),
           ],
         ),

@@ -42,7 +42,7 @@ void main() {
     await tester.tap(navLabel('Peta'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Peta Offline'), findsOneWidget);
+    expect(find.text('Peta offline'), findsOneWidget);
     expect(
       router.routerDelegate.currentConfiguration.uri.path,
       '/peta',

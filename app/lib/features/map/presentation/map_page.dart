@@ -2,22 +2,33 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_compass/flutter_compass.dart';
+import 'package:geo_utils/geo_utils.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
+import '../../../design/background/page_background.dart';
+import '../../../design/glass/glass_surface.dart';
+import '../../../design/tokens.dart';
+import '../../../design/typography.dart';
+import '../../../design/widgets/line_icons.dart';
 import '../../../infrastructure/map/asset_map_catalog_repository.dart';
 import '../../../infrastructure/map/mapbox_offline_map_service.dart';
-import '../../compass/presentation/compass_panel.dart';
+import '../../compass/domain/compass_calibration.dart';
+import '../../compass/presentation/compass_sheet.dart';
 import '../../tracking/domain/track_point.dart';
+import '../../trails/domain/off_trail_detector.dart';
 import '../application/map_track_source.dart';
 import '../application/offline_download_controller.dart';
 import '../application/offline_map_service.dart';
 import '../domain/map_package.dart';
 import '../domain/track_geojson.dart';
-import 'off_trail_panel.dart';
-import 'offline_package_panel.dart';
+import '../domain/trail_guidance.dart';
+import 'offline_sheet.dart';
 
 typedef MapCatalogLoader = Future<MapPackageCatalog> Function();
 
+/// Layar Peta Offline: peta penuh, kartu status jalur, tombol kompas dan
+/// pemusatan posisi, serta sheet panduan jalur/pengelolaan unduhan.
 class MapPage extends StatefulWidget {
   MapPage({
     super.key,
@@ -26,6 +37,8 @@ class MapPage extends StatefulWidget {
     MapTrackSource? trackSource,
     this.mapboxToken,
     this.trackPollInterval = const Duration(seconds: 5),
+    this.compassEvents,
+    this.compassOffsetStore,
   })  : catalogLoader = catalogLoader ?? _loadAssetCatalog,
         offlineService = offlineService ?? MapboxOfflineMapService(),
         trackSource = trackSource ?? const TrackingControllerMapTrackSource();
@@ -44,6 +57,10 @@ class MapPage extends StatefulWidget {
   final String? mapboxToken;
   final Duration trackPollInterval;
 
+  /// Disuntikkan untuk uji; produksi memakai sensor perangkat.
+  final Stream<CompassEvent>? compassEvents;
+  final CompassOffsetStore? compassOffsetStore;
+
   @override
   State<MapPage> createState() => _MapPageState();
 }
@@ -51,10 +68,16 @@ class MapPage extends StatefulWidget {
 class _MapPageState extends State<MapPage> {
   static const _trailSourceId = 'nama-trail-source';
   static const _trackSourceId = 'nama-track-source';
+  static const _positionSourceId = 'nama-position-source';
   static const _trailCasingLayerId = 'nama-trail-casing';
   static const _trailLayerId = 'nama-trail-line';
   static const _trackCasingLayerId = 'nama-track-casing';
   static const _trackLayerId = 'nama-track-line';
+  static const _positionHaloLayerId = 'nama-position-halo';
+  static const _positionDotLayerId = 'nama-position-dot';
+
+  /// Ruang di bawah sheet agar logo dan atribusi Mapbox tidak tertutup.
+  static const double _attributionInset = 44;
 
   late final OfflineDownloadController _offlineController;
 
@@ -74,11 +97,20 @@ class _MapPageState extends State<MapPage> {
   MapboxMap? _map;
   GeoJsonSource? _trailSource;
   GeoJsonSource? _trackSource;
+  GeoJsonSource? _positionSource;
   bool _layersInstalled = false;
+  bool _styleReady = false;
   bool _mapLoading = true;
-  bool _overviewCameraApplied = false;
+  bool _overviewApplied = false;
+  bool _cameraInitialized = false;
   String? _mapIssue;
   String? _mapLoadError;
+  bool _sheetVisible = false;
+
+  OffTrailDetector? _detector;
+  TrailState _trailState = TrailState.onTrail;
+  TrailGuidance? _guidance;
+  DateTime? _consumedTimestamp;
 
   String get _token => (widget.mapboxToken ?? MapPage._environmentToken).trim();
 
@@ -112,6 +144,10 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _loadCatalog() async {
+    setState(() {
+      _catalogLoading = true;
+      _catalogError = null;
+    });
     try {
       final catalog = await widget.catalogLoader();
       if (!mounted) return;
@@ -134,16 +170,19 @@ class _MapPageState extends State<MapPage> {
     try {
       final snapshot = await widget.trackSource.load();
       if (!mounted) return;
-      final changed =
-          snapshot.latestPoint?.timestampUtc != _latestPoint?.timestampUtc ||
-              snapshot.points.length != _trackPoints.length;
+      final latestChanged =
+          snapshot.latestPoint?.timestampUtc != _latestPoint?.timestampUtc;
+      final listChanged = snapshot.points.length != _trackPoints.length;
       setState(() {
         _trackPoints = snapshot.points;
         _latestPoint = snapshot.latestPoint;
         _trackError = null;
+        if (latestChanged) _consumeLatest();
       });
-      if (changed) {
+      if (latestChanged || listChanged) {
         await _pushTrackData();
+        await _pushPositionData();
+        unawaited(_maybeApplyInitialCamera());
       }
     } catch (error) {
       if (!mounted) return;
@@ -157,28 +196,53 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
-  void _selectPackage(String? id) {
-    final package = id == null ? null : _catalog?.byId(id);
-    if (package == null || identical(package, _selectedPackage)) return;
-    final trail = package.trails.isEmpty ? null : package.trails.first;
-    setState(() {
-      _selectedPackage = package;
-      _selectedTrail = trail;
-    });
-    if (_mapAvailable) {
-      _offlineController.select(package);
+  void _consumeLatest() {
+    final point = _latestPoint;
+    if (point == null) {
+      _guidance = null;
+      _trailState = TrailState.onTrail;
+      _consumedTimestamp = null;
+      return;
     }
-    unawaited(_pushTrailData());
-    unawaited(_fitSelectedPackage());
+    if (_consumedTimestamp == point.timestampUtc) return;
+    _consumedTimestamp = point.timestampUtc;
+    final trail = _selectedTrail;
+    if (trail != null && trail.points.isNotEmpty) {
+      _guidance = guidanceForTrail(trail.points, point.position);
+    } else {
+      _guidance = null;
+    }
+    final detector = _detector;
+    if (detector != null) {
+      _trailState = detector.update(point.position);
+    }
   }
 
-  void _selectTrail(String? id) {
-    final package = _selectedPackage;
-    if (package == null || id == null) return;
-    final trail = package.trailById(id);
-    if (trail == null || identical(trail, _selectedTrail)) return;
-    setState(() => _selectedTrail = trail);
+  void _resetTrailState({bool consume = true}) {
+    final trail = _selectedTrail;
+    _detector = trail != null && trail.points.length >= 2
+        ? OffTrailDetector(trail: trail.points)
+        : null;
+    _trailState = TrailState.onTrail;
+    _guidance = null;
+    _consumedTimestamp = null;
+    if (consume) _consumeLatest();
+  }
+
+  void _selectPackage(MountainMapPackage package) {
+    setState(() {
+      _selectedPackage = package;
+      _selectedTrail = package.trails.isEmpty ? null : package.trails.first;
+      _resetTrailState(consume: false);
+      _consumeLatest();
+      _cameraInitialized = false;
+    });
+    _offlineController.select(package);
     unawaited(_pushTrailData());
+    if (_styleReady && _map != null) {
+      _cameraInitialized = true;
+      unawaited(_fitSelectedPackage());
+    }
   }
 
   String _trailGeoJson() {
@@ -206,6 +270,16 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  Future<void> _pushPositionData() async {
+    final source = _positionSource;
+    if (source == null) return;
+    try {
+      await source.updateGeoJSON(trackPointToGeoJson(_latestPoint));
+    } catch (error) {
+      _reportMapIssue('Gagal memperbarui titik posisi: $error');
+    }
+  }
+
   void _reportMapIssue(String message) {
     if (!mounted) return;
     setState(() => _mapIssue = message);
@@ -213,6 +287,12 @@ class _MapPageState extends State<MapPage> {
 
   void _onMapCreated(MapboxMap map) {
     _map = map;
+    // Skala bawaan Mapbox berada di bawah status bar dan tidak ada di desain.
+    unawaited(
+      map.scaleBar
+          .updateSettings(ScaleBarSettings(enabled: false))
+          .catchError((Object _) {}),
+    );
   }
 
   void _onMapLoadError(MapLoadingErrorEventData event) {
@@ -224,11 +304,12 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _onStyleLoaded() async {
-    if (_layersInstalled) return;
+    if (_layersInstalled || !mounted) return;
     _layersInstalled = true;
     final map = _map;
     if (map == null) return;
 
+    final colors = AltracqColors.of(context);
     try {
       final trailSource = GeoJsonSource(
         id: _trailSourceId,
@@ -238,21 +319,27 @@ class _MapPageState extends State<MapPage> {
         id: _trackSourceId,
         data: trackPointsToGeoJson(_trackPoints),
       );
+      final positionSource = GeoJsonSource(
+        id: _positionSourceId,
+        data: trackPointToGeoJson(_latestPoint),
+      );
 
       await map.addSource(trailSource);
       await map.addLayer(LineLayer(
         id: _trailCasingLayerId,
         sourceId: _trailSourceId,
-        lineColor: 0xFFFFFFFF,
-        lineWidth: 7,
+        lineColor: colors.surface.toARGB32(),
+        lineWidth: 6,
+        lineDasharray: <double?>[1.6, 2.2],
         lineJoin: LineJoin.ROUND,
         lineCap: LineCap.ROUND,
       ));
       await map.addLayer(LineLayer(
         id: _trailLayerId,
         sourceId: _trailSourceId,
-        lineColor: 0xFF1B5E20,
-        lineWidth: 4,
+        lineColor: colors.textSecondary.toARGB32(),
+        lineWidth: 3.5,
+        lineDasharray: <double?>[1.6, 2.2],
         lineJoin: LineJoin.ROUND,
         lineCap: LineCap.ROUND,
       ));
@@ -260,32 +347,46 @@ class _MapPageState extends State<MapPage> {
       await map.addLayer(LineLayer(
         id: _trackCasingLayerId,
         sourceId: _trackSourceId,
-        lineColor: 0xFFFFFFFF,
-        lineWidth: 6,
+        lineColor: colors.surface.toARGB32(),
+        lineWidth: 7,
         lineJoin: LineJoin.ROUND,
         lineCap: LineCap.ROUND,
       ));
       await map.addLayer(LineLayer(
         id: _trackLayerId,
         sourceId: _trackSourceId,
-        lineColor: 0xFFD84315,
+        lineColor: colors.primary.toARGB32(),
         lineWidth: 4,
         lineJoin: LineJoin.ROUND,
         lineCap: LineCap.ROUND,
       ));
+      await map.addSource(positionSource);
+      await map.addLayer(CircleLayer(
+        id: _positionHaloLayerId,
+        sourceId: _positionSourceId,
+        circleColor: colors.secondary.toARGB32(),
+        circleOpacity: 0.6,
+        circleRadius: 16,
+      ));
+      await map.addLayer(CircleLayer(
+        id: _positionDotLayerId,
+        sourceId: _positionSourceId,
+        circleColor: colors.primary.toARGB32(),
+        circleRadius: 7,
+        circleStrokeColor: colors.surface.toARGB32(),
+        circleStrokeWidth: 3,
+      ));
 
       _trailSource = trailSource;
       _trackSource = trackSource;
+      _positionSource = positionSource;
       if (!mounted) return;
       setState(() {
+        _styleReady = true;
         _mapLoading = false;
         _mapLoadError = null;
       });
-      if (_selectedPackage != null) {
-        await _fitSelectedPackage();
-      } else {
-        await _applyOverviewCamera();
-      }
+      await _maybeApplyInitialCamera();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -295,9 +396,25 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
-  Future<void> _applyOverviewCamera() async {
-    if (_overviewCameraApplied) return;
-    _overviewCameraApplied = true;
+  Future<void> _maybeApplyInitialCamera() async {
+    if (!_styleReady || _cameraInitialized) return;
+    if (_selectedPackage != null) {
+      _cameraInitialized = true;
+      await _fitSelectedPackage();
+      return;
+    }
+    final point = _latestPoint;
+    if (point != null) {
+      _cameraInitialized = true;
+      await _centerOn(point.position, 14);
+      return;
+    }
+    if (_overviewApplied) return;
+    _overviewApplied = true;
+    await _showOverview();
+  }
+
+  Future<void> _showOverview() async {
     final map = _map;
     if (map == null) return;
     try {
@@ -308,6 +425,7 @@ class _MapPageState extends State<MapPage> {
         pitch: 0,
       ));
     } catch (error) {
+      _overviewApplied = false;
       _reportMapIssue('Gagal mengatur kamera awal: $error');
     }
   }
@@ -315,20 +433,16 @@ class _MapPageState extends State<MapPage> {
   Future<void> _fitSelectedPackage() async {
     final package = _selectedPackage;
     final map = _map;
-    if (package == null || map == null || !_layersInstalled) return;
+    if (package == null || map == null || !_styleReady) return;
     final bounds = package.offline.bounds;
     try {
       final camera = await map.cameraForCoordinateBounds(
         CoordinateBounds(
-          southwest: Point(
-            coordinates: Position(bounds.west, bounds.south),
-          ),
-          northeast: Point(
-            coordinates: Position(bounds.east, bounds.north),
-          ),
+          southwest: Point(coordinates: Position(bounds.west, bounds.south)),
+          northeast: Point(coordinates: Position(bounds.east, bounds.north)),
           infiniteBounds: false,
         ),
-        MbxEdgeInsets(top: 32, left: 32, bottom: 32, right: 32),
+        MbxEdgeInsets(top: 160, left: 40, bottom: 240, right: 40),
         0,
         0,
         package.offline.maxZoom.toDouble(),
@@ -336,414 +450,639 @@ class _MapPageState extends State<MapPage> {
       );
       if (!mounted || _selectedPackage?.id != package.id) return;
       await map.setCamera(camera);
-      _overviewCameraApplied = true;
+      _overviewApplied = true;
     } catch (error) {
       _reportMapIssue('Gagal mengarahkan kamera ke paket: $error');
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Peta & Offline')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        children: [
-          _buildMapArea(theme),
-          const SizedBox(height: 8),
-          Text(
-            'Peta: © Mapbox · © OpenStreetMap. Logo dan tombol atribusi '
-            'Mapbox di sudut peta wajib tetap terlihat, termasuk saat memakai '
-            'data offline.',
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: 16),
-          _buildPackageSection(theme),
-          const SizedBox(height: 12),
-          if (_mapAvailable) ...[
-            OfflinePackagePanel(controller: _offlineController),
-            const SizedBox(height: 12),
-          ] else ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'Unduhan offline memerlukan Mapbox yang aktif. Estimasi '
-                  'tile tetap dihitung dari batas paket setelah Mapbox '
-                  'dikonfigurasi.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          if (_trackError != null) ...[
-            _NoticeCard(
-              icon: Icons.gps_off,
-              title: 'Jejak GPS tidak tersedia',
-              body: _trackError!,
-              isError: true,
-            ),
-            const SizedBox(height: 12),
-          ],
-          OffTrailPanel(
-            trail: _selectedTrail,
-            latestPoint: _latestPoint,
-          ),
-          const SizedBox(height: 12),
-          const CompassPanel(),
-        ],
-      ),
+  Future<void> _centerOn(LatLng point, double zoom) async {
+    final map = _map;
+    if (map == null) return;
+    try {
+      await map.setCamera(CameraOptions(
+        center: Point(coordinates: Position(point.lon, point.lat)),
+        zoom: zoom,
+        bearing: 0,
+        pitch: 0,
+      ));
+    } catch (error) {
+      _reportMapIssue('Gagal memusatkan peta: $error');
+    }
+  }
+
+  void _locate() {
+    final point = _latestPoint;
+    if (point == null) return;
+    _cameraInitialized = true;
+    unawaited(_centerOn(point.position, 15));
+  }
+
+  void _recenterOnTrail() {
+    final guidance = _guidance;
+    if (guidance == null) return;
+    _cameraInitialized = true;
+    unawaited(_centerOn(guidance.point, 15));
+  }
+
+  Future<void> _openOfflineSheet() async {
+    if (_offlineController.package != null) {
+      unawaited(_offlineController.refreshStatus());
+    }
+    setState(() => _sheetVisible = true);
+    try {
+      await showOfflineMapSheet(
+        context,
+        catalog: _catalog,
+        loading: _catalogLoading,
+        error: _catalogError,
+        controller: _offlineController,
+        mapAvailable: _mapAvailable,
+        onSelect: _selectPackage,
+        onRetry: () => unawaited(_loadCatalog()),
+      );
+    } finally {
+      if (mounted) setState(() => _sheetVisible = false);
+    }
+  }
+
+  Future<void> _openCompassSheet() async {
+    setState(() => _sheetVisible = true);
+    try {
+      await showCompassSheet(
+        context,
+        events: widget.compassEvents,
+        offsetStore: widget.compassOffsetStore,
+      );
+    } finally {
+      if (mounted) setState(() => _sheetVisible = false);
+    }
+  }
+
+  _TrailSummary get _trailSummary {
+    final trail = _selectedTrail;
+    if (_catalogLoading) {
+      return const _TrailSummary(
+        title: 'Memuat data jalur…',
+        subtitle: 'Membaca katalog paket dari perangkat.',
+      );
+    }
+    if (_catalogError != null) {
+      return const _TrailSummary(
+        title: 'Katalog jalur tidak terbaca',
+        subtitle: 'Jalur belum tersedia; coba muat ulang dari Peta offline.',
+        warning: true,
+      );
+    }
+    if (trail != null) {
+      if (trail.isVerified) {
+        final verifiedAt = trail.verifiedAtUtc ?? _selectedPackage?.verifiedAtUtc;
+        final stamp = verifiedAt == null
+            ? 'tanggal verifikasi tidak tercatat'
+            : _formatDate(verifiedAt);
+        return _TrailSummary(
+          title: 'Jalur terverifikasi',
+          subtitle: 'Diverifikasi $stamp · kondisi jalur dapat berubah',
+        );
+      }
+      return _TrailSummary(
+        title: 'Jalur belum terverifikasi',
+        subtitle: 'Sumber: ${trail.source} · jangan jadikan satu-satunya acuan',
+        warning: true,
+      );
+    }
+    final catalog = _catalog;
+    if (catalog == null || catalog.isEmpty) {
+      return const _TrailSummary(
+        title: 'Belum ada data jalur',
+        subtitle: 'Katalog paket kosong · tidak ada data jalur dibundel',
+      );
+    }
+    return const _TrailSummary(
+      title: 'Belum ada jalur dipilih',
+      subtitle: 'Pilih paket lewat Peta offline',
     );
   }
 
-  Widget _buildMapArea(ThemeData theme) {
-    if (!_mapAvailable) {
-      return _MapSetupCard(
-        tokenMissing: _token.isEmpty,
-        platformUnsupported: _token.isNotEmpty && !_platformSupportsMap,
-      );
+  String get _guidanceText {
+    if (_trackError != null) return 'GPS tidak tersedia';
+    if (_selectedTrail == null) {
+      final point = _latestPoint;
+      if (point == null) return 'GPS belum aktif';
+      return 'akurasi ±${point.accuracyM.round()} m';
     }
-    return SizedBox(
-      height: 320,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: MapWidget(
-              styleUri: MapboxStyles.OUTDOORS,
-              onMapCreated: _onMapCreated,
-              onStyleLoadedListener: (_) => unawaited(_onStyleLoaded()),
-              onMapLoadErrorListener: _onMapLoadError,
+    final guidance = _guidance;
+    if (guidance == null) {
+      return _latestPoint == null ? 'GPS belum aktif' : 'Menunggu GPS';
+    }
+    return '${formatGuidanceDistance(guidance.distanceM)} · '
+        '${formatBearing(guidance.bearingDeg)}';
+  }
+
+  String get _sheetActionLabel {
+    if (_selectedTrail != null &&
+        _latestPoint != null &&
+        _trailState == TrailState.offTrail &&
+        _mapAvailable) {
+      return 'Kembali menyusuri jejak';
+    }
+    return 'Kelola peta offline';
+  }
+
+  void _onSheetAction() {
+    if (_sheetActionLabel == 'Kembali menyusuri jejak') {
+      _recenterOnTrail();
+    } else {
+      unawaited(_openOfflineSheet());
+    }
+  }
+
+  String? get _mapNotice {
+    if (!_mapAvailable) return null;
+    if (_mapLoadError != null) return _mapLoadError;
+    if (_mapIssue != null) return _mapIssue;
+    if (_trackError != null) return _trackError;
+    if (_mapLoading) return 'Memuat peta…';
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PageBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: _mapAvailable ? _buildMap() : _buildMapUnavailable(),
             ),
-          ),
-          if (_mapLoading)
-            Positioned(
-              top: 8,
-              left: 8,
-              child: Card(
+            Positioned.fill(
+              child: SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
+                  padding: const EdgeInsets.fromLTRB(
+                    AltracqSpacing.lg,
+                    AltracqSpacing.lg,
+                    AltracqSpacing.lg,
+                    0,
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Expanded(
+                            child: _TrailStatusCard(summary: _trailSummary),
+                          ),
+                          const SizedBox(width: AltracqSpacing.md),
+                          Column(
+                            children: <Widget>[
+                              _GlassCircleButton(
+                                icon: AltracqIcons.compass,
+                                semanticLabel: 'Buka kompas',
+                                onPressed: () => unawaited(_openCompassSheet()),
+                              ),
+                              const SizedBox(height: AltracqSpacing.md),
+                              _GlassCircleButton(
+                                icon: AltracqIcons.locate,
+                                semanticLabel: 'Pusatkan ke posisi terakhir',
+                                onPressed:
+                                    _mapAvailable && _latestPoint != null
+                                        ? _locate
+                                        : null,
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Text('Memuat peta...', style: theme.textTheme.bodySmall),
+                      if (_mapNotice != null) ...<Widget>[
+                        const SizedBox(height: AltracqSpacing.sm),
+                        _MapNotice(
+                          text: _mapNotice!,
+                          isError: _mapLoadError != null ||
+                              _mapIssue != null ||
+                              _trackError != null,
+                        ),
+                      ],
                     ],
                   ),
                 ),
               ),
             ),
-          if (_mapLoadError != null || _mapIssue != null)
-            Positioned(
-              top: 8,
-              left: 8,
-              right: 8,
-              child: Card(
-                color: theme.colorScheme.errorContainer,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(
-                    _mapLoadError ?? _mapIssue!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                    ),
-                  ),
+            if (!_sheetVisible)
+              Positioned(
+                left: AltracqSpacing.lg,
+                right: AltracqSpacing.lg,
+                bottom: _attributionInset,
+                child: ListenableBuilder(
+                  listenable: _offlineController,
+                  builder: (context, _) => _buildGuidanceSheet(context),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildPackageSection(ThemeData theme) {
-    if (_catalogLoading) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: LinearProgressIndicator(),
+  Widget _buildMap() {
+    return MapWidget(
+      styleUri: MapboxStyles.OUTDOORS,
+      onMapCreated: _onMapCreated,
+      onStyleLoadedListener: (_) => unawaited(_onStyleLoaded()),
+      onMapLoadErrorListener: _onMapLoadError,
+    );
+  }
+
+  Widget _buildMapUnavailable() {
+    final colors = AltracqColors.of(context);
+    final theme = Theme.of(context);
+    final tokenMissing = _token.isEmpty;
+    final body = tokenMissing
+        ? 'Peta Mapbox membutuhkan token publik. Jalankan aplikasi dengan '
+            '--dart-define=MAPBOX_ACCESS_TOKEN=... dan pastikan izin INTERNET '
+            'serta ACCESS_NETWORK_STATE ada di AndroidManifest.'
+        : 'Peta Mapbox hanya tersedia di Android dan iOS. Jalur, jejak, dan '
+            'unduhan offline belum bisa digambar di platform ini.';
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+          AltracqSpacing.lg,
+          140,
+          AltracqSpacing.lg,
+          230,
         ),
-      );
-    }
-    if (_catalogError != null) {
-      return _NoticeCard(
-        icon: Icons.error_outline,
-        title: 'Katalog paket tidak tersedia',
-        body: _catalogError!,
-        isError: true,
-      );
-    }
-    final catalog = _catalog;
-    if (catalog == null || catalog.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+        child: GlassSurface(
+          borderRadius: AltracqRadius.card,
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+            children: <Widget>[
               Row(
-                children: [
-                  Icon(Icons.map_outlined, color: theme.colorScheme.primary),
-                  const SizedBox(width: 12),
+                children: <Widget>[
+                  AltracqIcon(
+                    AltracqIcons.mountain,
+                    color: colors.textPrimary,
+                  ),
+                  const SizedBox(width: AltracqSpacing.md),
                   Expanded(
                     child: Text(
-                      'Belum ada paket gunung',
-                      style: theme.textTheme.titleMedium,
+                      'Peta belum tersedia',
+                      style: theme.textTheme.titleLarge,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AltracqSpacing.sm),
               Text(
-                'Katalog aplikasi kosong dan tidak membundel data gunung '
-                'fiktif. Isi assets/map_packs/catalog.json dari pipeline data '
-                'yang sudah diverifikasi; lihat docs/peta_offline.md.',
-                style: theme.textTheme.bodySmall,
+                body,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: AltracqSpacing.sm),
+              Text(
+                'Kompas dan pengelolaan paket offline tetap bisa dibuka. Saat '
+                'peta dipakai, logo dan atribusi Mapbox/OpenStreetMap wajib '
+                'tetap terlihat.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.textSecondary,
+                ),
               ),
             ],
           ),
         ),
-      );
-    }
-
-    final selected = _selectedPackage;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.terrain_outlined, color: theme.colorScheme.primary),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text('Paket gunung', style: theme.textTheme.titleMedium),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Pilih paket',
-                border: OutlineInputBorder(),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: selected?.id,
-                  isExpanded: true,
-                  hint: const Text('Belum memilih paket'),
-                  items: [
-                    for (final package in catalog.packages)
-                      DropdownMenuItem(
-                        value: package.id,
-                        child: Text(
-                          package.name,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  onChanged: _selectPackage,
-                ),
-              ),
-            ),
-            if (selected != null) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  Chip(
-                    visualDensity: VisualDensity.compact,
-                    label: Text(
-                      selected.verified
-                          ? 'Data terverifikasi'
-                          : 'Data belum terverifikasi',
-                      style: theme.textTheme.labelSmall,
-                    ),
-                    backgroundColor: selected.verified
-                        ? theme.colorScheme.secondaryContainer
-                        : theme.colorScheme.errorContainer,
-                  ),
-                  Chip(
-                    visualDensity: VisualDensity.compact,
-                    label: Text(
-                      'Versi ${selected.version} · ${_formatDate(selected.dataDateUtc)}',
-                      style: theme.textTheme.labelSmall,
-                    ),
-                  ),
-                ],
-              ),
-              if (!selected.verified) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Data paket belum diverifikasi lapangan. Jalur dan batas '
-                  'area dapat berbeda dari kondisi nyata.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.error),
-                ),
-              ],
-              if (selected.trails.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Jalur untuk deteksi keluar jalur',
-                    border: OutlineInputBorder(),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedTrail?.id,
-                      isExpanded: true,
-                      items: [
-                        for (final trail in selected.trails)
-                          DropdownMenuItem(
-                            value: trail.id,
-                            child: Text(
-                              trail.name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                      ],
-                      onChanged: _selectTrail,
-                    ),
-                  ),
-                ),
-              ],
-              if (selected.notes != null && selected.notes!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(selected.notes!, style: theme.textTheme.bodySmall),
-              ],
-            ],
-          ],
-        ),
       ),
     );
   }
 
-  String _formatDate(DateTime date) {
-    String pad(int value) => value.toString().padLeft(2, '0');
-    return '${date.year}-${pad(date.month)}-${pad(date.day)}';
+  Widget _buildGuidanceSheet(BuildContext context) {
+    final colors = AltracqColors.of(context);
+    final theme = Theme.of(context);
+    final trail = _selectedTrail;
+    final hasPoint = _latestPoint != null;
+    final downloading = _offlineController.phase == OfflineDownloadPhase.downloading;
+    final progress = _offlineController.progress;
+    final offlineReady = _offlineController.isReady;
+    final offlineLabel = downloading && progress != null
+        ? 'Peta offline ${(progress.fraction * 100).round()}%'
+        : (offlineReady ? 'Peta offline' : 'Peta offline belum siap');
+
+    return GlassSurface(
+      borderRadius: AltracqRadius.hero,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  trail?.name ?? 'Peta offline',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall,
+                ),
+              ),
+              const SizedBox(width: AltracqSpacing.md),
+              Flexible(
+                child: Text(
+                  _guidanceText,
+                  key: const ValueKey('map-guidance'),
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AltracqSpacing.sm),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: <Widget>[
+              if (trail != null)
+                _StatusPill(
+                  label: !hasPoint
+                      ? 'Menunggu GPS'
+                      : (_trailState == TrailState.offTrail
+                          ? 'Di luar jalur'
+                          : 'Dijalur'),
+                  icon: !hasPoint
+                      ? null
+                      : (_trailState == TrailState.offTrail
+                          ? AltracqIcons.warning
+                          : AltracqIcons.check),
+                  ready: hasPoint && _trailState == TrailState.onTrail,
+                  warning: hasPoint && _trailState == TrailState.offTrail,
+                  key: const ValueKey('map-trail-state'),
+                ),
+              _StatusPill(
+                label: offlineLabel,
+                icon: offlineReady ? AltracqIcons.check : null,
+                ready: offlineReady,
+                key: const ValueKey('map-offline-state'),
+              ),
+            ],
+          ),
+          const SizedBox(height: AltracqSpacing.md),
+          _SheetAction(
+            label: _sheetActionLabel,
+            onTap: _onSheetAction,
+          ),
+        ],
+      ),
+    );
   }
 }
 
-class _MapSetupCard extends StatelessWidget {
-  const _MapSetupCard({
-    required this.tokenMissing,
-    required this.platformUnsupported,
+class _TrailSummary {
+  const _TrailSummary({
+    required this.title,
+    required this.subtitle,
+    this.warning = false,
   });
 
-  final bool tokenMissing;
-  final bool platformUnsupported;
+  final String title;
+  final String subtitle;
+  final bool warning;
+}
+
+class _TrailStatusCard extends StatelessWidget {
+  const _TrailStatusCard({required this.summary});
+
+  final _TrailSummary summary;
 
   @override
   Widget build(BuildContext context) {
+    final colors = AltracqColors.of(context);
     final theme = Theme.of(context);
-    final body = platformUnsupported
-        ? 'Peta Mapbox pada aplikasi ini hanya tersedia di Android dan iOS. '
-            'Di platform lain layar ini tetap dapat dipakai untuk memilih jalur '
-            'dan menampilkan kompas.'
-        : 'Mapbox membutuhkan access token publik. Jalankan aplikasi dengan '
-            '--dart-define=MAPBOX_ACCESS_TOKEN=... dan pastikan izin INTERNET '
-            'serta ACCESS_NETWORK_STATE ada di AndroidManifest. Tanpa token, '
-            'peta dan unduhan offline tidak dapat dipakai.';
-    return Card(
-      color: theme.colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.map_outlined, color: theme.colorScheme.primary),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    tokenMissing
-                        ? 'Peta belum dikonfigurasi'
-                        : 'Peta tidak tersedia di platform ini',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                ),
-              ],
+    return GlassSurface(
+      borderRadius: AltracqRadius.card,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            summary.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            summary.subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: summary.warning ? colors.warningText : colors.textSecondary,
             ),
-            const SizedBox(height: 8),
-            Text(body, style: theme.textTheme.bodySmall),
-            const SizedBox(height: 8),
-            Text(
-              'Batasan biaya: Maps SDK Mobile ditagih per pengguna aktif '
-              'bulanan; 25.000 MAU pertama gratis menurut halaman harga '
-              'Mapbox saat fitur ini ditulis. Verifikasi tarif dan ketentuan '
-              'offline di akun Mapbox Anda sebelum rilis.',
-              style: theme.textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlassCircleButton extends StatelessWidget {
+  const _GlassCircleButton({
+    required this.icon,
+    required this.semanticLabel,
+    this.onPressed,
+  });
+
+  final AltracqIconData icon;
+  final String semanticLabel;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: semanticLabel,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: Opacity(
+          opacity: enabled ? 1 : 0.45,
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: GlassSurface(
+              borderRadius: AltracqRadius.pill,
+              padding: const EdgeInsets.all(12),
+              child: AltracqIcon(icon, size: 24),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _NoticeCard extends StatelessWidget {
-  const _NoticeCard({
-    required this.icon,
-    required this.title,
-    required this.body,
-    this.isError = false,
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({
+    super.key,
+    required this.label,
+    required this.ready,
+    this.icon,
+    this.warning = false,
   });
 
-  final IconData icon;
-  final String title;
-  final String body;
+  final String label;
+  final bool ready;
+  final AltracqIconData? icon;
+  final bool warning;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AltracqColors.of(context);
+    final theme = Theme.of(context);
+    final foreground = warning ? colors.warningText : colors.textPrimary;
+    return Semantics(
+      label: label,
+      container: true,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: ready || warning
+                ? (warning
+                    ? colors.warning.withValues(alpha: 0.12)
+                    : colors.secondary)
+                : null,
+            borderRadius: BorderRadius.circular(AltracqRadius.pill),
+            border: warning ? Border.all(color: colors.warning) : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (icon != null) ...<Widget>[
+                AltracqIcon(
+                  icon!,
+                  size: 13,
+                  strokeWidth: 2,
+                  color: foreground,
+                ),
+                const SizedBox(width: 4),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: ready || warning ? foreground : colors.textSecondary,
+                    fontWeight: AltracqTypography.medium,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetAction extends StatelessWidget {
+  const _SheetAction({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AltracqColors.of(context);
+    final theme = Theme.of(context);
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: 48,
+          width: double.infinity,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: colors.surface.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(AltracqRadius.floating),
+            border: Border.all(color: colors.hairline),
+          ),
+          child: ExcludeSemantics(
+            child: Text(
+              label,
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: colors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MapNotice extends StatelessWidget {
+  const _MapNotice({required this.text, this.isError = false});
+
+  final String text;
   final bool isError;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      color: isError ? scheme.errorContainer : scheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              icon,
-              color: isError ? scheme.onErrorContainer : scheme.primary,
+    final colors = AltracqColors.of(context);
+    final theme = Theme.of(context);
+    return GlassSurface(
+      borderRadius: AltracqRadius.floating,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: <Widget>[
+          if (!isError) ...<Widget>[
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: isError ? scheme.onErrorContainer : null,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    body,
-                    style: TextStyle(
-                      color: isError ? scheme.onErrorContainer : null,
-                    ),
-                  ),
-                ],
+            const SizedBox(width: AltracqSpacing.sm),
+          ],
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isError ? colors.warningText : colors.textSecondary,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+String _formatDate(DateTime date) {
+  const months = <String>[
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'Mei',
+    'Jun',
+    'Jul',
+    'Agu',
+    'Sep',
+    'Okt',
+    'Nov',
+    'Des',
+  ];
+  return '${date.day} ${months[date.month - 1]} ${date.year}';
 }
