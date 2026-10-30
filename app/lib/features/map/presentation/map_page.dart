@@ -27,6 +27,15 @@ import 'offline_sheet.dart';
 
 typedef MapCatalogLoader = Future<MapPackageCatalog> Function();
 
+/// Opasitas lapisan peredup peta pada mode gelap.
+///
+/// Gaya peta tetap `OUTDOORS` agar style pack offline yang sudah diunduh tetap
+/// terpakai tanpa jaringan. Peredup navy menurunkan silau peta terang di bawah
+/// kaca gelap; atribusi dan layer jalur tetap terlihat.
+@visibleForTesting
+double mapDimOpacityFor(Brightness brightness) =>
+    brightness == Brightness.dark ? 0.35 : 0.0;
+
 /// Layar Peta Offline: peta penuh, kartu status jalur, tombol kompas dan
 /// pemusatan posisi, serta sheet panduan jalur/pengelolaan unduhan.
 class MapPage extends StatefulWidget {
@@ -106,6 +115,7 @@ class _MapPageState extends State<MapPage> {
   String? _mapIssue;
   String? _mapLoadError;
   bool _sheetVisible = false;
+  Brightness? _lastBrightness;
 
   OffTrailDetector? _detector;
   TrailState _trailState = TrailState.onTrail;
@@ -134,6 +144,17 @@ class _MapPageState extends State<MapPage> {
       (_) => unawaited(_refreshTrack()),
     );
     unawaited(_refreshTrack());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final brightness = Theme.of(context).brightness;
+    if (_lastBrightness == brightness) return;
+    _lastBrightness = brightness;
+    if (_styleReady) {
+      unawaited(_syncLayerPalette());
+    }
   }
 
   @override
@@ -173,6 +194,10 @@ class _MapPageState extends State<MapPage> {
       final latestChanged =
           snapshot.latestPoint?.timestampUtc != _latestPoint?.timestampUtc;
       final listChanged = snapshot.points.length != _trackPoints.length;
+      final hadError = _trackError != null;
+      // Polling tiap beberapa detik sering tidak menemukan data baru; lewati
+      // rebuild dan dorongan GeoJSON agar layar tidak di-render percuma.
+      if (!latestChanged && !listChanged && !hadError) return;
       setState(() {
         _trackPoints = snapshot.points;
         _latestPoint = snapshot.latestPoint;
@@ -325,57 +350,11 @@ class _MapPageState extends State<MapPage> {
       );
 
       await map.addSource(trailSource);
-      await map.addLayer(LineLayer(
-        id: _trailCasingLayerId,
-        sourceId: _trailSourceId,
-        lineColor: colors.surface.toARGB32(),
-        lineWidth: 6,
-        lineDasharray: <double?>[1.6, 2.2],
-        lineJoin: LineJoin.ROUND,
-        lineCap: LineCap.ROUND,
-      ));
-      await map.addLayer(LineLayer(
-        id: _trailLayerId,
-        sourceId: _trailSourceId,
-        lineColor: colors.textSecondary.toARGB32(),
-        lineWidth: 3.5,
-        lineDasharray: <double?>[1.6, 2.2],
-        lineJoin: LineJoin.ROUND,
-        lineCap: LineCap.ROUND,
-      ));
       await map.addSource(trackSource);
-      await map.addLayer(LineLayer(
-        id: _trackCasingLayerId,
-        sourceId: _trackSourceId,
-        lineColor: colors.surface.toARGB32(),
-        lineWidth: 7,
-        lineJoin: LineJoin.ROUND,
-        lineCap: LineCap.ROUND,
-      ));
-      await map.addLayer(LineLayer(
-        id: _trackLayerId,
-        sourceId: _trackSourceId,
-        lineColor: colors.primary.toARGB32(),
-        lineWidth: 4,
-        lineJoin: LineJoin.ROUND,
-        lineCap: LineCap.ROUND,
-      ));
       await map.addSource(positionSource);
-      await map.addLayer(CircleLayer(
-        id: _positionHaloLayerId,
-        sourceId: _positionSourceId,
-        circleColor: colors.secondary.toARGB32(),
-        circleOpacity: 0.6,
-        circleRadius: 16,
-      ));
-      await map.addLayer(CircleLayer(
-        id: _positionDotLayerId,
-        sourceId: _positionSourceId,
-        circleColor: colors.primary.toARGB32(),
-        circleRadius: 7,
-        circleStrokeColor: colors.surface.toARGB32(),
-        circleStrokeWidth: 3,
-      ));
+      for (final layer in _mapLayers(colors)) {
+        await map.addLayer(layer);
+      }
 
       _trailSource = trailSource;
       _trackSource = trackSource;
@@ -393,6 +372,73 @@ class _MapPageState extends State<MapPage> {
         _mapLoading = false;
         _mapIssue = 'Gagal menyiapkan layer peta: $error';
       });
+    }
+  }
+
+  List<Layer> _mapLayers(AltracqColors colors) => <Layer>[
+        LineLayer(
+          id: _trailCasingLayerId,
+          sourceId: _trailSourceId,
+          lineColor: colors.surface.toARGB32(),
+          lineWidth: 6,
+          lineDasharray: <double?>[1.6, 2.2],
+          lineJoin: LineJoin.ROUND,
+          lineCap: LineCap.ROUND,
+        ),
+        LineLayer(
+          id: _trailLayerId,
+          sourceId: _trailSourceId,
+          lineColor: colors.textSecondary.toARGB32(),
+          lineWidth: 3.5,
+          lineDasharray: <double?>[1.6, 2.2],
+          lineJoin: LineJoin.ROUND,
+          lineCap: LineCap.ROUND,
+        ),
+        LineLayer(
+          id: _trackCasingLayerId,
+          sourceId: _trackSourceId,
+          lineColor: colors.surface.toARGB32(),
+          lineWidth: 7,
+          lineJoin: LineJoin.ROUND,
+          lineCap: LineCap.ROUND,
+        ),
+        LineLayer(
+          id: _trackLayerId,
+          sourceId: _trackSourceId,
+          lineColor: colors.primary.toARGB32(),
+          lineWidth: 4,
+          lineJoin: LineJoin.ROUND,
+          lineCap: LineCap.ROUND,
+        ),
+        CircleLayer(
+          id: _positionHaloLayerId,
+          sourceId: _positionSourceId,
+          circleColor: colors.secondary.toARGB32(),
+          circleOpacity: 0.6,
+          circleRadius: 16,
+        ),
+        CircleLayer(
+          id: _positionDotLayerId,
+          sourceId: _positionSourceId,
+          circleColor: colors.primary.toARGB32(),
+          circleRadius: 7,
+          circleStrokeColor: colors.surface.toARGB32(),
+          circleStrokeWidth: 3,
+        ),
+      ];
+
+  /// Gaya dasar peta sengaja tidak diganti saat tema berubah; hanya layer
+  /// jalur, jejak, dan posisi yang diwarnai ulang agar tetap kontras.
+  Future<void> _syncLayerPalette() async {
+    final map = _map;
+    if (map == null || !_styleReady) return;
+    final colors = AltracqColors.of(context);
+    try {
+      for (final layer in _mapLayers(colors)) {
+        await map.updateLayer(layer);
+      }
+    } catch (error) {
+      _reportMapIssue('Gagal memperbarui warna layer peta: $error');
     }
   }
 
@@ -608,6 +654,8 @@ class _MapPageState extends State<MapPage> {
 
   @override
   Widget build(BuildContext context) {
+    final dimOpacity = mapDimOpacityFor(Theme.of(context).brightness);
+    final colors = AltracqColors.of(context);
     return PageBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -616,6 +664,15 @@ class _MapPageState extends State<MapPage> {
             Positioned.fill(
               child: _mapAvailable ? _buildMap() : _buildMapUnavailable(),
             ),
+            if (_mapAvailable && dimOpacity > 0)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: ColoredBox(
+                    key: const ValueKey('map-dark-dim'),
+                    color: colors.background.withValues(alpha: dimOpacity),
+                  ),
+                ),
+              ),
             Positioned.fill(
               child: SafeArea(
                 child: Padding(

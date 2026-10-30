@@ -163,7 +163,8 @@ MapTrackSnapshot _snapshot(List<TrackPoint> points) => MapTrackSnapshot(
       latestPoint: points.isEmpty ? null : points.last,
     );
 
-Widget _app(MapPage page) => MaterialApp(theme: altracqLightTheme, home: page);
+Widget _app(MapPage page, {ThemeData? theme}) =>
+    MaterialApp(theme: theme ?? altracqLightTheme, home: page);
 
 void _setPhone(WidgetTester tester) {
   tester.view.physicalSize = const Size(390, 844);
@@ -183,6 +184,29 @@ Future<void> _dismissSheet(WidgetTester tester) async {
 }
 
 void main() {
+  test('peredup peta hanya aktif di mode gelap', () {
+    expect(mapDimOpacityFor(Brightness.light), 0);
+    expect(mapDimOpacityFor(Brightness.dark), 0.35);
+  });
+
+  testWidgets('mode gelap tanpa peta tidak menambah peredup di atas latar',
+      (tester) async {
+    _setPhone(tester);
+    await tester.pumpWidget(_app(
+      MapPage(
+        catalogLoader: () async =>
+            MapPackageCatalog(const <MountainMapPackage>[]),
+        offlineService: _FakeOfflineService(),
+        trackSource: _StaticTrackSource(<MapTrackSnapshot>[_snapshot(const [])]),
+      ),
+      theme: altracqDarkTheme,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('map-dark-dim')), findsNothing);
+    expect(find.text('Peta belum tersedia'), findsOneWidget);
+  });
+
   testWidgets('tanpa Mapbox menampilkan setup dan katalog kosong jujur',
       (tester) async {
     _setPhone(tester);
