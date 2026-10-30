@@ -243,7 +243,7 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
 
 **Sudah dijalankan di mesin pengembang:**
 
-- `flutter analyze lib test` bersih; seluruh suite aplikasi **320 tes lulus**.
+- `flutter analyze lib test` bersih; seluruh suite aplikasi **322 tes lulus**.
   Tes paket terpisah: `geo_utils` 11 lulus, `mesh_protocol` 23 lulus.
 - Tes unit: domain paket, estimator tile, guardrail, parser katalog, GeoJSON
   jalur/jejak, pengatur unduhan (termasuk perlombaan status-vs-estimasi),
@@ -256,8 +256,10 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
   galat, dan "Muat ulang".
 - Tes widget `compass_sheet_test.dart` (6 tes): offset tersimpan, simpan arah
   acuan, input tidak valid, reset, pembulatan arah, dan platform tanpa sensor.
-- Tes widget `map_page_test.dart` dan tes deteksi keluar jalur memakai titik
-  GPS uji; tidak ada panggilan Mapbox di lingkungan tes.
+- Tes `map_page_test.dart` (9 tes) dan tes deteksi keluar jalur memakai titik
+  GPS uji; tidak ada panggilan Mapbox di lingkungan tes. Dua tes mengunci
+  opasitas peredup mode gelap dan memastikan peredup tidak dipasang saat peta
+  tidak tersedia.
 - APK debug dibangun, dipasang, dan dijalankan di emulator Android. Terlihat:
   kartu status jalur, tombol kompas/pusatkan, kartu panduan, sheet offline
   (keadaan kosong + catatan atribusi) pada mode terang dan gelap, serta sheet
@@ -278,9 +280,12 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
 - Kompas fisik: kalibrasi OS, akurasi sebenarnya, dan pengaruh medan. Emulator
   hanya melaporkan heading statis.
 - Deteksi keluar jalur dengan GPS nyata dan akurasi bervariasi.
-- Keterbacaan mode gelap di layar Peta. Style peta masih `OUTDOORS` untuk
-  semua tema, sehingga kaca gelap di atas peta terang bisa berkontras rendah;
-  style peta gelap direncanakan pada M12.
+- Keterbacaan peta mode gelap di atas tile sungguhan. Gaya tetap `OUTDOORS`
+  agar style pack offline yang sudah diunduh tetap terpakai; mode gelap
+  memakai peredup navy 35% dan menyelaraskan ulang warna enam layer GeoJSON.
+  Peredup terlihat di emulator, tetapi `onStyleLoaded` tidak pernah selesai
+  (`GFXSTREAM GL error 0x501`), jadi warna layer dan keterbacaan tile asli
+  belum bisa dinilai. Rinciannya di `docs/mode_gelap_dan_performa.md`.
 - Build iOS, build rilis, dan token Mapbox untuk rilis.
 - Semua skenario di `docs/field_tests/map_offline.md`.
 
