@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:flutter/widgets.dart';
 
@@ -36,11 +36,32 @@ class VisualEffectPolicy {
   bool get glassBlur => !_powerRestricted && !_lowEnd;
   bool get gooey => !_powerRestricted && !_lowEnd && !reduceMotion;
 
-  /// Heuristika sederhana tanpa plugin: inti prosesor sedikit menandakan
-  /// perangkat kelas bawah. Dapat ditimpa lewat uji.
-  static DeviceTier probeDeviceTier({int? processorCount}) {
+  /// Heuristika sederhana tanpa plugin: inti prosesor sangat sedikit atau RAM
+  /// di bawah 3 GB menandakan perangkat kelas bawah. Dapat ditimpa lewat uji.
+  /// Di platform tanpa `/proc/meminfo` (iOS, mesin pengembang) RAM dianggap
+  /// tidak diketahui dan perangkat dianggap mampu.
+  static DeviceTier probeDeviceTier({int? processorCount, int? totalMemoryKb}) {
     final cores = processorCount ?? Platform.numberOfProcessors;
-    return cores <= 4 ? DeviceTier.lowEnd : DeviceTier.capable;
+    if (cores <= 2) return DeviceTier.lowEnd;
+    final memoryKb = totalMemoryKb ?? _readTotalMemoryKb();
+    if (memoryKb != null && memoryKb < 3 * 1024 * 1024) {
+      return DeviceTier.lowEnd;
+    }
+    return DeviceTier.capable;
+  }
+
+  static int? _readTotalMemoryKb() {
+    try {
+      final first = File('/proc/meminfo').readAsLinesSync().first;
+      final kb = first
+          .split(RegExp(r'\s+'))
+          .where((part) => part.isNotEmpty)
+          .skip(1)
+          .first;
+      return int.parse(kb);
+    } on Exception {
+      return null;
+    }
   }
 
   @override
