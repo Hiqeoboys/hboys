@@ -1,7 +1,9 @@
 import 'package:go_router/go_router.dart';
 
+import '../features/home/beranda_page.dart';
 import '../features/shell/altracq_shell.dart';
 import '../features/shell/placeholder_screen.dart';
+import '../features/splash/presentation/splash_page.dart';
 
 /// Rute sepuluh layar.
 ///
@@ -13,10 +15,7 @@ GoRouter buildAltracqRouter() => GoRouter(
     GoRoute(
       path: '/splash',
       name: 'splash',
-      builder: (context, state) => const PlaceholderScreen(
-        title: 'Splash',
-        subtitle: 'Menyiapkan data lokal di HP',
-      ),
+      builder: (context, state) => const SplashPage(),
     ),
     GoRoute(
       path: '/siap-naik',
@@ -51,8 +50,7 @@ GoRouter buildAltracqRouter() => GoRouter(
             GoRoute(
               path: '/beranda',
               name: 'beranda',
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Beranda'),
+              builder: (context, state) => const BerandaPage(),
             ),
           ],
         ),
