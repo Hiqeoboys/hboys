@@ -1,0 +1,8 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type": "Feature", "properties": {"id": "basecamp", "kind": "basecamp", "name": "Basecamp (CONTOH)"}, "geometry": {"type": "Point", "coordinates": [107.6000, -7.2000]}},
+    {"type": "Feature", "properties": {"id": "pos-1", "kind": "pos", "name": "Pos 1 (CONTOH)"}, "geometry": {"type": "Point", "coordinates": [107.6045, -7.1955]}},
+    {"type": "Feature", "properties": {"id": "air-1", "kind": "water", "name": "Sumber air (CONTOH)"}, "geometry": {"type": "Point", "coordinates": [107.6050, -7.1956]}}
+  ]
+}

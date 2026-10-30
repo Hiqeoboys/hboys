@@ -1,0 +1,10 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": "jalur-utama", "name": "Jalur Utama (CONTOH FIKTIF)", "source": "fiktif", "verified": false},
+      "geometry": {"type": "LineString", "coordinates": [[107.6000, -7.2000], [107.6020, -7.1980], [107.6045, -7.1955], [107.6070, -7.1930]]}
+    }
+  ]
+}

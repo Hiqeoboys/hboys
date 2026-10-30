@@ -1,0 +1,10 @@
+name: geo_utils
+description: "Hitungan geografi murni Dart: jarak, bearing, jarak ke jalur, format koordinat."
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.3.0
+
+dev_dependencies:
+  test: ^1.25.0

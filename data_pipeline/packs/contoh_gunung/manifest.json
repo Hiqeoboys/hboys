@@ -1,0 +1,9 @@
+{
+  "pack_id": "contoh_gunung",
+  "version": 1,
+  "data_date": "2026-10-01",
+  "verified": false,
+  "verified_at": null,
+  "files": ["trails.geojson", "poi.geojson"],
+  "notes": "FIKTIF. Hanya untuk menguji alat."
+}

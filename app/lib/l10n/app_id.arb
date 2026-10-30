@@ -1,0 +1,16 @@
+{
+  "@@locale": "id",
+  "appTitle": "Nama Aplikasi",
+  "sosButton": "SOS",
+  "sosHoldHint": "Tekan dan tahan untuk meminta bantuan",
+  "sosCancel": "Batalkan",
+  "sosSaved": "Tersimpan di HP ini",
+  "sosSentToPeers": "Terkirim ke anggota di sekitar",
+  "sosForwardedToServer": "Diteruskan ke server",
+  "sosDeliveredToContact": "Sampai ke kontak darurat",
+  "sosNotGuaranteed": "SOS tidak menjamin pertolongan datang. Hubungi Basarnas 115 atau 112 bila memungkinkan.",
+  "callBasarnas": "Hubungi Basarnas (115)",
+  "callUnified": "Hubungi darurat (112)",
+  "invitationAccept": "Terima",
+  "invitationReject": "Tolak"
+}

@@ -1,0 +1,12 @@
+# Setelah `flutter pub add --dev flutter_lints`, baris include di bawah aktif.
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    unawaited_futures: true
