@@ -168,6 +168,12 @@ void main() {
     expect(media.single.kind, MediaKind.image);
     expect(media.single.byteSize, 2048);
     expect(await repo.mediaForMessage(second.messageId), isEmpty);
+
+    expect(await repo.nextSeq(groupId: groupHex, authorId: idA), 3);
+    expect(
+      await repo.nextSeq(groupId: groupHex, authorId: 'bbbbbbbbbbbbbbbb'),
+      1,
+    );
   });
 
   test('DriftTrackingRepository menyimpan sesi dan titik', () async {

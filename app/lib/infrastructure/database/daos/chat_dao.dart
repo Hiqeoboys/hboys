@@ -46,6 +46,19 @@ class ChatDao extends DatabaseAccessor<AppDatabase> with _$ChatDaoMixin {
         .map((rows) => rows.reversed.toList(growable: false));
   }
 
+  Future<int> nextSeq({
+    required String groupId,
+    required String authorId,
+  }) async {
+    final maxSeq = messages.seq.max();
+    final query = selectOnly(messages)
+      ..addColumns(<Expression<Object>>[maxSeq])
+      ..where(messages.groupId.equals(groupId) &
+          messages.authorId.equals(authorId));
+    final row = await query.getSingle();
+    return (row.read(maxSeq) ?? 0) + 1;
+  }
+
   Future<void> upsertMedia(MediaCompanion attachment) =>
       into(media).insertOnConflictUpdate(attachment);
 

@@ -57,6 +57,10 @@ class DriftChatRepository implements ChatRepository {
           .map((rows) => rows.map(_toMessage).toList(growable: false));
 
   @override
+  Future<int> nextSeq({required String groupId, required String authorId}) =>
+      _dao.nextSeq(groupId: groupId, authorId: authorId);
+
+  @override
   Future<void> saveMedia(MediaAttachment media) => _dao.upsertMedia(
         MediaCompanion.insert(
           id: media.id,

@@ -2,8 +2,10 @@ import 'dart:typed_data';
 
 import 'package:mesh_protocol/mesh_protocol.dart';
 
-/// Pesan yang tersimpan di perangkat. Payload tetap berupa byte terenkripsi;
-/// dekripsi bukan tanggung jawab lapisan database.
+/// Pesan yang tersimpan di perangkat. [payload] adalah byte opaque milik
+/// lapisan transport; pesan teks lokal saat ini disimpan sebagai UTF-8 tanpa
+/// enkripsi karena belum ada jalur pengiriman terenkripsi. Dekripsi bukan
+/// tanggung jawab lapisan database.
 class ChatMessage {
   const ChatMessage({
     required this.authorId,

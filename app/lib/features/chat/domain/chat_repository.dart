@@ -15,6 +15,10 @@ abstract interface class ChatRepository {
 
   Stream<List<ChatMessage>> watchMessages(String groupId, {int limit = 50});
 
+  /// Nomor urut berikutnya untuk [authorId] di [groupId]. Pasangan
+  /// author+seq adalah identitas pesan, jadi nomor tidak boleh dipakai ulang.
+  Future<int> nextSeq({required String groupId, required String authorId});
+
   Future<void> saveMedia(MediaAttachment media);
   Future<List<MediaAttachment>> mediaForMessage(String messageId);
 }
