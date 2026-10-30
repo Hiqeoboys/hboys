@@ -147,10 +147,11 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 
 **Sudah dijalankan dan lulus**
 
-- Semua tes otomatis: 191 tes aplikasi, 23 tes `mesh_protocol`, 7 tes `geo_utils`. Analyzer bersih.
+- Semua tes otomatis: 206 tes aplikasi, 23 tes `mesh_protocol`, 7 tes `geo_utils`. Analyzer bersih.
 - `data_pipeline/scripts/validate_trails.py` lolos untuk data contoh dan gagal untuk data yang sengaja dirusak.
 - APK debug sudah dibangun, dipasang, dan dicoba di emulator Android: rekam jejak, titik GPS tersimpan, sesi selesai. Baris database memakai stempel waktu UTC.
 - Permukaan kaca navigasi bawah (blur latar + saturasi) terlihat benar di emulator pada mode terang dan gelap, dan otomatis jatuh ke isi pekat saat kebijakan efek mati.
+- Efek gooey (metaball) pada pill tab aktif terlihat menyatu sebagai cairan di emulator, dan hilang rapi saat kebijakan mematikan efek.
 - Migrasi `0001` dan `0002` sudah diterapkan di proyek Supabase (dicek lewat REST dan RPC).
 - Inisialisasi Supabase di aplikasi berhasil dengan kredensial publishable.
 
