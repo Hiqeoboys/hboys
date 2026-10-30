@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/chat/presentation/chat_page.dart';
 import '../features/home/beranda_page.dart';
+import '../features/kartu/presentation/kartu_page.dart';
 import '../features/map/presentation/map_page.dart';
 import '../features/preparation/presentation/siap_naik_page.dart';
 import '../features/safety/presentation/sos_page.dart';
@@ -35,10 +36,7 @@ GoRouter buildAltracqRouter() => GoRouter(
     GoRoute(
       path: '/kartu',
       name: 'kartu',
-      builder: (context, state) => const PlaceholderScreen(
-        title: 'Kartu Pendakian',
-        subtitle: 'Ringkasan untuk dibagikan',
-      ),
+      builder: (context, state) => const KartuPage(),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>

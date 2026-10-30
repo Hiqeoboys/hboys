@@ -305,6 +305,17 @@ class AltracqIcons {
     ],
   );
 
+  static final AltracqIconData close = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(6.4, 6.4)
+        ..lineTo(17.6, 17.6),
+      ui.Path()
+        ..moveTo(17.6, 6.4)
+        ..lineTo(6.4, 17.6),
+    ],
+  );
+
   static final AltracqIconData phone = AltracqIconData(
     () => <ui.Path>[
       ui.Path()
