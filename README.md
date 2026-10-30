@@ -1,89 +1,98 @@
 # Altracq
 
-Aplikasi pendampingan pendakian gunung untuk Android dan iOS: **pelacakan**, **peta topografi offline**, **navigasi jalur**, **grup chat pendaki**, dan **SOS** — dirancang agar tetap berguna di tempat tanpa sinyal seluler.
+Aplikasi teman mendaki gunung untuk Android dan iOS. Isinya pelacakan, peta topografi offline, navigasi jalur, chat grup, dan SOS. Semuanya dibuat supaya masih bisa dipakai di tempat yang tidak ada sinyal.
 
-Blueprint v1.0 · Oktober 2026 · tahap pengembangan · wilayah awal: Jawa Barat
+Blueprint v1.0, Oktober 2026. Masih tahap pengembangan, wilayah awal Jawa Barat.
 
-> **Batasan penting (baca dulu).** Altracq adalah alat bantu, bukan pengganti persiapan, perlengkapan, pengalaman, registrasi pendakian resmi, atau layanan pencarian dan pertolongan (SAR).
-> **SOS tidak menjamin bantuan datang** — pengirimannya bergantung pada ketersediaan jaringan, baterai, dan perangkat. Aplikasi tidak pernah mengklaim telah menghubungi Basarnas.
-> Perkiraan kalori adalah estimasi. Data jalur dan peta dapat berubah serta dapat mengandung ketidakakuratan; keputusan navigasi tetap tanggung jawab pengguna.
+> **Baca ini dulu.** Altracq cuma alat bantu. Ia tidak menggantikan persiapan, perlengkapan, pengalaman, registrasi pendakian resmi, atau tim SAR.
+> SOS tidak menjamin bantuan datang. Pesannya baru terkirim kalau jaringan, baterai, dan perangkatnya mendukung. Aplikasi tidak pernah mengklaim sudah menghubungi Basarnas.
+> Kalori hanya perkiraan. Data jalur dan peta bisa berubah dan bisa saja keliru, jadi keputusan navigasi tetap di tangan pengguna.
 
 ---
 
-## Masalah yang diselesaikan
+## Kenapa dibuat
 
-- Sinyal seluler tidak merata di gunung — aplikasi yang bergantung internet berhenti berfungsi tepat saat dibutuhkan.
-- Rombongan sering terpisah; anggota yang tertinggal atau salah jalur sulit ditemukan tanpa catatan posisi terakhir.
-- Informasi jalur, pos, dan sumber air tersebar di komunitas dan sering tidak terverifikasi.
-- Laporan darurat tidak terstruktur: koordinat, kondisi korban, dan waktu kontak terakhir sering tidak lengkap.
-- Baterai terbatas; aplikasi boros daya membuat HP mati lebih cepat.
+- Sinyal di gunung putus-putus. Aplikasi yang butuh internet justru mati saat paling dibutuhkan.
+- Rombongan gampang terpisah, dan sulit mencari anggota yang tertinggal atau salah jalur kalau tidak ada catatan posisi terakhirnya.
+- Info soal jalur, pos, dan sumber air tersebar di grup komunitas dan sering tidak jelas benar-tidaknya.
+- Laporan darurat biasanya berantakan. Koordinat, kondisi korban, dan waktu terakhir kontak sering tidak lengkap.
+- Baterai HP terbatas, dan aplikasi yang boros daya bikin HP cepat mati.
 
-## Prinsip rancangan
+## Cara berpikir di balik rancangannya
 
-1. **Offline-first.** Antarmuka hanya membaca dan menulis database lokal (SQLite melalui drift). Jaringan diurus layanan latar belakang, bukan layar.
-2. **Satu log, banyak jalur pengiriman.** Pesan disimpan sebagai log per-penulis (penulis, nomor urut). Internet (Rilis 1), BLE mesh (Rilis 2), dan hotspot lokal (Rilis 3) hanyalah cara memindahkan log yang sama.
-3. **Tidak ada pesan hilang karena tidak ada koneksi.** Semua yang gagal dikirim masuk antrean `outbox` berprioritas dan dicoba ulang.
-4. **Status jujur.** Antarmuka hanya menampilkan "terkirim" bila benar-benar terkirim, dengan tangga status: *Tersimpan di HP* → *Diterima N anggota* → *Diteruskan ke server* → *Sampai ke kontak darurat*.
-5. **Privasi lokasi dikontrol pengguna.** Siapa yang melihat, sampai kapan, tombol berhenti berbagi, dan opsi menyembunyikan titik awal/akhir pada kartu berbagi.
-6. **Hemat daya.** Profil daya adaptif: Normal (>40%), Hemat (20–40%), Kritis (<20%). Level baterai dibagikan ke grup agar anggota yang kritis mudah dikenali.
+1. **Offline dulu.** Layar hanya membaca dan menulis ke database lokal (SQLite lewat drift). Urusan jaringan ditangani layanan di latar belakang, bukan oleh layar.
+2. **Satu log, beberapa jalur kirim.** Pesan disimpan sebagai log per penulis (penulis + nomor urut). Internet (Rilis 1), BLE mesh (Rilis 2), dan hotspot lokal (Rilis 3) hanya cara berbeda untuk memindahkan log yang sama.
+3. **Pesan tidak boleh hilang gara-gara tidak ada koneksi.** Yang gagal terkirim masuk ke antrean `outbox` berprioritas dan dicoba lagi nanti.
+4. **Status apa adanya.** Aplikasi baru menulis "terkirim" kalau memang sudah terkirim. Urutannya: Tersimpan di HP, Diterima N anggota, Diteruskan ke server, Sampai ke kontak darurat.
+5. **Lokasi di tangan pengguna.** Pengguna menentukan siapa yang boleh melihat, sampai kapan, kapan berhenti berbagi, dan bisa menyembunyikan titik awal dan akhir di kartu berbagi.
+6. **Hemat daya.** Ada tiga profil: Normal (di atas 40%), Hemat (20–40%), dan Kritis (di bawah 20%). Level baterai ikut dibagikan ke grup supaya anggota yang hampir mati gampang dikenali.
 
 ## Fitur
 
-Prioritas: **P0** inti keselamatan · **P1** nilai tinggi · **P2** pelengkap.
+P0 = inti keselamatan, P1 = nilai tinggi, P2 = pelengkap.
 
 | Area | Fitur | Prioritas |
 |---|---|---|
-| Pelacakan | Metrik real-time dari GPS: jarak, waktu bergerak, pace, kecepatan vertikal, kalori (estimasi) | P0 |
-| Pelacakan | Elevasi & grafik: total tanjakan/turunan, profil ketinggian, barometer digabung GPS | P1 |
-| Pelacakan | Penghitung langkah dari sensor internal HP | P1 |
-| Peta & rute | Posisi pengguna real-time + mode ikuti posisi | P0 |
+| Pelacakan | Metrik real-time dari GPS: jarak, waktu bergerak, pace, kecepatan vertikal, kalori (perkiraan) | P0 |
+| Pelacakan | Elevasi dan grafik: total tanjakan/turunan, profil ketinggian, barometer digabung GPS | P1 |
+| Pelacakan | Hitung langkah dari sensor HP | P1 |
+| Peta & rute | Posisi pengguna real-time dan mode ikuti posisi | P0 |
 | Peta & rute | Peta topografi offline per gunung, jejak digambar di peta | P0 |
 | Peta & rute | Kompas: arah HP, kalibrasi, bearing dan jarak ke target | P0 |
-| Peta & rute | Jalur, basecamp, pos, sumber air, area berbahaya + deteksi keluar jalur + navigasi kembali menyusuri jejak sendiri | P1 |
-| Keselamatan | Lokasi terakhir tiap anggota, disinkronkan ke kontak darurat dan server saat ada sinyal | P0 |
-| Keselamatan | SOS: tekan-tahan ±3 detik, hitung mundur dengan opsi batal, kategori (CEDERA/TERSESAT/CUACA), kirim ulang sampai ada ACK, nomor **Basarnas 115** dan **darurat 112** sebagai tombol panggil | P0 |
-| Grup | Buat grup dan undang lewat username; undangan harus diterima yang diundang | P0 |
-| Grup | Pesan teks (dengan batas panjang untuk efisiensi) | P0 |
-| Grup | Berbagi lokasi dengan kontrol siapa yang melihat dan kapan berhenti | P0 |
-| Grup | SOS ke grup sebagai tipe pesan berprioritas tertinggi | P0 |
-| Grup | Pesan suara dan gambar terkompresi (gambar penuh menyusul saat koneksi lebih baik) | P1 |
-| Berbagi | **Kartu Pendakian**: PNG transparan berisi jarak, rute, dan kecepatan; opsi menyembunyikan titik awal dan akhir | P2 |
+| Peta & rute | Jalur, basecamp, pos, sumber air, area berbahaya, deteksi keluar jalur, dan navigasi balik lewat jejak sendiri | P1 |
+| Keselamatan | Lokasi terakhir tiap anggota, disinkronkan ke kontak darurat dan server begitu ada sinyal | P0 |
+| Keselamatan | SOS: tekan tahan sekitar 3 detik, ada hitung mundur yang bisa dibatalkan, kategori (CEDERA/TERSESAT/CUACA), kirim ulang sampai ada ACK, plus tombol panggil ke Basarnas 115 dan darurat 112 | P0 |
+| Grup | Buat grup dan undang lewat username. Yang diundang harus menerima dulu | P0 |
+| Grup | Pesan teks dengan batas panjang supaya hemat data | P0 |
+| Grup | Berbagi lokasi, dengan kontrol siapa yang melihat dan kapan berhenti | P0 |
+| Grup | SOS ke grup, dikirim sebagai pesan berprioritas tertinggi | P0 |
+| Grup | Pesan suara dan gambar terkompresi (gambar ukuran penuh menyusul saat koneksi lebih baik) | P1 |
+| Berbagi | Kartu Pendakian: PNG transparan berisi jarak, rute, dan kecepatan, dengan opsi menyembunyikan titik awal dan akhir | P2 |
 
-Video **tidak** termasuk cakupan.
+Video tidak masuk cakupan.
 
 ## Layar
 
-Sepuluh layar menjadi sumber kebenaran tampilan dan alur:
+Ada sepuluh layar, dan inilah acuan untuk tampilan dan alurnya:
 
-1. **Splash** — menyiapkan data lokal di HP.
-2. **Beranda** — sapaan + baterai, kartu pendakian berikutnya, grid fitur, kartu SOS.
-3. **Siap Naik** — kesiapan rombongan: centang per anggota (kunci grup diterima, peta terunduh, izin aktif), kontak darurat, tombol mulai pendakian.
-4. **Pelacakan** — berjalan tanpa sinyal: timer, enam metrik, grafik elevasi, jeda/selesai, indikator profil daya.
-5. **Peta Offline** — peta topografi, jalur terverifikasi, posisi pengguna, pos, sumber air, kompas, mode ikuti, panel pos berikutnya, kembali menyusuri jejak.
-6. **Grup Chat** — strip lokasi anggota (termasuk baterai kritis), bubble pesan, kartu berbagi lokasi, pesan suara, status pengiriman bertingkat.
-7. **SOS** — hitung mundur 3 detik, "Batal, saya aman", kategori, tangga status yang jujur, tombol 115/112, penafian.
-8. **Kartu Pendakian** — ringkasan pendakian di atas foto, tiga gaya (Profil, Tengah, Peta), ekspor PNG transparan, simpan dan bagikan.
-9. **Profil (belum masuk)** — statistik lokal, manfaat akun, masuk dengan Google atau Apple.
-10. **Profil (sudah masuk)** — identitas, statistik, kontak darurat, peta terunduh, profil daya, privasi lokasi, tampilan (terang/gelap/ikuti sistem), keluar, hapus akun.
+1. **Splash**: menyiapkan data lokal di HP.
+2. **Beranda**: sapaan dan baterai, kartu pendakian berikutnya, grid fitur, kartu SOS.
+3. **Siap Naik**: cek kesiapan rombongan. Tiap anggota dicentang (kunci grup sudah diterima, peta sudah diunduh, izin aktif). Ada juga kontak darurat dan tombol mulai pendakian.
+4. **Pelacakan**: jalan tanpa sinyal. Berisi timer, enam metrik, grafik elevasi, tombol jeda/selesai, dan indikator profil daya.
+5. **Peta Offline**: peta topografi, jalur terverifikasi, posisi pengguna, pos, sumber air, kompas, mode ikuti, panel pos berikutnya, dan navigasi kembali lewat jejak.
+6. **Grup Chat**: strip lokasi anggota (termasuk yang baterainya kritis), bubble pesan, kartu berbagi lokasi, pesan suara, dan status kirim bertingkat.
+7. **SOS**: hitung mundur 3 detik, tombol "Batal, saya aman", pilihan kategori, tangga status, tombol 115/112, dan penafian.
+8. **Kartu Pendakian**: ringkasan pendakian di atas foto, tiga gaya (Profil, Tengah, Peta), ekspor PNG transparan, lalu simpan atau bagikan.
+9. **Profil (belum masuk)**: statistik lokal, manfaat punya akun, tombol masuk dengan Google atau Apple.
+10. **Profil (sudah masuk)**: identitas, statistik, kontak darurat, peta terunduh, profil daya, privasi lokasi, tampilan (terang/gelap/ikuti sistem), keluar, dan hapus akun.
 
 ## Teknologi
 
 | Bidang | Pilihan |
 |---|---|
-| Aplikasi | Flutter (satu basis kode Android dan iOS) |
-| Kode native | Kotlin dan Swift untuk layanan latar belakang; di Rilis 2 juga BLE peripheral |
+| Aplikasi | Flutter (satu basis kode untuk Android dan iOS) |
+| Kode native | Kotlin dan Swift untuk layanan latar belakang. Di Rilis 2 ditambah BLE peripheral |
 | Lokasi & sensor | `geolocator`, `flutter_compass`, `pedometer`, `sensors_plus`, `battery_plus` |
-| Peta | Mapbox Maps SDK v11 dengan unduhan offline per gunung |
-| Database lokal | SQLite melalui `drift` |
+| Peta | Mapbox Maps SDK v11, dengan unduhan offline per gunung |
+| Database lokal | SQLite lewat `drift` |
 | Backend | Supabase (akun, direktori kunci publik, undangan, relay SOS, cadangan jejak) |
-| Autentikasi | Google dan Apple OAuth dengan alur PKCE |
+| Autentikasi | Google dan Apple OAuth dengan PKCE |
 | Notifikasi | FCM dan APNs |
 | SMS/WhatsApp | Gateway pihak ketiga, dikirim dari server (penyedia belum dipilih) |
-| Kriptografi | X25519 (pertukaran kunci), Ed25519 (tanda tangan), ChaCha20-Poly1305 (enkripsi) |
+| Kriptografi | X25519 (tukar kunci), Ed25519 (tanda tangan), ChaCha20-Poly1305 (enkripsi) |
 
-**Backend sengaja tipis.** Tugasnya: akun dan username unik, direktori username → kunci publik, pengiriman undangan dan status terima/tolak, penyimpanan sementara blob kunci grup terenkripsi untuk anggota yang belum online, menerima SOS serta lokasi terakhir lalu meneruskannya ke kontak darurat dan grup, dan cadangan/sinkronisasi jejak. **Backend tidak membaca isi pesan**; enkripsi end-to-end dipegang di perangkat.
+Backend sengaja dibuat tipis. Tugasnya hanya:
 
-**Data jalur milik sendiri.** Jalur, basecamp, pos, sumber air, dan area berbahaya disimpan sebagai GeoJSON berversi di dalam aplikasi dan digambar di atas peta — tidak terikat penyedia peta, kecil, dan dapat diperbarui terpisah. Label "jalur terverifikasi" hanya diberikan setelah verifikasi lapangan, disertai tanggal verifikasi dan peringatan bahwa kondisi jalur dapat berubah.
+- mengurus akun dan username yang unik,
+- menyimpan direktori username ke kunci publik,
+- mengirim undangan dan mencatat diterima atau ditolak,
+- menyimpan sementara blob kunci grup yang sudah terenkripsi untuk anggota yang belum online,
+- menerima SOS dan lokasi terakhir, lalu meneruskannya ke kontak darurat dan grup,
+- mencadangkan dan menyinkronkan jejak.
+
+Backend tidak bisa membaca isi pesan. Enkripsi end-to-end dipegang di perangkat.
+
+Data jalur kami simpan sendiri. Jalur, basecamp, pos, sumber air, dan area berbahaya disimpan sebagai GeoJSON berversi di dalam aplikasi, lalu digambar di atas peta. Dengan begitu tidak terikat penyedia peta, ukurannya kecil, dan bisa diperbarui terpisah. Label "jalur terverifikasi" hanya dipasang setelah ada verifikasi lapangan, lengkap dengan tanggalnya dan peringatan bahwa kondisi jalur bisa berubah.
 
 ## Struktur repo
 
@@ -100,12 +109,12 @@ packages/
 backend/             migrasi SQL (tabel + RLS + fungsi RPC) untuk Supabase/Postgres
 data_pipeline/       validasi dan pengemasan data jalur (GeoJSON + manifest)
 docs/                protokol, ADR, model ancaman, tinjauan keamanan, setup native, templat uji lapangan
-tools/               skrip bootstrap, pemasangan dependensi, dan seluruh tes
+tools/               skrip bootstrap, pemasangan dependensi, dan semua tes
 ```
 
 ## Menjalankan
 
-Prasyarat: Flutter stable (sudah menyertakan Dart), Python 3, JDK 17+ untuk Android, dan Android SDK atau Xcode untuk menjalankan di perangkat.
+Yang dibutuhkan: Flutter stable (sudah termasuk Dart), Python 3, JDK 17 ke atas untuk Android, dan Android SDK atau Xcode kalau mau jalan di perangkat.
 
 ```bash
 ./tools/bootstrap.sh      # siapkan android/ios dan pasang dependensi
@@ -116,7 +125,7 @@ flutter run -d <device-id> \
   --dart-define-from-file=../keys.local.json   # lihat di bawah
 ```
 
-`keys.local.json` **tidak** ada di repo (masuk `.gitignore`) dan berisi kredensial publik milikmu:
+`keys.local.json` tidak ada di repo (sudah masuk `.gitignore`). Isinya kredensial publik milikmu sendiri:
 
 ```json
 {
@@ -126,69 +135,70 @@ flutter run -d <device-id> \
 }
 ```
 
-Tanpa berkas itu aplikasi tetap berjalan penuh secara offline; hanya akun, undangan grup, dan penerusan SOS yang nonaktif. Jangan pernah memakai `service_role`/`sb_secret_...` di aplikasi.
+Tanpa berkas ini aplikasi tetap jalan penuh secara offline. Yang mati hanya akun, undangan grup, dan penerusan SOS. Jangan pernah memakai `service_role` atau `sb_secret_...` di aplikasi.
 
-Migrasi backend: jalankan `backend/migrations/0001_init.sql` lalu `0002_auth_groups.sql` pada proyek Supabase (SQL editor atau `supabase db push`). Aktifkan penyedia OAuth Google/Apple di dasbor Supabase dan daftarkan redirect `id.nama.namaapp://login-callback`.
+Untuk migrasi backend, jalankan `backend/migrations/0001_init.sql` lalu `0002_auth_groups.sql` di proyek Supabase (lewat SQL editor atau `supabase db push`). Setelah itu aktifkan penyedia OAuth Google/Apple di dasbor Supabase dan daftarkan redirect `id.nama.namaapp://login-callback`.
 
-> Nama paket `id.nama.nama_app` dan direktori `nama_app` masih placeholder; ganti sebelum rilis.
+> Nama paket `id.nama.nama_app` dan direktori `nama_app` masih placeholder. Ganti sebelum rilis.
 
 ## Status verifikasi
 
-Pemisahan tegas antara yang sudah dijalankan dan yang baru ditulis.
+Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru ditulis.
 
 **Sudah dijalankan dan lulus**
 
-- Seluruh tes otomatis: 163 tes aplikasi, 23 tes `mesh_protocol`, 7 tes `geo_utils`; analyzer bersih.
-- `data_pipeline/scripts/validate_trails.py` lolos untuk data contoh dan gagal untuk data rusak.
-- APK debug dibangun, dipasang, dan diuji di emulator Android: perekaman jejak → titik GPS tersimpan → sesi selesai; baris database memakai stempel waktu UTC.
-- Migrasi `0001` dan `0002` diterapkan pada proyek Supabase (diperiksa lewat REST dan RPC).
+- Semua tes otomatis: 191 tes aplikasi, 23 tes `mesh_protocol`, 7 tes `geo_utils`. Analyzer bersih.
+- `data_pipeline/scripts/validate_trails.py` lolos untuk data contoh dan gagal untuk data yang sengaja dirusak.
+- APK debug sudah dibangun, dipasang, dan dicoba di emulator Android: rekam jejak, titik GPS tersimpan, sesi selesai. Baris database memakai stempel waktu UTC.
+- Permukaan kaca navigasi bawah (blur latar + saturasi) terlihat benar di emulator pada mode terang dan gelap, dan otomatis jatuh ke isi pekat saat kebijakan efek mati.
+- Migrasi `0001` dan `0002` sudah diterapkan di proyek Supabase (dicek lewat REST dan RPC).
 - Inisialisasi Supabase di aplikasi berhasil dengan kredensial publishable.
 
-**Ditulis tetapi belum teruji**
+**Sudah ditulis, belum diuji**
 
-- Login Google/Apple ujung-ke-ujung (penyedia OAuth belum diaktifkan di dasbor Supabase).
-- Tile peta Mapbox di emulator masih kosong; perlu diuji di perangkat nyata.
-- Pelacakan latar belakang durasi panjang, perilaku saat layar terkunci, dan lintas merek Android.
-- Seluruh sisi iOS (belum ada perangkat/Xcode untuk verifikasi).
+- Login Google/Apple dari awal sampai akhir. Penyedia OAuth belum diaktifkan di dasbor Supabase.
+- Tile peta Mapbox. Di emulator masih kosong, jadi perlu dicoba di perangkat sungguhan.
+- Pelacakan latar belakang untuk durasi panjang, perilaku saat layar terkunci, dan perbedaan antarmerek Android.
+- Seluruh sisi iOS, karena belum ada perangkat atau Xcode untuk mengujinya.
 - Build release/AOT, keystore, dan penandatanganan aplikasi.
-- Alur SOS nyata, penerusan ke kontak darurat, dan uji lapangan.
-- Mesh BLE (Rilis 2) — yang ada baru paket protokol murninya, belum ada `BleTransport`.
-- **Kriptografi belum diaudit.** Pembungkusan kunci grup adalah rancangan sendiri; jangan dianggap setara enkripsi end-to-end yang sudah ditinjau ahli keamanan.
+- Alur SOS yang sebenarnya, penerusan ke kontak darurat, dan uji lapangan.
+- Mesh BLE (Rilis 2). Yang ada baru paket protokolnya saja, belum ada `BleTransport`.
+- Kriptografi belum diaudit. Cara pembungkusan kunci grup adalah rancangan sendiri, jadi jangan dianggap setara dengan enkripsi end-to-end yang sudah ditinjau ahli keamanan.
 
 ## Keamanan dan privasi
 
-- Identitas: pasangan kunci dibuat di perangkat; kunci publik terdaftar di direktori server.
-- Grup: kunci grup dibagikan hanya setelah undangan diterima, terenkripsi dengan kunci publik penerima. Mengeluarkan anggota atau kehilangan perangkat memicu rotasi kunci.
-- Pencarian username harus persis (tanpa pencarian terbuka), ada pembatasan jumlah undangan, tombol blokir/lapor, dan masa berlaku undangan.
-- Rincian, sisa risiko, dan daftar yang **wajib** ditinjau ahli keamanan sebelum pilot: `docs/security_review.md` dan `docs/threat_model.md`.
-- Keputusan arsitektur: `docs/adr/` (jangan diubah tanpa ADR baru).
+- Pasangan kunci identitas dibuat di perangkat. Kunci publiknya didaftarkan ke direktori di server.
+- Kunci grup baru dibagikan setelah undangan diterima, dan dienkripsi dengan kunci publik penerima. Kalau anggota dikeluarkan atau perangkat hilang, kunci diganti.
+- Pencarian username harus persis, tidak ada pencarian terbuka. Jumlah undangan dibatasi, ada tombol blokir dan lapor, dan undangan punya masa berlaku.
+- Detail, risiko yang masih tersisa, dan daftar bagian yang wajib ditinjau ahli keamanan sebelum pilot ada di `docs/security_review.md` dan `docs/threat_model.md`.
+- Keputusan arsitektur ada di `docs/adr/`. Jangan diubah tanpa menulis ADR baru.
 
 ## Rencana rilis
 
 | Fase | Perkiraan | Hasil utama |
 |---|---|---|
-| 0. Fondasi & pembuktian risiko | Nov 2026 | Spike BLE, akun layanan, pilihan gunung pilot, kontak pengelola, wireframe |
+| 0. Fondasi dan pembuktian risiko | Nov 2026 | Spike BLE, akun layanan, pilihan gunung pilot, kontak pengelola, wireframe |
 | 1. Inti offline | Des 2026 – Feb 2027 | Pelacakan, elevasi, langkah, peta offline, kompas, jalur, layanan latar belakang |
 | 2. Akun, grup, SOS via server | Feb – Apr 2027 | Akun, undangan terima/tolak, chat teks, lokasi terakhir, SOS ke kontak darurat |
-| 3. Media, berbagi, beta tertutup | Apr – Mei 2027 | Suara dan gambar, kartu berbagi, beta 10–20 pendaki |
-| 4. Uji lapangan & pilot | Mei – Jul 2027 | Uji keselamatan nyata, rilis pilot terbatas di satu gunung Jawa Barat |
-| 5. Rilis 2 | Agu – Okt 2027 | Mesh BLE (jika spike lulus), gunung tambahan |
-| 6. Rilis 3 | Q4 2027+ | Mode kumpul via hotspot, integrasi pengelola dan SAR |
+| 3. Media, berbagi, beta tertutup | Apr – Mei 2027 | Suara dan gambar, kartu berbagi, beta untuk 10–20 pendaki |
+| 4. Uji lapangan dan pilot | Mei – Jul 2027 | Uji keselamatan nyata, rilis pilot terbatas di satu gunung Jawa Barat |
+| 5. Rilis 2 | Agu – Okt 2027 | Mesh BLE (kalau spike lulus), gunung tambahan |
+| 6. Rilis 3 | Q4 2027 ke atas | Mode kumpul lewat hotspot, integrasi dengan pengelola dan SAR |
 
-Gerbang keputusan: akhir Fase 0 (apakah BLE lintas platform layak), akhir Fase 3 (kualitas beta), akhir Fase 4 (kriteria keselamatan untuk pilot publik).
+Ada tiga titik keputusan: akhir Fase 0 (apakah BLE lintas platform memang layak), akhir Fase 3 (apakah kualitas beta cukup), dan akhir Fase 4 (apakah kriteria keselamatan untuk pilot publik terpenuhi).
 
-Mesh Bluetooth adalah **janji bersyarat**: jangkauannya bergantung pada kepadatan pendaki di sekitar dan kami tidak menjanjikan jangkauan kilometer. Jika spike gagal, Rilis 2 dialihkan ke gateway atau LoRa tanpa mengubah fondasi aplikasi.
+Mesh Bluetooth masih janji bersyarat. Jangkauannya bergantung pada seberapa banyak pendaki di sekitar, dan kami tidak menjanjikan jangkauan sampai kilometer. Kalau spike gagal, Rilis 2 dialihkan ke gateway atau LoRa tanpa perlu mengubah fondasi aplikasi.
 
 ## Desain antarmuka
 
-- Token warna terang: latar `#F6F3ED`, primer `#313851`, sekunder `#C2CBD3`, teks sekunder `#5B6275`, permukaan kaca `#FBF9F5`, peringatan `#B3412F` (hanya untuk SOS dan baterai kritis).
-- Mode gelap dengan palet terbalik: latar `#313851`, primer/teks `#F6F3ED`, sekunder `#4B5573`, teks sekunder `#A9B0C2`, peringatan `#E0705C`. Pilihan Terang/Gelap/Ikuti sistem disimpan lokal dan diterapkan tanpa memulai ulang.
-- Tipografi Plus Jakarta Sans (400/500/700/800), ikon garis 1,8 px dengan ujung membulat, area sentuh minimal 44 px, kontras minimal 4,5:1.
-- *Liquid glass* (`BackdropFilter` nyata) pada navbar, kartu, panel peta, dan tombol sekunder, dengan fallback tanpa blur untuk perangkat lemah serta profil daya Hemat/Kritis.
-- *Gooey UI* (metaball: blur lalu ambang alpha) pada navbar dan tombol utama/berpasangan. Efek ini **selalu** opsional: mati saat sistem meminta kurangi animasi, saat profil daya Hemat/Kritis, atau di perangkat lemah, dan tidak pernah dipakai pada kontrol SOS. Fungsi tidak boleh bergantung pada efek.
+- Warna mode terang: latar `#F6F3ED`, primer `#313851`, sekunder `#C2CBD3`, teks sekunder `#5B6275`, permukaan kaca `#FBF9F5`, peringatan `#B3412F` (hanya untuk SOS dan baterai kritis).
+- Mode gelap memakai palet yang dibalik: latar `#313851`, primer dan teks `#F6F3ED`, sekunder `#4B5573`, teks sekunder `#A9B0C2`, peringatan `#E0705C`. Pilihan Terang/Gelap/Ikuti sistem disimpan lokal dan langsung berlaku tanpa restart.
+- Tipografi memakai Plus Jakarta Sans (400/500/700/800), ikon garis 1,8 px dengan ujung membulat, area sentuh minimal 44 px, dan kontras minimal 4,5:1.
+- *Liquid glass* (`BackdropFilter` sungguhan) dipakai di navbar, kartu, panel peta, dan tombol sekunder. Untuk perangkat lemah dan profil daya Hemat/Kritis, tersedia fallback tanpa blur.
+- *Gooey UI* (metaball: blur lalu ambang alpha) dipakai di navbar dan tombol utama/berpasangan. Efek ini selalu opsional. Ia mati kalau sistem meminta animasi dikurangi, saat profil daya Hemat/Kritis, atau di perangkat lemah, dan tidak pernah dipasang di kontrol SOS. Fungsi aplikasi tidak boleh bergantung padanya.
 
 ## Lisensi dan atribusi
 
-- Font Plus Jakarta Sans: SIL Open Font License 1.1 (berkas lisensi disertakan di `app/assets/fonts/`).
-- Peta dan tile: Mapbox — atribusi wajib ditampilkan di aplikasi; lisensi data dan biaya unduhan offline harus diverifikasi sebelum produksi.
-- Blueprint proyek adalah dokumen internal tim; bagian bertanda `[isi]` harus dilengkapi sebelum dibagikan ke pihak luar.
+- Font Plus Jakarta Sans memakai SIL Open Font License 1.1. Berkas lisensinya ada di `app/assets/fonts/`.
+- Peta dan tile dari Mapbox. Atribusi wajib ditampilkan di aplikasi, dan lisensi data serta biaya unduhan offline harus dicek dulu sebelum produksi.
+- Blueprint proyek ini dokumen internal tim. Bagian yang bertanda `[isi]` harus dilengkapi sebelum dibagikan ke pihak luar.
