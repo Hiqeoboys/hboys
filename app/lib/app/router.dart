@@ -4,6 +4,7 @@ import '../features/chat/presentation/chat_page.dart';
 import '../features/home/beranda_page.dart';
 import '../features/map/presentation/map_page.dart';
 import '../features/preparation/presentation/siap_naik_page.dart';
+import '../features/safety/presentation/sos_page.dart';
 import '../features/shell/altracq_shell.dart';
 import '../features/shell/placeholder_screen.dart';
 import '../features/splash/presentation/splash_page.dart';
@@ -29,10 +30,7 @@ GoRouter buildAltracqRouter() => GoRouter(
     GoRoute(
       path: '/sos',
       name: 'sos',
-      builder: (context, state) => const PlaceholderScreen(
-        title: 'SOS',
-        subtitle: 'Tekan-tahan 3 detik untuk memulai',
-      ),
+      builder: (context, state) => const SosPage(),
     ),
     GoRoute(
       path: '/kartu',

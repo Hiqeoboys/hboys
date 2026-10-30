@@ -52,7 +52,9 @@ class SosTriggerController {
   }
 
   void cancel() {
-    if (_state == SosTriggerState.holding || _state == SosTriggerState.countdown) {
+    if (_state == SosTriggerState.holding ||
+        _state == SosTriggerState.countdown ||
+        _state == SosTriggerState.triggered) {
       _state = SosTriggerState.cancelled;
       _holdStart = null;
       _countdownStart = null;

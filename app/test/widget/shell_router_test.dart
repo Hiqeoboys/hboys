@@ -60,7 +60,9 @@ void main() {
     router.go('/sos');
     await tester.pumpAndSettle();
 
-    expect(find.text('SOS'), findsOneWidget);
+    // Layar SOS nyata memuat kata "SOS" di judul dan di dalam tombol lingkaran;
+    // yang diperiksa kasus ini adalah ketiadaan navigasi bawah.
+    expect(find.text('SOS'), findsWidgets);
     expect(find.byType(AltracqNavBar), findsNothing);
   });
 

@@ -305,6 +305,27 @@ class AltracqIcons {
     ],
   );
 
+  static final AltracqIconData phone = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(7.2, 3.5)
+        ..cubicTo(7.9, 3.5, 8.6, 4.0, 8.9, 4.8)
+        ..lineTo(9.9, 7.6)
+        ..cubicTo(10.1, 8.3, 9.9, 9.0, 9.4, 9.5)
+        ..lineTo(8.3, 10.6)
+        ..cubicTo(9.2, 12.6, 11.4, 14.8, 13.4, 15.7)
+        ..lineTo(14.5, 14.6)
+        ..cubicTo(15.0, 14.1, 15.7, 13.9, 16.4, 14.1)
+        ..lineTo(19.2, 15.1)
+        ..cubicTo(20.0, 15.4, 20.5, 16.1, 20.5, 16.8)
+        ..lineTo(20.5, 19.0)
+        ..cubicTo(20.5, 20.0, 19.7, 20.8, 18.7, 20.7)
+        ..cubicTo(10.1, 20.1, 3.9, 13.9, 3.3, 5.3)
+        ..cubicTo(3.2, 4.3, 4.0, 3.5, 5.0, 3.5)
+        ..close(),
+    ],
+  );
+
   static final AltracqIconData send = AltracqIconData(
     () => <ui.Path>[
       ui.Path()
