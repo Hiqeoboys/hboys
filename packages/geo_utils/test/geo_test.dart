@@ -36,6 +36,35 @@ void main() {
     expect(distanceToPolylineMeters(const LatLng(0, 0), const []), double.infinity);
   });
 
+  test('closestPointOnPolyline memproyeksikan ke segmen terdekat', () {
+    const line = [LatLng(0, 0), LatLng(0, 0.01)];
+    final point = closestPointOnPolyline(const LatLng(0.001, 0.004), line);
+    expect(point.lat, closeTo(0, 1e-9));
+    expect(point.lon, closeTo(0.004, 1e-9));
+  });
+
+  test('closestPointOnPolyline memakai ujung terdekat di luar segmen', () {
+    const line = [LatLng(0, 0), LatLng(0, 0.01)];
+    final point = closestPointOnPolyline(const LatLng(0.002, 0.02), line);
+    expect(point.lat, closeTo(0, 1e-9));
+    expect(point.lon, closeTo(0.01, 1e-9));
+  });
+
+  test('closestPointOnPolyline satu titik mengembalikan titik itu', () {
+    const line = [LatLng(-7.5, 110.4)];
+    expect(
+      closestPointOnPolyline(const LatLng(-7.4, 110.5), line).toString(),
+      line.first.toString(),
+    );
+  });
+
+  test('closestPointOnPolyline menolak jalur kosong', () {
+    expect(
+      () => closestPointOnPolyline(const LatLng(0, 0), const []),
+      throwsArgumentError,
+    );
+  });
+
   test('format koordinat', () {
     const p = LatLng(-6.9175, 107.6191);
     expect(formatDecimal(p, digits: 4), '-6.9175, 107.6191');

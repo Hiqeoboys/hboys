@@ -65,3 +65,42 @@ double distanceToPolylineMeters(LatLng p, List<LatLng> line) {
   }
   return best;
 }
+
+/// Titik terdekat pada polyline dari [p]. Titik di segmen diinterpolasi
+/// memakai proyeksi lokal yang sama dengan [distanceToSegmentMeters].
+LatLng closestPointOnPolyline(LatLng p, List<LatLng> line) {
+  if (line.isEmpty) {
+    throw ArgumentError.value(line, 'line', 'Polyline tidak boleh kosong');
+  }
+  if (line.length == 1) return line.first;
+
+  const metersPerDegree = earthRadiusM * math.pi / 180;
+  final cosLat = math.cos(_rad(p.lat));
+  double x(LatLng q) => (q.lon - p.lon) * cosLat * metersPerDegree;
+  double y(LatLng q) => (q.lat - p.lat) * metersPerDegree;
+
+  var best = double.infinity;
+  var bestX = 0.0;
+  var bestY = 0.0;
+  for (var i = 0; i < line.length - 1; i++) {
+    final ax = x(line[i]), ay = y(line[i]);
+    final bx = x(line[i + 1]), by = y(line[i + 1]);
+    final dx = bx - ax, dy = by - ay;
+    final len2 = dx * dx + dy * dy;
+    var t = 0.0;
+    if (len2 > 0) t = ((-ax) * dx + (-ay) * dy) / len2;
+    t = t.clamp(0.0, 1.0).toDouble();
+    final cx = ax + t * dx;
+    final cy = ay + t * dy;
+    final d2 = cx * cx + cy * cy;
+    if (d2 < best) {
+      best = d2;
+      bestX = cx;
+      bestY = cy;
+    }
+  }
+  return LatLng(
+    p.lat + bestY / metersPerDegree,
+    p.lon + bestX / (cosLat * metersPerDegree),
+  );
+}
