@@ -225,6 +225,9 @@ class AltracqGlass {
   static const double saturation = 1.7;
   static const double borderWidth = 1;
 
+  /// Kilau putih 1 px di sisi atas kaca.
+  static const double highlightWidth = 1;
+
   static BoxShadow shadow(AltracqColors colors) => BoxShadow(
         color: colors.glassShadow,
         blurRadius: 24,
