@@ -66,7 +66,7 @@ yang sudah dijalankan, dan apa yang belum diuji.
 ## 4. Sudah dijalankan
 
 - `flutter analyze lib test` bersih.
-- Seluruh suite aplikasi lulus: **298 tes**.
+- Seluruh suite aplikasi lulus: **320 tes**.
 - Tes widget Grup Chat (8 tes) mencakup:
   - keadaan tanpa sambungan;
   - terhubung tetapi belum masuk;

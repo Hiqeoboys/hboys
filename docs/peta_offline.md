@@ -243,7 +243,7 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
 
 **Sudah dijalankan di mesin pengembang:**
 
-- `flutter analyze lib test` bersih; seluruh suite aplikasi **298 tes lulus**.
+- `flutter analyze lib test` bersih; seluruh suite aplikasi **320 tes lulus**.
   Tes paket terpisah: `geo_utils` 11 lulus, `mesh_protocol` 23 lulus.
 - Tes unit: domain paket, estimator tile, guardrail, parser katalog, GeoJSON
   jalur/jejak, pengatur unduhan (termasuk perlombaan status-vs-estimasi),

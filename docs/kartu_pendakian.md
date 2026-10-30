@@ -81,7 +81,7 @@ apa yang sudah dijalankan, dan apa yang belum diuji.
 ## 4. Sudah dijalankan
 
 - `flutter analyze lib test` bersih.
-- Seluruh suite aplikasi lulus: **298 tes**.
+- Seluruh suite aplikasi lulus: **320 tes**.
 - Tes unit (10) mencakup: penolakan sesi aktif, format label jarak/tanjakan/
   waktu/tanggal, tanjakan nol dan negatif, fraksi profil dan puncak, profil
   kosong bila ketinggian kurang dari dua, normalisasi rute (batas dan rasio

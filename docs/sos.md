@@ -71,7 +71,7 @@ sudah dijalankan, dan apa yang belum diuji.
 ## 4. Sudah dijalankan
 
 - `flutter analyze lib test` bersih.
-- Seluruh suite aplikasi lulus: **298 tes**.
+- Seluruh suite aplikasi lulus: **320 tes**.
 - Tes widget SOS (10 tes) mencakup:
   - layar diam jujur dan palet terbalik;
   - tekan-tahan 3 detik menyimpan SOS lokal dengan lokasi nyata dan hitung
