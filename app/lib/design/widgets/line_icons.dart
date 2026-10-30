@@ -348,4 +348,82 @@ class AltracqIcons {
         ..lineTo(10.5, 13.5),
     ],
   );
+
+  static final AltracqIconData battery = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(2.8, 7.6, 18.4, 16.4),
+            const ui.Radius.circular(3),
+          ),
+        ),
+      ui.Path()
+        ..moveTo(20.4, 10.2)
+        ..lineTo(20.4, 13.8),
+    ],
+  );
+
+  static final AltracqIconData lock = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(4.8, 10.4, 19.2, 20.6),
+            const ui.Radius.circular(2.6),
+          ),
+        ),
+      ui.Path()
+        ..moveTo(8.2, 10.4)
+        ..lineTo(8.2, 8)
+        ..cubicTo(8.2, 5.8, 9.9, 4.2, 12, 4.2)
+        ..cubicTo(14.1, 4.2, 15.8, 5.8, 15.8, 8)
+        ..lineTo(15.8, 10.4),
+      ui.Path()
+        ..moveTo(12, 14)
+        ..lineTo(12, 17),
+    ],
+  );
+
+  static final AltracqIconData chevronRight = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(9.4, 5.8)
+        ..lineTo(15.6, 12)
+        ..lineTo(9.4, 18.2),
+    ],
+  );
+
+  static final AltracqIconData sun = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(12, 12), radius: 4.2),
+        ),
+      ui.Path()
+        ..moveTo(12, 2.8)
+        ..lineTo(12, 4.8),
+      ui.Path()
+        ..moveTo(12, 19.2)
+        ..lineTo(12, 21.2),
+      ui.Path()
+        ..moveTo(2.8, 12)
+        ..lineTo(4.8, 12),
+      ui.Path()
+        ..moveTo(19.2, 12)
+        ..lineTo(21.2, 12),
+      ui.Path()
+        ..moveTo(5.5, 5.5)
+        ..lineTo(6.9, 6.9),
+      ui.Path()
+        ..moveTo(17.1, 17.1)
+        ..lineTo(18.5, 18.5),
+      ui.Path()
+        ..moveTo(18.5, 5.5)
+        ..lineTo(17.1, 6.9),
+      ui.Path()
+        ..moveTo(6.9, 17.1)
+        ..lineTo(5.5, 18.5),
+    ],
+  );
 }

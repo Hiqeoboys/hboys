@@ -58,6 +58,29 @@ class SupabaseAuthService implements AuthService {
 
   AuthUser? _toUser(User? user) {
     if (user == null) return null;
-    return AuthUser(id: user.id, email: user.email);
+    return AuthUser(
+      id: user.id,
+      email: user.email,
+      displayName: _displayName(user),
+      provider: _provider(user),
+    );
+  }
+
+  String? _displayName(User user) {
+    final metadata = user.userMetadata;
+    if (metadata == null) return null;
+    for (final key in const <String>['full_name', 'name']) {
+      final value = metadata[key];
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+    return null;
+  }
+
+  AuthProviderKind? _provider(User user) {
+    return switch (user.appMetadata['provider']) {
+      'google' => AuthProviderKind.google,
+      'apple' => AuthProviderKind.apple,
+      _ => null,
+    };
   }
 }

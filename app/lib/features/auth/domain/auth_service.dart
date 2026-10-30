@@ -3,10 +3,22 @@ import 'dart:async';
 enum AuthProviderKind { google, apple }
 
 class AuthUser {
-  const AuthUser({required this.id, this.email});
+  const AuthUser({
+    required this.id,
+    this.email,
+    this.displayName,
+    this.provider,
+  });
 
   final String id;
   final String? email;
+
+  /// Nama tampilan dari penyedia identitas. Tidak selalu tersedia, misalnya
+  /// Apple hanya mengirim nama pada persetujuan pertama.
+  final String? displayName;
+
+  /// Penyedia yang dipakai untuk sesi ini; null bila tidak dapat dipastikan.
+  final AuthProviderKind? provider;
 }
 
 class AccountException implements Exception {

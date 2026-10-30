@@ -5,9 +5,9 @@ import '../features/home/beranda_page.dart';
 import '../features/kartu/presentation/kartu_page.dart';
 import '../features/map/presentation/map_page.dart';
 import '../features/preparation/presentation/siap_naik_page.dart';
+import '../features/profile/presentation/profil_page.dart';
 import '../features/safety/presentation/sos_page.dart';
 import '../features/shell/altracq_shell.dart';
-import '../features/shell/placeholder_screen.dart';
 import '../features/splash/presentation/splash_page.dart';
 import '../features/tracking/presentation/tracking_page.dart';
 
@@ -83,8 +83,7 @@ GoRouter buildAltracqRouter() => GoRouter(
             GoRoute(
               path: '/profil',
               name: 'profil',
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Profil'),
+              builder: (context, state) => const ProfilPage(),
             ),
           ],
         ),
