@@ -265,4 +265,13 @@ class AltracqIcons {
         ..lineTo(12, 16.7),
     ],
   );
+
+  static final AltracqIconData check = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(5, 12.6)
+        ..lineTo(9.6, 17)
+        ..lineTo(19, 7),
+    ],
+  );
 }

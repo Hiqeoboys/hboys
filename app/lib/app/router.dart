@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../features/home/beranda_page.dart';
+import '../features/preparation/presentation/siap_naik_page.dart';
 import '../features/shell/altracq_shell.dart';
 import '../features/shell/placeholder_screen.dart';
 import '../features/splash/presentation/splash_page.dart';
@@ -20,10 +21,7 @@ GoRouter buildAltracqRouter() => GoRouter(
     GoRoute(
       path: '/siap-naik',
       name: 'siap-naik',
-      builder: (context, state) => const PlaceholderScreen(
-        title: 'Siap Naik',
-        subtitle: 'Kesiapan rombongan sebelum berangkat',
-      ),
+      builder: (context, state) => const SiapNaikPage(),
     ),
     GoRoute(
       path: '/sos',
