@@ -70,6 +70,13 @@ class AccountController extends ChangeNotifier {
   GroupKeyStatus? keyStatusFor(String groupId) => _keyStatuses[groupId];
   String? keyErrorFor(String groupId) => _keyErrors[groupId];
 
+  /// Daftar anggota langsung dari server. Tidak di-cache karena keanggotaan
+  /// bisa berubah dan hanya dipakai layar yang membutuhkannya.
+  Future<List<MemberDirectoryEntry>> membersOf(String groupId) {
+    if (!groupsEnabled) return Future.value(const <MemberDirectoryEntry>[]);
+    return _groupRemote!.membersOf(groupId);
+  }
+
   void initialize() {
     if (_initialized) return;
     _initialized = true;

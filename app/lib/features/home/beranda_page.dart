@@ -13,7 +13,7 @@ import '../../infrastructure/power/power_profile_manager.dart';
 import '../../infrastructure/supabase/supabase_services.dart';
 import '../auth/application/account_controller.dart';
 import '../groups/application/group_key_manager.dart';
-import '../groups/domain/group_remote_service.dart';
+import '../groups/application/group_selection.dart';
 
 /// Sapaan menurut jam lokal perangkat (bukan waktu domain).
 String greetingForHour(int hour) {
@@ -21,15 +21,6 @@ String greetingForHour(int hour) {
   if (hour < 15) return 'Selamat siang';
   if (hour < 18) return 'Selamat sore';
   return 'Selamat malam';
-}
-
-/// Grup terbaru dipakai sebagai "pendakian berikutnya" karena aplikasi belum
-/// punya model jadwal pendakian.
-RemoteGroup? nextHikeOf(List<RemoteGroup> groups) {
-  if (groups.isEmpty) return null;
-  return groups.reduce(
-    (a, b) => a.group.createdAtUtc.isAfter(b.group.createdAtUtc) ? a : b,
-  );
 }
 
 /// Ringkasan yang hanya memuat keadaan yang benar-benar diketahui.
