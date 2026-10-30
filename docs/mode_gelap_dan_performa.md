@@ -1,7 +1,8 @@
 # Mode gelap dan performa (M12)
 
-Milestone terakhir membahas tiga hal: konsistensi mode gelap di sepuluh layar,
-keterbacaan layar Peta di mode gelap, dan pemborosan render saat polling jejak.
+Milestone terakhir membahas tiga hal: konsistensi mode gelap di seluruh layar
+yang dapat dijangkau, keterbacaan layar Peta di mode gelap, dan pemborosan
+render saat polling jejak.
 Tidak ada fitur baru dan tidak ada data contoh yang ditambahkan.
 
 ## Lingkup
