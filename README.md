@@ -147,13 +147,14 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 
 **Sudah dijalankan dan lulus**
 
-- Semua tes otomatis: 217 tes aplikasi, 23 tes `mesh_protocol`, 7 tes `geo_utils`. Analyzer bersih.
+- Semua tes otomatis: 226 tes aplikasi, 23 tes `mesh_protocol`, 7 tes `geo_utils`. Analyzer bersih.
 - `data_pipeline/scripts/validate_trails.py` lolos untuk data contoh dan gagal untuk data yang sengaja dirusak.
 - APK debug sudah dibangun, dipasang, dan dicoba di emulator Android: rekam jejak, titik GPS tersimpan, sesi selesai. Baris database memakai stempel waktu UTC.
 - Permukaan kaca navigasi bawah (blur latar + saturasi) terlihat benar di emulator pada mode terang dan gelap, dan otomatis jatuh ke isi pekat saat kebijakan efek mati.
 - Efek gooey (metaball) pada pill tab aktif terlihat menyatu sebagai cairan di emulator, dan hilang rapi saat kebijakan mematikan efek.
 - Splash selalu biru gelap, menunggu `TrackingController.initialize()` sungguhan dengan durasi tampil minimum 1,4 detik, terlihat di emulator.
 - Beranda menampilkan sapaan sesuai jam, baterai asli dari `PowerProfileController`, dan keadaan kosong yang jujur saat belum ada grup; grid 8 fitur dan kartu SOS terlihat di emulator pada mode terang dan gelap.
+- Siap Naik memakai data nyata: grup terbaru sebagai pendakian berikutnya, daftar anggota dari server, status kunci grup, izin lokasi, dan kontak darurat dari database lokal. Keadaan tamu dan mode terang/gelap terlihat di emulator.
 - Migrasi `0001` dan `0002` sudah diterapkan di proyek Supabase (dicek lewat REST dan RPC).
 - Inisialisasi Supabase di aplikasi berhasil dengan kredensial publishable.
 
@@ -167,6 +168,7 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 - Alur SOS yang sebenarnya, penerusan ke kontak darurat, dan uji lapangan.
 - Mesh BLE (Rilis 2). Yang ada baru paket protokolnya saja, belum ada `BleTransport`.
 - Kriptografi belum diaudit. Cara pembungkusan kunci grup adalah rancangan sendiri, jadi jangan dianggap setara dengan enkripsi end-to-end yang sudah ditinjau ahli keamanan.
+- Pelaporan kesiapan antaranggota dan status unduhan peta offline belum ada. Siap Naik karena itu hanya menghitung kesiapan dari perangkat sendiri, menampilkan "Belum melapor" untuk anggota lain, dan tidak mengklaim peta siap sebelum penyimpanan status unduhan dibuat.
 
 ## Keamanan dan privasi
 
