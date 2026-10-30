@@ -9,9 +9,19 @@ import 'package:nama_app/features/map/domain/map_package.dart';
 class FakeOfflineService implements OfflineMapService {
   int estimateCalls = 0;
   int downloadCalls = 0;
+  int statusCalls = 0;
   bool failFirstEstimate = false;
   bool failDownload = false;
+  bool failStatus = false;
+  OfflineRegionStatus statusResult = OfflineRegionStatus.missing;
   Completer<OfflineEstimate>? gate;
+
+  @override
+  Future<OfflineRegionStatus> regionStatus(MountainMapPackage package) async {
+    statusCalls++;
+    if (failStatus) throw StateError('penyimpanan uji gagal');
+    return statusResult;
+  }
 
   @override
   Future<OfflineEstimate> estimate(MountainMapPackage package) async {
@@ -203,5 +213,44 @@ void main() {
     ));
     await pumpEventQueue();
     expect(service.estimateCalls, 1);
+  });
+
+  test('status siap dibaca dari penyimpanan SDK', () async {
+    service.statusResult = const OfflineRegionStatus(
+      completedResources: 40,
+      requiredResources: 40,
+      completedBytes: 9000,
+      styleReady: true,
+    );
+    controller.select(testPackage('gunung_a'));
+    await pumpEventQueue();
+
+    expect(service.statusCalls, 1);
+    expect(controller.isReady, isTrue);
+    expect(controller.canDownload, isFalse);
+  });
+
+  test('region belum lengkap bukan status siap', () async {
+    service.statusResult = const OfflineRegionStatus(
+      completedResources: 10,
+      requiredResources: 40,
+      completedBytes: 2000,
+      styleReady: true,
+    );
+    controller.select(testPackage('gunung_a'));
+    await pumpEventQueue();
+
+    expect(controller.isReady, isFalse);
+    expect(controller.canDownload, isTrue);
+  });
+
+  test('status gagal dibaca dianggap belum siap', () async {
+    service.failStatus = true;
+    controller.select(testPackage('gunung_a'));
+    await pumpEventQueue();
+
+    expect(controller.status, isNull);
+    expect(controller.isReady, isFalse);
+    expect(controller.canDownload, isTrue);
   });
 }

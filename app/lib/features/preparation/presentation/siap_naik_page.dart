@@ -17,6 +17,7 @@ import '../../auth/application/account_controller.dart';
 import '../../groups/application/group_key_manager.dart';
 import '../../groups/application/group_selection.dart';
 import '../../groups/domain/group_remote_service.dart';
+import '../../map/application/offline_readiness.dart';
 import '../../onboarding/permission_service.dart';
 import '../../safety/domain/emergency_contact.dart';
 import '../../tracking/application/tracking_controller.dart';
@@ -79,10 +80,6 @@ String contactSubtitle(EmergencyContact? contact, int total) {
   final extra = total > 1 ? ' · +${total - 1} lainnya' : '';
   return '${contact.name} · ${contactConsentText(contact.consentStatus)}$extra';
 }
-
-/// Paket peta offline belum punya penyimpanan status unduhan di rilis ini,
-/// jadi tidak ada paket yang boleh diklaim siap.
-Future<bool> defaultOfflineMapReady(String? mountain) async => false;
 
 typedef ContactLoader = Future<List<EmergencyContact>> Function(String userId);
 typedef OfflineMapCheck = Future<bool> Function(String? mountain);

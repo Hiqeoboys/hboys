@@ -25,6 +25,7 @@ class OfflineDownloadController extends ChangeNotifier {
   OfflinePlan? _plan;
   OfflineEstimate? _estimate;
   OfflineProgress? _progress;
+  OfflineRegionStatus? _status;
   OfflineDownloadPhase _phase = OfflineDownloadPhase.idle;
   String? _error;
   bool _disposed = false;
@@ -34,8 +35,11 @@ class OfflineDownloadController extends ChangeNotifier {
   OfflinePlan? get plan => _plan;
   OfflineEstimate? get estimate => _estimate;
   OfflineProgress? get progress => _progress;
+  OfflineRegionStatus? get status => _status;
   OfflineDownloadPhase get phase => _phase;
   String? get error => _error;
+
+  bool get isReady => _status?.ready ?? false;
 
   bool get isBusy =>
       _phase == OfflineDownloadPhase.estimating ||
@@ -45,6 +49,7 @@ class OfflineDownloadController extends ChangeNotifier {
       _package != null &&
       (_plan?.canDownload ?? false) &&
       !isBusy &&
+      !isReady &&
       _phase != OfflineDownloadPhase.downloaded;
 
   void select(MountainMapPackage? package) {
@@ -54,12 +59,34 @@ class OfflineDownloadController extends ChangeNotifier {
     _plan = package == null ? null : OfflinePlan.evaluate(package.offline);
     _estimate = null;
     _progress = null;
+    _status = null;
     _error = null;
     _phase = OfflineDownloadPhase.idle;
     notifyListeners();
-    if (package != null && (_plan?.canDownload ?? false)) {
-      unawaited(estimateDownload());
+    if (package != null) {
+      unawaited(refreshStatus());
+      if (_plan?.canDownload ?? false) {
+        unawaited(estimateDownload());
+      }
     }
+  }
+
+  /// Membaca keadaan region dari penyimpanan SDK. Status siap tidak disimpan
+  /// di memori aplikasi sehingga tetap benar setelah aplikasi dibuka ulang.
+  Future<void> refreshStatus() async {
+    final package = _package;
+    if (_disposed || package == null) return;
+    // Memakai identitas paket, bukan [_generation]: estimasi yang dimulai
+    // setelah pemilihan tidak boleh membatalkan pembacaan status.
+    try {
+      final status = await service.regionStatus(package);
+      if (_disposed || !identical(_package, package)) return;
+      _status = status;
+    } catch (_) {
+      if (_disposed || !identical(_package, package)) return;
+      _status = null;
+    }
+    notifyListeners();
   }
 
   Future<void> estimateDownload() async {
@@ -127,6 +154,7 @@ class OfflineDownloadController extends ChangeNotifier {
       if (_disposed || generation != _generation) return;
       _phase = OfflineDownloadPhase.downloaded;
       notifyListeners();
+      await refreshStatus();
     } catch (error) {
       if (_disposed || generation != _generation) return;
       _phase = OfflineDownloadPhase.error;

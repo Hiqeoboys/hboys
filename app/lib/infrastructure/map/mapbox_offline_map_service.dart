@@ -39,6 +39,48 @@ class MapboxOfflineMapService implements OfflineMapService {
       );
 
   @override
+  Future<OfflineRegionStatus> regionStatus(MountainMapPackage package) async {
+    final store = await _store();
+    final regions = await store.allTileRegions();
+    TileRegion? region;
+    for (final item in regions) {
+      if (item.id == package.offlineRegionId) {
+        region = item;
+        break;
+      }
+    }
+
+    var styleReady = false;
+    try {
+      final manager = await _manager();
+      final packs = await manager.allStylePacks();
+      for (final pack in packs) {
+        if (pack.styleURI != styleUri) continue;
+        styleReady = pack.requiredResourceCount > 0 &&
+            pack.completedResourceCount >= pack.requiredResourceCount;
+        break;
+      }
+    } catch (_) {
+      styleReady = false;
+    }
+
+    if (region == null) {
+      return OfflineRegionStatus(
+        completedResources: 0,
+        requiredResources: 0,
+        completedBytes: 0,
+        styleReady: styleReady,
+      );
+    }
+    return OfflineRegionStatus(
+      completedResources: region.completedResourceCount,
+      requiredResources: region.requiredResourceCount,
+      completedBytes: region.completedResourceSize,
+      styleReady: styleReady,
+    );
+  }
+
+  @override
   Future<OfflineEstimate> estimate(MountainMapPackage package) async {
     final plan = OfflinePlan.evaluate(package.offline);
     if (!plan.canDownload) {
