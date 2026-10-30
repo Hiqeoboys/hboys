@@ -90,6 +90,28 @@ void main() {
     expect(taps, 1);
   });
 
+  testWidgets('tombol invers tetap pill bersih tanpa benjolan cair',
+      (tester) async {
+    int taps = 0;
+    await tester.pumpWidget(
+      policyApp(
+        VisualEffectPolicy.full,
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: AltracqButton(
+            label: 'Siapkan pendakian',
+            variant: AltracqButtonVariant.inverse,
+            onPressed: () => taps++,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(ImageFiltered), findsNothing);
+    await tester.tap(find.text('Siapkan pendakian'));
+    expect(taps, 1);
+  });
+
   testWidgets('pasangan tombol: masing-masing zona terpisah, celah 12 px',
       (tester) async {
     int left = 0;

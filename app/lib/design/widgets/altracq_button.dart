@@ -129,7 +129,11 @@ class _AltracqButtonState extends State<AltracqButton> {
     final theme = Theme.of(context);
     final fill = _fillFor(colors, widget.variant);
     final foreground = _foregroundFor(colors, widget.variant);
-    final gooey = GooeyLayer.enabledOf(context) && _enabled;
+    // Rancangan hanya memberi benjolan cair pada tombol primer; tombol invers
+    // di atas kartu gelap tetap pill bersih.
+    final gooey = GooeyLayer.enabledOf(context) &&
+        _enabled &&
+        widget.variant == AltracqButtonVariant.primary;
 
     return Semantics(
       button: true,
@@ -147,19 +151,39 @@ class _AltracqButtonState extends State<AltracqButton> {
           curve: AltracqMotion.standard,
           child: Opacity(
             opacity: _enabled ? 1 : 0.6,
-            child: GooeyLayer(
-              shapes: _PillWithBumps(color: fill, bumps: gooey),
-              child: Center(
-                child: ExcludeSemantics(
-                  child: Text(
-                    widget.label,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: foreground,
+            child: gooey
+                ? GooeyLayer(
+                    shapes: _PillWithBumps(color: fill, bumps: true),
+                    child: Center(
+                      child: ExcludeSemantics(
+                        child: Text(
+                          widget.label,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: foreground,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : SizedBox(
+                    height: _kButtonHeight,
+                    width: double.infinity,
+                    child: Stack(
+                      children: <Widget>[
+                        Positioned.fill(child: _Pill(color: fill)),
+                        Center(
+                          child: ExcludeSemantics(
+                            child: Text(
+                              widget.label,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: foreground,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ),
-            ),
           ),
         ),
       ),
