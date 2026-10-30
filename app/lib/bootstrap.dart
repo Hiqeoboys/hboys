@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
 import 'app/app.dart';
+import 'design/theme_mode_controller.dart';
 import 'features/tracking/application/tracking_controller.dart';
 import 'infrastructure/supabase/supabase_services.dart';
 import 'infrastructure/tracking/tracking_foreground_service.dart';
@@ -36,6 +37,8 @@ Future<void> bootstrap(Flavor flavor) async {
   // Tanpa kredensial Supabase, langkah ini tidak melakukan apa pun dan fitur
   // grup tetap nonaktif. Tidak ada panggilan jaringan saat inisialisasi.
   await SupabaseServices.initialize();
+  // Dibaca sebelum runApp supaya tema tersimpan langsung dipakai tanpa kilatan.
+  await ThemeModeController.instance.load();
   // TODO(tim): inisialisasi urut -> notifikasi, pemantau konektivitas, error
   // handler.
   runApp(NamaApp(config: AppConfig(flavor: flavor)));
