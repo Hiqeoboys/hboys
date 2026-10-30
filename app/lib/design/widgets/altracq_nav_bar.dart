@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../glass/glass_surface.dart';
 import '../tokens.dart';
 import 'line_icons.dart';
 
@@ -33,32 +34,25 @@ class AltracqNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
     return Semantics(
       container: true,
       explicitChildNodes: true,
-      child: Container(
-        height: AltracqMetrics.navbarHeight,
-        decoration: BoxDecoration(
-          color: colors.glassFillFallback,
-          borderRadius: BorderRadius.circular(AltracqRadius.navbar),
-          border: Border.all(
-            color: colors.glassBorder,
-            width: AltracqGlass.borderWidth,
-          ),
-          boxShadow: <BoxShadow>[AltracqGlass.shadow(colors)],
-        ),
-        child: Row(
-          children: <Widget>[
-            for (int i = 0; i < items.length; i++)
-              Expanded(
-                child: _NavBarTab(
-                  item: items[i],
-                  active: i == currentIndex,
-                  onTap: () => onTap(i),
+      child: GlassSurface(
+        borderRadius: AltracqRadius.navbar,
+        child: SizedBox(
+          height: AltracqMetrics.navbarHeight,
+          child: Row(
+            children: <Widget>[
+              for (int i = 0; i < items.length; i++)
+                Expanded(
+                  child: _NavBarTab(
+                    item: items[i],
+                    active: i == currentIndex,
+                    onTap: () => onTap(i),
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
