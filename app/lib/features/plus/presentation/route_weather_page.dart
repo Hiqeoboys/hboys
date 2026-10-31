@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../design/gooey/gooey_selector.dart';
+import '../../../design/motion/visual_effect_policy.dart';
 import '../../../design/tokens.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/line_icons.dart';
@@ -495,26 +496,24 @@ class _HourColumn extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: <Widget>[
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
+              _WeatherBar(
+                key: ValueKey<String>(
+                  'weather-temp-bar-${hour.timeLocal.toIso8601String()}',
+                ),
                 width: 7,
                 height: tempHeight,
-                decoration: BoxDecoration(
-                  color: colors.primary,
-                  borderRadius: BorderRadius.circular(4),
-                ),
+                radius: 4,
+                color: colors.primary,
               ),
               const SizedBox(width: 2),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
+              _WeatherBar(
+                key: ValueKey<String>(
+                  'weather-rain-bar-${hour.timeLocal.toIso8601String()}',
+                ),
                 width: 4,
                 height: rainHeight,
-                decoration: BoxDecoration(
-                  color: colors.secondary,
-                  borderRadius: BorderRadius.circular(3),
-                ),
+                radius: 3,
+                color: colors.secondary,
               ),
             ],
           ),
@@ -538,6 +537,45 @@ class _HourColumn extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Batang grafik yang tumbuh dengan pegas ringan saat hari berganti.
+///
+/// Konten hari baru masuk lewat crossfade 200 ms; batangnya menyusul dari
+/// 62% tinggi akhir. Saat "kurangi gerakan" aktif, batang langsung diam di
+/// tinggi akhir dan hanya crossfade yang tersisa.
+class _WeatherBar extends StatelessWidget {
+  const _WeatherBar({
+    super.key,
+    required this.width,
+    required this.height,
+    required this.radius,
+    required this.color,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = VisualEffectPolicyScope.of(context).reduceMotion;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: reduceMotion ? 1 : 0.62, end: 1),
+      duration:
+          reduceMotion ? Duration.zero : const Duration(milliseconds: 300),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) => Container(
+        width: width,
+        height: height * value,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(radius),
+        ),
       ),
     );
   }

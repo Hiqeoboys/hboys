@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../design/glass/glass_surface.dart';
 import '../../../design/gooey/gooey_selector.dart';
+import '../../../design/motion/visual_effect_policy.dart';
 import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
 import '../../../design/widgets/hiqeo_button.dart';
@@ -40,6 +41,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
   bool _loading = true;
   String? _error;
   int _loadToken = 0;
+  int _boardSerial = 0;
   bool _started = false;
 
   bool? _consentVisible;
@@ -88,6 +90,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
       if (!mounted || token != _loadToken) return;
       setState(() {
         _board = board;
+        _boardSerial++;
         _loading = false;
       });
     } on LeaderboardUnavailable catch (error) {
@@ -107,28 +110,19 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
 
   void _selectScope(LeaderboardScope scope) {
     if (scope == _scope) return;
-    setState(() {
-      _scope = scope;
-      _board = null;
-    });
+    setState(() => _scope = scope);
     unawaited(_load());
   }
 
   void _selectMetric(LeaderboardMetric metric) {
     if (metric == _metric) return;
-    setState(() {
-      _metric = metric;
-      _board = null;
-    });
+    setState(() => _metric = metric);
     unawaited(_load());
   }
 
   void _selectPeriod(LeaderboardPeriod period) {
     if (period == _period) return;
-    setState(() {
-      _period = period;
-      _board = null;
-    });
+    setState(() => _period = period);
     unawaited(_load());
   }
 
@@ -284,13 +278,49 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           onChanged: _selectPeriod,
         ),
         const SizedBox(height: HiqeoSpacing.lg),
-        ..._body(hasPlus: hasPlus, selfName: selfName),
+        _bodySection(hasPlus: hasPlus, selfName: selfName),
       ],
     );
   }
 
+  /// Area di bawah pemilih berganti dengan crossfade singkat. Papan lama tetap
+  /// terlihat selama pemuatan berikutnya agar tidak berkedip ke indikator.
+  Widget _bodySection({required bool hasPlus, required String selfName}) {
+    final board = _board;
+    final error = _error;
+    final Key key;
+    if (board != null && error == null) {
+      key = ObjectKey(board);
+    } else if (error != null) {
+      key = ValueKey<String>('leaderboard-error-$_loadToken');
+    } else if (_loading) {
+      key = ValueKey<String>('leaderboard-loading-$_loadToken');
+    } else {
+      key = const ValueKey<String>('leaderboard-empty');
+    }
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        alignment: Alignment.topCenter,
+        children: <Widget>[
+          ...previousChildren,
+          if (currentChild != null) currentChild,
+        ],
+      ),
+      child: KeyedSubtree(
+        key: key,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: _body(hasPlus: hasPlus, selfName: selfName),
+        ),
+      ),
+    );
+  }
+
   List<Widget> _body({required bool hasPlus, required String selfName}) {
-    if (_loading) return const <Widget>[_LoadingCard()];
+    if (_loading && _board == null) return const <Widget>[_LoadingCard()];
     final error = _error;
     if (error != null) {
       return <Widget>[
@@ -356,6 +386,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           entries: podium,
           metric: board.metric,
           onOptions: _openOptions,
+          serial: _boardSerial,
         ),
       const SizedBox(height: HiqeoSpacing.md),
       if (rest.isNotEmpty)
@@ -363,13 +394,19 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           entries: rest,
           metric: board.metric,
           onOptions: _openOptions,
+          serial: _boardSerial,
+          startIndex: podium.length,
         ),
       if (rest.isNotEmpty) const SizedBox(height: HiqeoSpacing.md),
-      _SelfCard(
-        hasPlus: hasPlus,
-        visible: _consentVisible,
-        displayName: selfName,
-        onTap: _openConsent,
+      _Reveal(
+        serial: _boardSerial,
+        index: podium.length + rest.length,
+        child: _SelfCard(
+          hasPlus: hasPlus,
+          visible: _consentVisible,
+          displayName: selfName,
+          onTap: _openConsent,
+        ),
       ),
       const SizedBox(height: HiqeoSpacing.md),
       Text(
@@ -399,11 +436,15 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
         ),
       ),
       const SizedBox(height: HiqeoSpacing.sm),
-      for (final entry in entries) ...<Widget>[
-        _GroupRow(
-          entry: entry,
-          metric: board.metric,
-          progress: board.progressFor(entry),
+      for (var index = 0; index < entries.length; index++) ...<Widget>[
+        _Reveal(
+          serial: _boardSerial,
+          index: index,
+          child: _GroupRow(
+            entry: entries[index],
+            metric: board.metric,
+            progress: board.progressFor(entries[index]),
+          ),
         ),
         const SizedBox(height: HiqeoSpacing.sm),
       ],
@@ -419,6 +460,47 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
         _PlusPromo(onTap: () => openPlusPaywall(context)),
       ],
     ];
+  }
+}
+
+/// Baris masuk satu per satu setelah papan baru dimuat.
+///
+/// Jeda 28 ms per baris berada di rentang rancangan 25–30 ms. Saat "kurangi
+/// gerakan" aktif, baris langsung tampil dan hanya crossfade area yang tersisa.
+class _Reveal extends StatelessWidget {
+  const _Reveal({
+    required this.serial,
+    required this.index,
+    required this.child,
+  });
+
+  static const int _staggerMs = 28;
+  static const int _fadeMs = 200;
+
+  final int serial;
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (VisualEffectPolicyScope.of(context).reduceMotion) return child;
+    final delay = index * _staggerMs;
+    final total = delay + _fadeMs;
+    return TweenAnimationBuilder<double>(
+      key: ValueKey<String>('leaderboard-reveal-run-$serial-$index'),
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: Duration(milliseconds: total),
+      curve: Interval(delay / total, 1, curve: Curves.easeOutCubic),
+      child: child,
+      builder: (context, value, child) => Opacity(
+        key: ValueKey<String>('leaderboard-reveal-$index'),
+        opacity: value,
+        child: Transform.translate(
+          offset: Offset(0, 12 * (1 - value)),
+          child: child,
+        ),
+      ),
+    );
   }
 }
 
@@ -501,11 +583,13 @@ class _Podium extends StatelessWidget {
     required this.entries,
     required this.metric,
     required this.onOptions,
+    required this.serial,
   });
 
   final List<LeaderboardEntry> entries;
   final LeaderboardMetric metric;
   final ValueChanged<LeaderboardEntry> onOptions;
+  final int serial;
 
   @override
   Widget build(BuildContext context) {
@@ -520,33 +604,45 @@ class _Podium extends StatelessWidget {
         Expanded(
           child: second == null
               ? const SizedBox.shrink()
-              : _PodiumCard(
-                  entry: second,
-                  height: 142,
-                  metric: metric,
-                  onOptions: onOptions,
+              : _Reveal(
+                  serial: serial,
+                  index: 0,
+                  child: _PodiumCard(
+                    entry: second,
+                    height: 142,
+                    metric: metric,
+                    onOptions: onOptions,
+                  ),
                 ),
         ),
         const SizedBox(width: HiqeoSpacing.sm),
         Expanded(
           child: first == null
               ? const SizedBox.shrink()
-              : _PodiumCard(
-                  entry: first,
-                  height: 160,
-                  metric: metric,
-                  onOptions: onOptions,
+              : _Reveal(
+                  serial: serial,
+                  index: 1,
+                  child: _PodiumCard(
+                    entry: first,
+                    height: 160,
+                    metric: metric,
+                    onOptions: onOptions,
+                  ),
                 ),
         ),
         const SizedBox(width: HiqeoSpacing.sm),
         Expanded(
           child: third == null
               ? const SizedBox.shrink()
-              : _PodiumCard(
-                  entry: third,
-                  height: 142,
-                  metric: metric,
-                  onOptions: onOptions,
+              : _Reveal(
+                  serial: serial,
+                  index: 2,
+                  child: _PodiumCard(
+                    entry: third,
+                    height: 142,
+                    metric: metric,
+                    onOptions: onOptions,
+                  ),
                 ),
         ),
       ],
@@ -646,11 +742,15 @@ class _RankList extends StatelessWidget {
     required this.entries,
     required this.metric,
     required this.onOptions,
+    required this.serial,
+    required this.startIndex,
   });
 
   final List<LeaderboardEntry> entries;
   final LeaderboardMetric metric;
   final ValueChanged<LeaderboardEntry> onOptions;
+  final int serial;
+  final int startIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -664,65 +764,69 @@ class _RankList extends StatelessWidget {
             if (index > 0)
               Divider(
                   color: colors.hairline, height: 1, indent: HiqeoSpacing.md),
-            SizedBox(
-              height: 60,
-              child: Row(
-                key: ValueKey<String>(
-                  'leaderboard-entry-${entries[index].displayName}',
+            _Reveal(
+              serial: serial,
+              index: startIndex + index,
+              child: SizedBox(
+                height: 60,
+                child: Row(
+                  key: ValueKey<String>(
+                    'leaderboard-entry-${entries[index].displayName}',
+                  ),
+                  children: <Widget>[
+                    SizedBox(
+                      width: 34,
+                      child: Center(
+                        child: Text(
+                          '${entries[index].rank}',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: colors.secondary.withValues(alpha: 0.55),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          entries[index].initial,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: colors.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: HiqeoSpacing.md),
+                    Expanded(
+                      child: Text(
+                        entries[index].displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ),
+                    const SizedBox(width: HiqeoSpacing.sm),
+                    Text(
+                      leaderboardValueLabel(metric, entries[index].value),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    _MoreButton(
+                      key: ValueKey<String>(
+                        'leaderboard-more-${entries[index].displayName}',
+                      ),
+                      entry: entries[index],
+                      onTap: () => onOptions(entries[index]),
+                    ),
+                  ],
                 ),
-                children: <Widget>[
-                  SizedBox(
-                    width: 34,
-                    child: Center(
-                      child: Text(
-                        '${entries[index].rank}',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: colors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: colors.secondary.withValues(alpha: 0.55),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        entries[index].initial,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: colors.primary,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: HiqeoSpacing.md),
-                  Expanded(
-                    child: Text(
-                      entries[index].displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall,
-                    ),
-                  ),
-                  const SizedBox(width: HiqeoSpacing.sm),
-                  Text(
-                    leaderboardValueLabel(metric, entries[index].value),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  _MoreButton(
-                    key: ValueKey<String>(
-                      'leaderboard-more-${entries[index].displayName}',
-                    ),
-                    entry: entries[index],
-                    onTap: () => onOptions(entries[index]),
-                  ),
-                ],
               ),
             ),
           ],

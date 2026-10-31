@@ -155,6 +155,21 @@ void main() {
     expect(find.text('21j 00m'), findsOneWidget);
   });
 
+  testWidgets('mengganti rentang memakai crossfade singkat', (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.text('Tahun ini'));
+    await tester.pump();
+
+    expect(find.text('5 pendakian'), findsOneWidget);
+    expect(find.text('4 pendakian'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('5 pendakian'), findsNothing);
+    expect(find.text('4 pendakian'), findsOneWidget);
+  });
+
   testWidgets('sheet bandingkan segmen menjelaskan katalog yang belum ada',
       (tester) async {
     await _pump(tester);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nama_app/design/app_theme.dart';
+import 'package:nama_app/design/motion/visual_effect_policy.dart';
 import 'package:nama_app/features/plus/application/plus_controller.dart';
 import 'package:nama_app/features/plus/application/plus_scope.dart';
 
@@ -24,11 +25,12 @@ Future<void> pumpPlusPage(
   Widget page, {
   PlusController? controller,
   Size size = plusTestSize,
+  VisualEffectPolicy? policy,
 }) async {
   await _prepare(tester, size);
   final app = MaterialApp(theme: hiqeoLightTheme, home: page);
   await tester.pumpWidget(
-    controller == null ? app : PlusScope(controller: controller, child: app),
+    _wrap(app, controller: controller, policy: policy),
   );
   await tester.pumpAndSettle();
 }
@@ -38,6 +40,7 @@ Future<void> pumpPlusRouter(
   GoRouter router, {
   PlusController? controller,
   Size size = plusTestSize,
+  VisualEffectPolicy? policy,
 }) async {
   await _prepare(tester, size);
   final app = MaterialApp.router(
@@ -45,9 +48,24 @@ Future<void> pumpPlusRouter(
     routerConfig: router,
   );
   await tester.pumpWidget(
-    controller == null ? app : PlusScope(controller: controller, child: app),
+    _wrap(app, controller: controller, policy: policy),
   );
   await tester.pumpAndSettle();
+}
+
+Widget _wrap(
+  Widget app, {
+  PlusController? controller,
+  VisualEffectPolicy? policy,
+}) {
+  var wrapped = app;
+  if (controller != null) {
+    wrapped = PlusScope(controller: controller, child: wrapped);
+  }
+  if (policy != null) {
+    wrapped = VisualEffectPolicyScope(policy: policy, child: wrapped);
+  }
+  return wrapped;
 }
 
 /// Mengetuk lalu memberi waktu untuk Future pendek dan SnackBar masuk, tanpa

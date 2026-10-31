@@ -2,14 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nama_app/design/gooey/gooey_switch.dart';
+import 'package:nama_app/design/motion/visual_effect_policy.dart';
 import 'package:nama_app/features/plus/application/plus_controller.dart';
 import 'package:nama_app/features/plus/application/plus_navigation.dart';
 import 'package:nama_app/features/plus/domain/leaderboard.dart';
 import 'package:nama_app/features/plus/infrastructure/local_plus_stores.dart';
 import 'package:nama_app/features/plus/presentation/leaderboard_page.dart';
+import 'package:nama_app/infrastructure/power/power_profile_manager.dart';
 
 import '../support/plus_fixtures.dart';
 import '../support/plus_widget_harness.dart';
+
+const VisualEffectPolicy _reduceMotion = VisualEffectPolicy(
+  powerProfile: PowerProfile.normal,
+  reduceMotion: true,
+  deviceTier: DeviceTier.capable,
+);
 
 const String _footerNational =
     '10 besar per kategori. Server menghitung ulang dari jejak mentah dan '
@@ -20,6 +28,7 @@ Future<void> _pump(
   required PlusController controller,
   required FakeLeaderboardRepository repository,
   required InMemoryLeaderboardConsentStore consent,
+  VisualEffectPolicy? policy,
 }) async {
   final router = GoRouter(
     initialLocation: PlusRoutes.leaderboard,
@@ -40,7 +49,12 @@ Future<void> _pump(
     ],
   );
   addTearDown(router.dispose);
-  await pumpPlusRouter(tester, router, controller: controller);
+  await pumpPlusRouter(
+    tester,
+    router,
+    controller: controller,
+    policy: policy,
+  );
 }
 
 void main() {
@@ -111,6 +125,72 @@ void main() {
     expect(repository.loads.last.metric, LeaderboardMetric.totalDistance);
     expect(find.text('Nasional'), findsOneWidget);
     expect(find.text('Grup'), findsOneWidget);
+  });
+
+  testWidgets('papan lama bertahan saat memuat lalu baris muncul bertahap',
+      (tester) async {
+    final controller = await buildPlusController(leaderboard: true);
+    final repository = FakeLeaderboardRepository();
+
+    await _pump(
+      tester,
+      controller: controller,
+      repository: repository,
+      consent: InMemoryLeaderboardConsentStore(),
+    );
+
+    await tester.tap(find.text('Total jarak'));
+    await tester.pump();
+
+    expect(find.text('128 km'), findsOneWidget);
+    expect(find.text('9 gunung'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 30));
+
+    double opacityOf(int index) => tester
+        .widget<Opacity>(
+          find.byKey(ValueKey<String>('leaderboard-reveal-$index')).last,
+        )
+        .opacity;
+
+    expect(opacityOf(0), greaterThan(opacityOf(3)));
+    expect(opacityOf(3), lessThan(0.05));
+
+    await tester.pumpAndSettle();
+
+    expect(opacityOf(0), 1);
+    expect(opacityOf(3), 1);
+    expect(find.text('9 gunung'), findsNothing);
+    expect(find.text('128 km'), findsOneWidget);
+  });
+
+  testWidgets('kurangi gerakan melewatkan kemunculan baris bertahap',
+      (tester) async {
+    final controller = await buildPlusController(leaderboard: true);
+    final repository = FakeLeaderboardRepository();
+
+    await _pump(
+      tester,
+      controller: controller,
+      repository: repository,
+      consent: InMemoryLeaderboardConsentStore(),
+      policy: _reduceMotion,
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('leaderboard-reveal-0')),
+      findsNothing,
+    );
+
+    await tester.tap(find.text('Total jarak'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 30));
+
+    expect(
+      find.byKey(const ValueKey<String>('leaderboard-reveal-3')),
+      findsNothing,
+    );
+    expect(find.text('128 km'), findsOneWidget);
   });
 
   testWidgets('tab grup menampilkan anggota, baris sendiri, dan promo Plus',
