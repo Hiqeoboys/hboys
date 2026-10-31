@@ -1,8 +1,9 @@
 # Peta, unduhan offline, dan atribusi Mapbox
 
-Status dokumen: **sebagian diuji otomatis dan terlihat di emulator pada build
-sebelum Perubahan 5. Tile peta, unduhan offline nyata, kompas perangkat fisik,
-tampilan edge-to-edge Perubahan 5, dan uji lapangan BELUM DIUJI.**
+Status dokumen: **diuji otomatis dan sebagian terlihat di emulator, termasuk
+tampilan edge-to-edge Perubahan 5 pada navigasi gestur dan 3 tombol. Tile peta
+sungguhan, unduhan offline nyata, kompas perangkat fisik, dan uji lapangan
+BELUM DIUJI.**
 Lihat bagian akhir untuk pemisahan yang jelas.
 
 Dokumen ini mencatat batasan resmi Mapbox yang dibaca pada **2026-10-25**
@@ -75,8 +76,9 @@ dimatikan karena tidak ada di rancangan dan menabrak status bar. Sejak
 Perubahan 5, logo dan tombol `ⓘ` dinaikkan dengan `marginBottom` agar berhenti
 di atas panel "Peta offline", yang sendiri berhenti di atas navbar mengambang.
 Logo Mapbox dan tombol atribusi `ⓘ` terlihat di atas navbar pada emulator
-(build sebelum Perubahan 5, mode terang dan gelap), tetapi posisi barunya,
-teks atribusi lengkap, dan perilaku saat mode pesawat belum diuji di perangkat.
+mode terang dan gelap, baik dengan navigasi gestur maupun 3 tombol. Posisi
+barunya cocok dengan rancangan, tetapi teks atribusi lengkap dan perilaku saat
+mode pesawat belum diuji di perangkat.
 
 ## 2. Batas yang diterapkan aplikasi
 
@@ -250,10 +252,12 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
   di bawah status bar dan area gestur. Latar tidak memakai `PageBackground`
   dan tidak menyisakan pita warna; keadaan kosong memakai token latar tema
   yang sama.
-- **Shell `extendBody: true`.** Navbar mengambang 64 + 16 px + inset sistem
-  dari tepi bawah. Peta melihat inset mentah lewat `AltracqSystemInset` karena
-  Scaffold mengosongkan `viewPadding.bottom` di dalam body saat ada
-  `bottomNavigationBar`.
+- **Shell `extendBody` hanya di Peta.** Navbar mengambang 64 + 16 px + inset
+  sistem dari tepi bawah. Hanya cabang Peta yang memakai `extendBody`, jadi
+  peta memanjang ke bawah navbar; tab lain menata navbar di luar isi agar
+  kartu terang tidak tampak di belakang kaca. Peta melihat inset mentah lewat
+  `AltracqSystemInset` karena Scaffold mengosongkan `viewPadding.bottom` di
+  dalam body saat ada `bottomNavigationBar`.
 - **Jarak bawah saat peta aktif.** Panel panduan memakai
   `floatingBottomInset + 44` dan ornamen Mapbox `floatingBottomInset + 8`.
   Angka 44 menyisakan ruang logo/atribusi antara panel dan navbar; ornamen
@@ -291,10 +295,18 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
   tidak tersedia. Dua tes Perubahan 5 mengunci jarak panel/ornamen untuk inset
   0 dan 24 px serta memastikan keadaan kosong berlatar penuh, setinggi layar,
   tanpa `PageBackground`.
-- Tes `shell_edge_to_edge_test.dart` (3 tes) memastikan shell memakai
-  `extendBody`, navbar berhenti di atas inset sistem, padding bawah isi tab
-  setara `floatingBottomInset`, dan Peta menempati 0..844 pada viewport
-  390 × 844 dengan inset 24 px.
+- Tes `shell_edge_to_edge_test.dart` (3 tes) memastikan `extendBody` hanya
+  aktif di Peta, navbar berhenti di atas inset sistem, isi Beranda/Lacak/Profil
+  berhenti tepat di atas navbar tanpa padding tambahan, dan Peta menempati
+  0..844 pada viewport 390 × 844 dengan inset 24 px.
+- APK debug Perubahan 5 dipasang dan dijalankan di emulator
+  Medium_Phone_API_37 pada mode terang dan gelap, navigasi gestur dan 3 tombol.
+  Peta memenuhi layar sampai status bar dan tepi bawah; navbar mengambang
+  dengan peta/keadaan kosong terlihat di balik kaca; panel "Peta offline"
+  menyisakan celah untuk logo dan tombol `ⓘ` Mapbox; isi tab lain berhenti di
+  atas navbar sehingga CTA krem Lacak tidak lagi menembus kaca. Ikon status bar
+  mengikuti tema. Permukaan tile tetap tidak selesai dimuat (galat GL), jadi
+  kontras di atas tile asli belum bisa dinilai.
 - APK debug dibangun, dipasang, dan dijalankan di emulator Android. Terlihat:
   kartu status jalur, tombol kompas/pusatkan, kartu panduan, sheet offline
   (keadaan kosong + catatan atribusi) pada mode terang dan gelap, serta sheet
@@ -321,12 +333,12 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
   Peredup terlihat di emulator, tetapi `onStyleLoaded` tidak pernah selesai
   (`GFXSTREAM GL error 0x501`), jadi warna layer dan keterbacaan tile asli
   belum bisa dinilai. Rinciannya di `docs/mode_gelap_dan_performa.md`.
-- Tampilan edge-to-edge Perubahan 5 di emulator: peta di bawah status bar,
-  navbar mengambang yang memperlihatkan peta di balik kaca, kontras label di
-  atas peta sungguhan, dan posisi logo/atribusi terhadap panel serta navbar.
-  Baru diuji lewat widget test; belum ada build Perubahan 5 yang dipasang.
-- Perilaku dengan navigasi 3 tombol Android (inset bawah lebih besar) versus
-  gestur, serta pergantian warna ikon status bar mengikuti tema di perangkat.
+- Kontras label navbar di atas peta Mapbox sungguhan. Tampilan edge-to-edge,
+  posisi logo/atribusi, dan kedua jenis navigasi sudah dilihat di emulator,
+  tetapi permukaan tile tidak selesai dimuat sehingga kontras di atas tile
+  asli belum bisa dinilai; angkanya baru diuji lewat widget test.
+- Pergantian warna ikon status bar saat peta yang tampak berubah terang/gelap
+  belum diuji; ikon mengikuti tema aplikasi, bukan luminansi peta.
 - Build iOS, build rilis, dan token Mapbox untuk rilis.
 - Semua skenario di `docs/field_tests/map_offline.md`.
 

@@ -51,7 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
-    expect(scaffold.extendBody, isTrue);
+    expect(scaffold.extendBody, isFalse);
 
     final nav = tester.getRect(find.byType(AltracqNavBar));
     expect(nav.height, AltracqMetrics.navbarHeight);
@@ -63,7 +63,7 @@ void main() {
     );
   });
 
-  testWidgets('isi tab mendapat jarak bawah navbar, celah, dan inset sistem',
+  testWidgets('isi tab lain berhenti di atas navbar tanpa menembus kaca',
       (tester) async {
     _phoneWithInsets(tester);
     await loadPlusJakartaSans(tester);
@@ -71,23 +71,28 @@ void main() {
     router.go('/beranda');
     await tester.pumpAndSettle();
 
-    const clearance =
-        AltracqMetrics.navbarHeight + AltracqMetrics.navbarInset + _gestureInset;
-    expect(_bodyBottomPadding(tester, BerandaPage), clearance);
+    // extendBody hanya untuk Peta; tab lain tetap mendapat tinggi penuh
+    // navbar di layout sehingga tidak ada padding tambahan dan tidak ada
+    // kartu terang yang tampak di belakang kaca.
+    final navTop = tester.getRect(find.byType(AltracqNavBar)).top;
+    expect(_bodyBottomPadding(tester, BerandaPage), 0);
+    expect(tester.getRect(find.byType(BerandaPage)).bottom, navTop);
 
     await tester.tap(find.descendant(
       of: find.byType(AltracqNavBar),
       matching: find.text('Lacak'),
     ));
     await tester.pumpAndSettle();
-    expect(_bodyBottomPadding(tester, TrackingPage), clearance);
+    expect(_bodyBottomPadding(tester, TrackingPage), 0);
+    expect(tester.getRect(find.byType(TrackingPage)).bottom, navTop);
 
     await tester.tap(find.descendant(
       of: find.byType(AltracqNavBar),
       matching: find.text('Profil'),
     ));
     await tester.pumpAndSettle();
-    expect(_bodyBottomPadding(tester, ProfilPage), clearance);
+    expect(_bodyBottomPadding(tester, ProfilPage), 0);
+    expect(tester.getRect(find.byType(ProfilPage)).bottom, navTop);
   });
 
   testWidgets('Peta memakai seluruh tinggi layar dan navbar bertint di atasnya',
@@ -97,6 +102,9 @@ void main() {
     await tester.pumpWidget(buildAltracqTestApp(router: router));
     router.go('/peta');
     await tester.pumpAndSettle();
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+    expect(scaffold.extendBody, isTrue);
 
     final map = tester.getRect(find.byType(MapPage));
     expect(map.top, 0);
@@ -124,6 +132,10 @@ void main() {
 
     router.go('/beranda');
     await tester.pumpAndSettle();
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold).first).extendBody,
+      isFalse,
+    );
     expect(
       tester.widget<AltracqNavBar>(find.byType(AltracqNavBar)).overMap,
       isFalse,

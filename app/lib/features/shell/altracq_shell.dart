@@ -86,10 +86,10 @@ class _AltracqShellState extends State<AltracqShell> {
           // Peta digambar penuh tanpa blob latar; tab lain tetap memakai blob.
           showBlobs: index != AltracqShell.mapBranchIndex,
           child: Scaffold(
-            // Body memanjang sampai tepi bawah layar supaya Peta bisa
-            // edge-to-edge. Scaffold menambahkan tinggi navbar ke padding
-            // bawah MediaQuery isi, yang dipakai tab lain untuk jarak aman.
-            extendBody: true,
+            // Hanya Peta yang memanjang sampai tepi bawah layar. Tab lain
+            // menata navbar di luar isi supaya kartu/tombol terang tidak
+            // tampak menembus kaca dan menyatu dengan blob.
+            extendBody: index == AltracqShell.mapBranchIndex,
             backgroundColor: Colors.transparent,
             body: _TabFade(
               index: index,

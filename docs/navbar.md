@@ -55,22 +55,25 @@ yang sudah dijalankan, dan apa yang belum diuji.
   kanal 0–255, sedangkan nilai CSS `alpha' = alpha * 20 - 9` berlaku pada 0–1.
   Geseran yang benar adalah −9 × 255 = −2295; nilai lama −9 membuat ekor blur
   hampir sepenuhnya opak sehingga ambang tidak berfungsi.
-- **Navbar melayang di atas peta (Perubahan 5).** Shell memakai
-  `extendBody: true`, jadi isi tab (termasuk Peta) memanjang sampai tepi layar
-  dan navbar mengambang 16 px di atasnya. Di tab Peta, `AltracqNavBar` menerima
+- **Navbar melayang di atas peta (Perubahan 5).** Hanya cabang Peta yang
+  memakai `extendBody: true`, jadi peta memanjang sampai tepi layar dan navbar
+  mengambang 16 px di atasnya. Di tab Peta, `AltracqNavBar` menerima
   `overMap: true`: `GlassSurface` mendapat `tint` navy
   (`colors.background` alfa 0,6, hanya mode gelap) supaya peta terang tidak
   membuat label tidak terbaca, dan label diam memakai `textPrimary` (bukan
   `textSecondary`). Warna tetap dari token yang ada; tidak ada warna baru.
+  Tab lain tidak memakai `extendBody`: navbar ditata di luar isi, sehingga
+  kartu atau tombol terang tidak tampak menembus kaca dan menyatu dengan blob.
 - **Inset sistem transparan.** `bootstrap.dart` memanggil
   `SystemUiMode.edgeToEdge` di Android dan `AltracqSystemUiRegion` memasang
   `SystemUiOverlayStyle` transparan dengan ikon yang mengikuti tema aktif.
-- **Jarak bawah isi tab.** `extendBody` menaikkan
+- **Jarak bawah isi tab.** Di Peta, `extendBody` menaikkan
   `MediaQuery.padding.bottom` isi tab setinggi navbar + 16 px + inset sistem,
-  dan Beranda/Lacak/Grup/Profil memakai nilai itu untuk padding bawah daftar.
+  lalu Peta memakai nilai itu untuk jarak panel, logo, dan atribusi. Tab lain
+  tidak mendapat padding tambahan karena isinya berhenti tepat di atas navbar.
   Inset sistem mentah tidak terbaca lewat `viewPadding` di dalam body (Scaffold
   menguranginya saat ada `bottomNavigationBar`), jadi shell menyediakan
-  `AltracqSystemInset`; Peta memakainya untuk jarak panel, logo, dan atribusi.
+  `AltracqSystemInset`.
 
 Spesifikasi gooey lama untuk tombol — tonjolan cair di tepi tombol dan leher
 penyambung antar-tombol — dibatalkan. `nav_bar_gooey_test.dart` yang menguji
@@ -119,11 +122,12 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
   mencapai sekitar 2,5:1 di atas peta terang; `textPrimary` mencapai 4,6:1 di
   mode gelap dan 11,3:1 di mode terang. Di tab lain label tetap
   `textSecondary`.
-- **Jarak bawah memakai `extendBody`, bukan pembungkus router.** Alternatifnya
-  adalah membungkus setiap cabang dengan padding di router. Cara itu membangun
-  padding ganda di layar penuh di luar shell dan menyulitkan Peta yang butuh
-  edge-to-edge. Dengan `extendBody`, Scaffold sendiri menaikkan padding bawah
-  isi tab; hanya Peta yang perlu jarak eksplisit untuk panel dan ornamennya.
+- **`extendBody` hanya untuk Peta, bukan semua tab.** Awalnya semua tab
+  memakai `extendBody`. Di emulator, CTA krem Lacak tampak menembus kaca gelap
+  8% dan menyatu dengan blob sehingga label sulit dibaca. Karena itu hanya
+  Peta yang edge-to-edge; tab lain menata navbar di luar isi. Alternatifnya,
+  membungkus setiap cabang dengan padding di router, membangun padding ganda
+  di layar penuh dan menyulitkan Peta yang butuh edge-to-edge.
 - **`AltracqSystemInset` disediakan shell.** `MediaQueryData.removePadding`
   milik Scaffold mengurangi `viewPadding` saat ada `bottomNavigationBar`,
   sehingga `viewPadding.bottom` menjadi 0 di dalam isi tab. InheritedWidget ini
@@ -196,11 +200,10 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
   - ketukan tab aktif tidak menjalankan animasi dan rute tidak berubah;
   - setiap tab adalah tombol berlabel untuk pembaca layar.
 - Tes shell edge-to-edge (3 tes) mencakup:
-  - `Scaffold.extendBody` aktif dan navbar berhenti 16 px + inset 24 px dari
-    tepi bawah layar pada viewport 390 × 844;
-  - padding bawah isi Beranda, Lacak, dan Profil sama dengan
-    `navbarHeight + navbarInset + inset sistem`, sedangkan peta menempati
-    0..844;
+  - `Scaffold.extendBody` mati di Beranda dan navbar berhenti 16 px + inset
+    24 px dari tepi bawah layar pada viewport 390 × 844;
+  - isi Beranda, Lacak, dan Profil berhenti tepat di atas navbar tanpa padding
+    bawah tambahan, sedangkan Peta menempati 0..844 dengan `extendBody` aktif;
   - `PageBackground.showBlobs` mati di Peta dan hidup di tab lain,
     `AltracqNavBar.overMap` hidup di Peta, dan `AltracqSystemInset` membawa
     inset mentah 24 px ke dalam Peta.
@@ -218,8 +221,16 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
   inset 0 dan 24 px beserta hubungannya, serta peta kosong tanpa
   `PageBackground`, berlatar `colors.background`, setinggi layar penuh, dengan
   panel berhenti `floatingBottomInset + 44` dari bawah.
-- Nomor suite di atas berasal dari `flutter test` di mesin pengembang; belum
-  ada build yang dipasang ke emulator untuk gelombang revisi ini.
+- Build debug Perubahan 5 dipasang dan dijalankan di emulator
+  Medium_Phone_API_37. Pada navigasi 3 tombol, isi Beranda, Lacak, Grup, dan
+  Profil berhenti tepat di atas navbar; CTA krem Lacak tidak lagi tampak di
+  belakang kaca. Peta tetap memenuhi layar, logo dan tombol atribusi Mapbox
+  berada di atas navbar, dan panel "Peta offline" menyisakan celah untuk
+  keduanya. Hal yang sama terlihat pada mode terang dan gelap. Pada navigasi
+  gestur, Beranda mode terang dan Peta mode gelap juga terlihat benar; inset
+  bawah navbar mengikuti area gestur (24 dp).
+- Nomor suite di atas berasal dari `flutter test` di mesin pengembang dan
+  build yang dipasang di emulator untuk gelombang revisi ini.
 
 ## 5. Ditulis tetapi belum diuji di perangkat
 
@@ -236,16 +247,15 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
   diuji lewat kebijakan palsu.
 - Pembacaan TalkBack untuk lima tab, termasuk pengumuman status terpilih dan
   tidak dobelnya label.
-- Interaksi navbar yang melayang di atas peta layar penuh (Perubahan 5):
-  kontras label di atas peta sungguhan, posisi terhadap area gestur dan
-  navigasi 3 tombol, serta apakah peta benar-benar terlihat di balik kaca
-  (bukan blok warna). Semua ini baru diuji lewat widget test, belum di
-  emulator.
-- Warna ikon status bar mengikuti tema pada perangkat sungguhan; pergantian
-  saat peta yang tampak berubah terang/gelap belum diuji (ikon mengikuti tema,
-  bukan luminansi peta).
-- Latar penuh saat peta tidak tersedia di emulator, termasuk saat sistem
-  memakai navigasi 3 tombol (inset bawah lebih besar).
+- Interaksi navbar yang melayang di atas peta layar penuh (Perubahan 5) sudah
+  dilihat pada navigasi gestur dan 3 tombol, tetapi kontras label di atas peta
+  Mapbox sungguhan belum bisa dinilai karena tile peta emulator tidak selesai
+  dimuat (galat GL). Kontras diuji lewat warna dan widget test, bukan tile asli.
+- Warna ikon status bar mengikuti tema sudah terlihat pada tangkapan emulator
+  terang dan gelap. Pergantian saat peta yang tampak berubah terang/gelap tetap
+  belum diuji karena ikon mengikuti tema, bukan luminansi peta.
+- Latar penuh saat peta tidak tersedia sudah dilihat pada navigasi 3 tombol
+  (inset bawah lebih besar) dan gestur.
 
 ## 6. Cara memeriksa
 
