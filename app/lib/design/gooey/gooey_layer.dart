@@ -5,9 +5,10 @@ import 'package:flutter/material.dart';
 import '../motion/visual_effect_policy.dart';
 import '../tokens.dart';
 
-/// Ambang alfa metaball: alfa' = alfa * 20 - 9. Tepi kabur hasil blur yang
-/// alfanya di bawah 0,45 dipangkas habis, di atasnya dipadatkan, sehingga dua
-/// bentuk yang berdekatan tampak menyatu seperti cairan.
+/// Ambang alfa metaball: alfa' = alfa * 20 - 9 pada skala 0–1, yaitu
+/// alfa * 20 - 2295 pada matriks 0–255 milik Flutter. Tepi kabur hasil blur
+/// yang alfanya di bawah 0,45 dipangkas habis, di atasnya dipadatkan, sehingga
+/// dua bentuk yang berdekatan tampak menyatu seperti cairan.
 const List<double> _kAlphaThreshold = <double>[
   1, 0, 0, 0, 0,
   0, 1, 0, 0, 0,
@@ -17,10 +18,11 @@ const List<double> _kAlphaThreshold = <double>[
 
 /// Pembungkus gooey tunggal untuk seluruh aplikasi.
 ///
-/// [shapes] adalah lapisan bentuk cair (badan tombol, benjolan, gelembung);
-/// [child] adalah konten tajam (teks, ikon) yang ditumpuk di atasnya tanpa
-/// ikut dikaburkan. Saat [VisualEffectPolicy.gooey] mati, bentuk ditampilkan
-/// apa adanya tanpa blur sehingga fungsi tidak pernah bergantung pada efek.
+/// [shapes] adalah lapisan bentuk cair (blob indikator navbar dan morph kartu
+/// "Semua fitur" di Beranda); [child] adalah konten tajam (teks, ikon) yang
+/// ditumpuk di atasnya tanpa ikut dikaburkan. Saat [VisualEffectPolicy.gooey]
+/// mati, bentuk ditampilkan apa adanya tanpa blur sehingga fungsi tidak pernah
+/// bergantung pada efek.
 class GooeyLayer extends StatelessWidget {
   const GooeyLayer({
     super.key,

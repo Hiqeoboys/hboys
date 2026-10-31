@@ -1,9 +1,10 @@
-import 'dart:ui' show lerpDouble;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../glass/glass_surface.dart';
 import '../gooey/gooey_layer.dart';
+import '../motion/visual_effect_policy.dart';
 import '../tokens.dart';
 import 'line_icons.dart';
 
@@ -19,11 +20,52 @@ class AltracqNavBarItem {
   final String route;
 }
 
+/// Kemajuan kepala blob: pegas kaku dengan pantulan yang dibatasi 4,4%.
+///
+/// `easeOutBack` memantul sekitar 9,9%; sebagian pantulan itu dibuang agar
+/// total pantulan tetap di bawah 5% jarak perpindahan.
+@visibleForTesting
+double navBarHeadProgress(double t) {
+  final eased = Curves.easeOutBack.transform(t);
+  return 1 + (eased - 1) * AltracqNavBar.headOvershootScale;
+}
+
+/// Kemajuan ekor blob: menyusul lebih lambat dan tanpa pantulan.
+@visibleForTesting
+double navBarTailProgress(double t) =>
+    const Interval(0.12, 1, curve: Curves.easeOutCubic).transform(t);
+
+/// Bagian area pill tab yang tertutup blob, 0..1.
+///
+/// Dipakai untuk memindahkan warna ikon/label saat blob benar-benar menutup
+/// atau meninggalkan tab, bukan serentak di awal atau akhir animasi.
+@visibleForTesting
+double navBarCoverage({
+  required double tabCenter,
+  required double headCenter,
+  required double tailCenter,
+  required double pillWidth,
+}) {
+  final pillLeft = (headCenter < tailCenter ? headCenter : tailCenter) -
+      pillWidth / 2;
+  final pillRight = (headCenter > tailCenter ? headCenter : tailCenter) +
+      pillWidth / 2;
+  final tabLeft = tabCenter - pillWidth / 2;
+  final tabRight = tabCenter + pillWidth / 2;
+  final overlap = (pillRight < tabRight ? pillRight : tabRight) -
+      (pillLeft > tabLeft ? pillLeft : tabLeft);
+  if (overlap <= 0) return 0;
+  return (overlap / pillWidth).clamp(0.0, 1.0);
+}
+
 /// Navigasi bawah melayang: tinggi 64 px, radius 32, menjorok 16 px dari tepi.
 ///
-/// Tab aktif berupa pill 66×52 berwarna primer; pada M3 pill ini dibungkus
-/// [GooeyLayer] sehingga mendapat gelembung dan tetesan cair.
-class AltracqNavBar extends StatelessWidget {
+/// Satu blob krem (warna primer tema) bergerak di antara tab. Kepala bergerak
+/// lebih dulu dengan pegas kaku, ekor menyusul dengan pegas lembut; selama
+/// bergerak keduanya disatukan [GooeyLayer] sehingga membentuk satu cairan yang
+/// memanjang, tanpa gelembung atau tetesan terpisah. Kaca dan bayangan navbar
+/// berada di luar lapisan gooey sehingga tidak ikut dikaburkan.
+class AltracqNavBar extends StatefulWidget {
   const AltracqNavBar({
     super.key,
     required this.currentIndex,
@@ -35,28 +77,149 @@ class AltracqNavBar extends StatelessWidget {
   final List<AltracqNavBarItem> items;
   final ValueChanged<int> onTap;
 
+  static const Duration slideDuration = Duration(milliseconds: 500);
+  static const Duration reducedSlideDuration = Duration(milliseconds: 180);
+
+  /// Bagian pantulan `easeOutBack` yang dipakai (≈4,4% jarak).
+  static const double headOvershootScale = 0.45;
+
+  @override
+  State<AltracqNavBar> createState() => _AltracqNavBarState();
+}
+
+class _AltracqNavBarState extends State<AltracqNavBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _slide;
+  late double _startHead;
+  late double _startTail;
+  late double _target;
+  bool _reduceMotion = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _target = widget.currentIndex.toDouble();
+    _startHead = _target;
+    _startTail = _target;
+    _slide = AnimationController(
+      vsync: this,
+      duration: AltracqNavBar.slideDuration,
+      value: 1,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion = VisualEffectPolicyScope.of(context).reduceMotion;
+    if (reduceMotion == _reduceMotion) return;
+    _reduceMotion = reduceMotion;
+    _slide.duration = reduceMotion
+        ? AltracqNavBar.reducedSlideDuration
+        : AltracqNavBar.slideDuration;
+  }
+
+  @override
+  void didUpdateWidget(AltracqNavBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentIndex == oldWidget.currentIndex) return;
+    // Mulai dari posisi yang sedang terlihat supaya ketukan beruntun tidak
+    // melompat; kepala dan ekor lalu mengejar tab baru dari tempat masing-masing.
+    _startHead = _headPosition;
+    _startTail = _tailPosition;
+    _target = widget.currentIndex.toDouble();
+    _slide.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _slide.dispose();
+    super.dispose();
+  }
+
+  double get _headPosition => ui.lerpDouble(
+        _startHead,
+        _target,
+        _reduceMotion ? _slide.value : navBarHeadProgress(_slide.value),
+      )!;
+
+  double get _tailPosition => ui.lerpDouble(
+        _startTail,
+        _target,
+        _reduceMotion ? _slide.value : navBarTailProgress(_slide.value),
+      )!;
+
   @override
   Widget build(BuildContext context) {
+    final colors = AltracqColors.of(context);
+    final gooey = GooeyLayer.enabledOf(context) && !_reduceMotion;
     return Semantics(
       container: true,
       explicitChildNodes: true,
       child: GlassSurface(
         borderRadius: AltracqRadius.navbar,
-        child: SizedBox(
-          height: AltracqMetrics.navbarHeight,
-          child: Row(
-            children: <Widget>[
-              for (int i = 0; i < items.length; i++)
-                Expanded(
-                  child: _NavBarTab(
-                    item: items[i],
-                    active: i == currentIndex,
-                    trailRight: i < items.length - 1,
-                    onTap: () => onTap(i),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final count = widget.items.length;
+            final cellWidth = width / count;
+            return AnimatedBuilder(
+              animation: _slide,
+              builder: (context, _) {
+                final headCenter = (_headPosition + 0.5) * cellWidth;
+                final tailCenter = (_tailPosition + 0.5) * cellWidth;
+                final blob = CustomPaint(
+                  key: const ValueKey<String>('navbar-blob'),
+                  painter: NavBarBlobPainter(
+                    headCenter: headCenter,
+                    tailCenter: tailCenter,
+                    pillWidth: AltracqMetrics.navbarPillWidth,
+                    pillHeight: AltracqMetrics.navbarPillHeight,
+                    color: colors.primary,
                   ),
-                ),
-            ],
-          ),
+                );
+                // Hanya selama bergerak bentuknya cair; saat diam digambar
+                // tajam supaya tepi pill bersih dan tidak ada filter tersisa.
+                // Nilai 0 berarti belum ada perpindahan, jadi belum perlu cair.
+                final morphing = _slide.isAnimating && _slide.value > 0;
+                return SizedBox(
+                  height: AltracqMetrics.navbarHeight,
+                  child: Stack(
+                    children: <Widget>[
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: ExcludeSemantics(
+                            child: morphing && gooey
+                                ? GooeyLayer(shapes: blob)
+                                : blob,
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: <Widget>[
+                          for (int i = 0; i < count; i++)
+                            Expanded(
+                              child: _NavBarTab(
+                                item: widget.items[i],
+                                active: i == widget.currentIndex,
+                                coverage: navBarCoverage(
+                                  tabCenter: (i + 0.5) * cellWidth,
+                                  headCenter: headCenter,
+                                  tailCenter: tailCenter,
+                                  pillWidth:
+                                      AltracqMetrics.navbarPillWidth,
+                                ),
+                                onTap: () => widget.onTap(i),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
         ),
       ),
     );
@@ -67,77 +230,25 @@ class _NavBarTab extends StatelessWidget {
   const _NavBarTab({
     required this.item,
     required this.active,
-    required this.trailRight,
+    required this.coverage,
     required this.onTap,
   });
 
   final AltracqNavBarItem item;
   final bool active;
 
-  /// Arah jejak gelembung: ke kanan, kecuali tab paling ujung yang ke kiri
-  /// supaya tidak terpotong sudut navigasi.
-  final bool trailRight;
+  /// 0 = blob jauh, 1 = blob menutup penuh area pill tab ini.
+  final double coverage;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = AltracqColors.of(context);
     final theme = Theme.of(context);
-    final gooey = GooeyLayer.enabledOf(context);
-
-    final column = Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        AltracqIcon(
-          item.icon,
-          size: 22,
-          color: active ? colors.onPrimary : colors.textPrimary,
-        ),
-        const SizedBox(height: 2),
-        // Label tombol diambil dari Semantics di atas; teks terlihat
-        // dikecualikan agar nama aksesibel tidak dobel.
-        ExcludeSemantics(
-          child: Text(
-            item.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelMedium?.copyWith(
-              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-              color: active ? colors.onPrimary : colors.textSecondary,
-            ),
-          ),
-        ),
-      ],
-    );
-
-    Widget body;
-    if (active && gooey) {
-      body = GooeyLayer(
-        shapes: _LiquidPill(color: colors.primary, trailRight: trailRight),
-        child: Center(
-          child: SizedBox(
-            width: AltracqMetrics.navbarPillWidth,
-            height: AltracqMetrics.navbarPillHeight,
-            child: column,
-          ),
-        ),
-      );
-    } else {
-      body = AnimatedContainer(
-        duration: AltracqMotion.spring,
-        curve: AltracqMotion.springy,
-        width: active ? AltracqMetrics.navbarPillWidth : null,
-        height: active ? AltracqMetrics.navbarPillHeight : null,
-        decoration: active
-            ? BoxDecoration(
-                color: colors.primary,
-                borderRadius: BorderRadius.circular(AltracqRadius.pill),
-              )
-            : null,
-        child: column,
-      );
-    }
-
+    final iconColor =
+        Color.lerp(colors.textPrimary, colors.onPrimary, coverage)!;
+    final labelColor =
+        Color.lerp(colors.textSecondary, colors.onPrimary, coverage)!;
     return Semantics(
       button: true,
       selected: active,
@@ -145,81 +256,105 @@ class _NavBarTab extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Center(child: body),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              AltracqIcon(item.icon, size: 22, color: iconColor),
+              const SizedBox(height: 2),
+              // Label diambil dari Semantics di atas; teks terlihat
+              // dikecualikan agar nama aksesibel tidak dobel.
+              ExcludeSemantics(
+                child: Text(
+                  item.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight:
+                        coverage >= 0.5 ? FontWeight.w700 : FontWeight.w500,
+                    color: labelColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-/// Pill tab aktif 66×52 plus gelembung 20 px dan tetesan 12 px yang menyembul
-/// dari tepi pill lalu menetap dengan animasi pegas saat tab dipilih.
-class _LiquidPill extends StatelessWidget {
-  const _LiquidPill({required this.color, required this.trailRight});
+/// Melukis blob sebagai satu bentuk: pill kepala, pill ekor, dan leher yang
+/// menyambung keduanya. Leher menipis saat blob memanjang, tetapi tidak pernah
+/// terputus, jadi tidak ada bagian yang terlepas.
+@visibleForTesting
+class NavBarBlobPainter extends CustomPainter {
+  const NavBarBlobPainter({
+    required this.headCenter,
+    required this.tailCenter,
+    required this.pillWidth,
+    required this.pillHeight,
+    required this.color,
+  });
 
+  final double headCenter;
+  final double tailCenter;
+  final double pillWidth;
+  final double pillHeight;
   final Color color;
-  final bool trailRight;
-
-  /// Ruang jejak di kedua sisi pill agar gelembung tidak terpotong.
-  static const double _trail = 36;
-  static const double _bubbleRest = 0.5593;
-  static const double _dropletRest = 0.8254;
 
   @override
-  Widget build(BuildContext context) {
-    final double dir = trailRight ? 1 : -1;
-    return SizedBox(
-      width: AltracqMetrics.navbarPillWidth + 2 * _trail,
-      height: AltracqMetrics.navbarPillHeight,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: <Widget>[
-          Center(
-            child: Container(
-              width: AltracqMetrics.navbarPillWidth,
-              height: AltracqMetrics.navbarPillHeight,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(AltracqRadius.pill),
-              ),
+  void paint(Canvas canvas, Size size) {
+    final radius = Radius.circular(pillHeight / 2);
+    final centerY = size.height / 2;
+    Path pill(double centerX) => Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(centerX, centerY),
+            width: pillWidth,
+            height: pillHeight,
+          ),
+          radius,
+        ),
+      );
+
+    var path = Path.combine(
+      ui.PathOperation.union,
+      pill(headCenter),
+      pill(tailCenter),
+    );
+    final gap = (headCenter - tailCenter).abs();
+    if (gap > 0.5) {
+      final stretch = (gap / (pillWidth * 2)).clamp(0.0, 1.0);
+      final neckHeight = pillHeight * (1 - 0.5 * stretch);
+      final neck = Path()
+        ..addRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTRB(
+              headCenter < tailCenter ? headCenter : tailCenter,
+              centerY - neckHeight / 2,
+              headCenter > tailCenter ? headCenter : tailCenter,
+              centerY + neckHeight / 2,
             ),
+            Radius.circular(neckHeight / 2),
           ),
-          TweenAnimationBuilder<double>(
-            tween: Tween<double>(begin: 0, end: 1),
-            duration: AltracqMotion.spring,
-            curve: AltracqMotion.springy,
-            builder: (context, t, _) {
-              final bubbleX = dir * lerpDouble(0.25, _bubbleRest, t)!;
-              final dropletX = dir * lerpDouble(0.45, _dropletRest, t)!;
-              return Stack(
-                clipBehavior: Clip.none,
-                children: <Widget>[
-                  Align(
-                    alignment: Alignment(bubbleX, 0),
-                    child: Transform.scale(
-                      scale: lerpDouble(0.4, 1, t)!,
-                      child: _circle(AltracqMetrics.navbarBubble),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment(dropletX, 0),
-                    child: Transform.scale(
-                      scale: lerpDouble(0.2, 1, t)!,
-                      child: _circle(AltracqMetrics.navbarDroplet),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
+        );
+      path = Path.combine(ui.PathOperation.union, path, neck);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..isAntiAlias = true,
     );
   }
 
-  Widget _circle(double size) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      );
+  @override
+  bool shouldRepaint(NavBarBlobPainter oldDelegate) =>
+      oldDelegate.headCenter != headCenter ||
+      oldDelegate.tailCenter != tailCenter ||
+      oldDelegate.pillWidth != pillWidth ||
+      oldDelegate.pillHeight != pillHeight ||
+      oldDelegate.color != color;
 }

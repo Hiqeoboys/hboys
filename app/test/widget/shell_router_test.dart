@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nama_app/app/router.dart';
@@ -64,6 +65,79 @@ void main() {
     // yang diperiksa kasus ini adalah ketiadaan navigasi bawah.
     expect(find.text('SOS'), findsWidgets);
     expect(find.byType(AltracqNavBar), findsNothing);
+
+    // Kartu memuat basis data lokal sungguhan; di uji widget path_provider
+    // tidak tersedia sehingga indikator muatnya berputar terus dan
+    // pumpAndSettle tidak akan pernah selesai. Cukup beri waktu transisi rute.
+    router.go('/kartu');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(
+      router.routerDelegate.currentConfiguration.uri.path,
+      '/kartu',
+    );
+    expect(find.byType(AltracqNavBar), findsNothing);
+
+    router.go('/beranda');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('navigasi adalah satu widget yang bertahan antar tab',
+      (tester) async {
+    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    router.go('/beranda');
+    await tester.pumpAndSettle();
+    final before = tester.state(find.byType(AltracqNavBar));
+
+    await tester.tap(navLabel('Lacak'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AltracqNavBar), findsOneWidget);
+    expect(tester.state(find.byType(AltracqNavBar)), same(before));
+  });
+
+  testWidgets('isi tab baru memudar masuk 180 ms', (tester) async {
+    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    router.go('/beranda');
+    await tester.pumpAndSettle();
+    final fade = find.byKey(const ValueKey<String>('tab-fade'));
+    expect(tester.widget<FadeTransition>(fade).opacity.value, 1);
+
+    await tester.tap(navLabel('Peta'));
+    await tester.pump();
+    expect(
+      tester.widget<FadeTransition>(fade).opacity.value,
+      0,
+      reason: 'isi baru mulai dari transparan',
+    );
+
+    await tester.pump(const Duration(milliseconds: 90));
+    final mid = tester.widget<FadeTransition>(fade).opacity.value;
+    expect(mid, greaterThan(0));
+    expect(mid, lessThan(1));
+
+    await tester.pump(const Duration(milliseconds: 90));
+    expect(
+      tester.widget<FadeTransition>(fade).opacity.value,
+      moreOrLessEquals(1),
+    );
+  });
+
+  testWidgets('mengetuk tab aktif tidak menganimasikan apa pun',
+      (tester) async {
+    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    router.go('/beranda');
+    await tester.pumpAndSettle();
+    expect(tester.hasRunningAnimations, isFalse);
+
+    await tester.tap(navLabel('Beranda'));
+    await tester.pump();
+
+    expect(tester.hasRunningAnimations, isFalse);
+    expect(
+      router.routerDelegate.currentConfiguration.uri.path,
+      '/beranda',
+    );
   });
 
   testWidgets('setiap tab adalah tombol berlabel untuk pembaca layar',

@@ -75,7 +75,10 @@ class _AltracqShellState extends State<AltracqShell> {
       child: PageBackground(
         child: Scaffold(
           backgroundColor: Colors.transparent,
-          body: widget.navigationShell,
+          body: _TabFade(
+            index: widget.navigationShell.currentIndex,
+            child: widget.navigationShell,
+          ),
           bottomNavigationBar: Padding(
             padding: const EdgeInsets.fromLTRB(
               AltracqMetrics.navbarInset,
@@ -86,15 +89,69 @@ class _AltracqShellState extends State<AltracqShell> {
             child: AltracqNavBar(
               currentIndex: widget.navigationShell.currentIndex,
               items: AltracqShell.navItems,
-              onTap: (index) => widget.navigationShell.goBranch(
-                index,
-                initialLocation:
-                    index == widget.navigationShell.currentIndex,
-              ),
+              onTap: (index) {
+                // Tab yang sudah aktif tidak memicu animasi apa pun.
+                if (index == widget.navigationShell.currentIndex) return;
+                widget.navigationShell.goBranch(index);
+              },
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Memudarkan isi tab baru selama 180 ms. Tab lama hilang seketika; pemilik
+/// proyek memilih fade-in isi baru, bukan silang dua cabang.
+class _TabFade extends StatefulWidget {
+  const _TabFade({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_TabFade> createState() => _TabFadeState();
+}
+
+class _TabFadeState extends State<_TabFade>
+    with SingleTickerProviderStateMixin {
+  static const Duration _duration = Duration(milliseconds: 180);
+
+  late final AnimationController _fade = AnimationController(
+    vsync: this,
+    duration: _duration,
+    value: 1,
+  );
+  bool _reduceMotion = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = VisualEffectPolicyScope.of(context).reduceMotion;
+  }
+
+  @override
+  void didUpdateWidget(_TabFade oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.index == widget.index) return;
+    if (_reduceMotion) {
+      _fade.value = 1;
+      return;
+    }
+    _fade.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _fade.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        key: const ValueKey<String>('tab-fade'),
+        opacity: _fade,
+        child: widget.child,
+      );
 }

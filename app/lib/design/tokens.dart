@@ -212,8 +212,6 @@ class AltracqMetrics {
   static const double iconStroke = 1.8;
   static const double navbarPillWidth = 66;
   static const double navbarPillHeight = 52;
-  static const double navbarBubble = 20;
-  static const double navbarDroplet = 12;
   static const double buttonPairGap = 12;
 }
 
@@ -239,12 +237,15 @@ class AltracqGlass {
 /// Parameter gooey (metaball): bentuk dikaburkan lalu alfa dipangkas dengan
 /// alfa' = alfa * [alphaScale] + [alphaShift], sehingga tepi kabur menyatu
 /// menjadi jembatan cair.
+///
+/// [ColorFilter.matrix] bekerja pada kanal 0–255, bukan 0–1 seperti filter CSS.
+/// Nilai CSS `alpha' = alpha * 20 - 9` karena itu setara geseran -9 × 255.
 class AltracqGooey {
   const AltracqGooey._();
 
   static const double blurSigma = 6;
   static const double alphaScale = 20;
-  static const double alphaShift = -9;
+  static const double alphaShift = -2295;
 }
 
 /// Durasi dan kurva animasi.
@@ -257,5 +258,4 @@ class AltracqMotion {
   static const Duration screenFade = Duration(milliseconds: 260);
 
   static const Curve standard = Curves.easeOutCubic;
-  static const Curve springy = Curves.easeOutBack;
 }

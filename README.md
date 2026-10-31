@@ -147,11 +147,10 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 
 **Sudah dijalankan dan lulus**
 
-- Semua tes otomatis: 376 tes aplikasi, 23 tes `mesh_protocol`, 11 tes `geo_utils`. Analyzer bersih.
+- Semua tes otomatis: 385 tes aplikasi, 23 tes `mesh_protocol`, 11 tes `geo_utils`. Analyzer bersih.
 - `data_pipeline/scripts/validate_trails.py` lolos untuk data contoh dan gagal untuk data yang sengaja dirusak.
 - APK debug sudah dibangun, dipasang, dan dicoba di emulator Android: rekam jejak, titik GPS tersimpan, sesi selesai. Baris database memakai stempel waktu UTC.
-- Permukaan kaca navigasi bawah (blur latar + saturasi) terlihat benar di emulator pada mode terang dan gelap, dan otomatis jatuh ke isi pekat saat kebijakan efek mati.
-- Efek gooey (metaball) pada pill tab aktif terlihat menyatu sebagai cairan di emulator, dan hilang rapi saat kebijakan mematikan efek.
+- Permukaan kaca navigasi bawah (blur latar + saturasi) terlihat benar di emulator pada mode terang dan gelap, dan otomatis jatuh ke isi pekat saat kebijakan efek mati. Pengamatan ini berasal dari build sebelum revisi UI; kaca dan bayangannya tidak berubah pada revisi ini.
 - Splash selalu biru gelap, menunggu `TrackingController.initialize()` sungguhan dengan durasi tampil minimum 1,4 detik, terlihat di emulator.
 - Beranda menampilkan sapaan sesuai jam, baterai asli dari `PowerProfileController`, dan keadaan kosong yang jujur saat belum ada grup; grid 8 fitur dan kartu SOS terlihat di emulator pada mode terang dan gelap. **Pengamatan emulator ini berasal dari build sebelum revisi UI gelombang ini**: saat itu grid 8 fitur masih selalu terbuka dan belum ada kartu "Pendakian terakhir". Rancangan barunya dijelaskan di `docs/beranda.md`.
 - Siap Naik memakai data nyata: grup terbaru sebagai pendakian berikutnya, daftar anggota dari server, status kunci grup, izin lokasi, dan kontak darurat dari database lokal. Keadaan tamu dan mode terang/gelap terlihat di emulator.
@@ -180,7 +179,7 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 - Seluruh sisi iOS, karena belum ada perangkat atau Xcode untuk mengujinya.
 - Kartu Pendakian: foto galeri yang benar-benar terdekode dan tampil di kartu (galeri emulator kosong; jalur pemilih foto dan `precacheImage` baru diuji widget), simpan MediaStore di Android 10 ke atas pada perangkat sungguhan (emulator API 37 berhasil), keadaan kosong di perangkat (database emulator sudah berisi sesi), lembar berbagi iOS, dan TalkBack.
 - Profil sudah masuk di perangkat. Penyedia OAuth belum aktif, jadi identitas, pil penyedia, lima baris pengaturan, sheet Tampilan, kontak darurat nyata, dan Keluar baru diuji widget. Pembacaan region Mapbox nyata juga belum berjalan karena katalog paket masih kosong. TalkBack dan ukuran teks besar belum diuji.
-- Revisi UI/UX gelombang ini di perangkat. Tombol pil solid (Perubahan 1) lulus 8 tes widget, layar SOS baru (Perubahan 2: tombol tutup 44 px dengan konfirmasi batal, dua trek geser 115/112) lulus 18 tes widget SOS plus 9 tes widget `SlideToCall`, dan Beranda baru (Perubahan 3: kartu ringkasan perjalanan terakhir, kartu "Semua fitur" yang terlipat dengan gooey buka/tutup) lulus 13 + 9 + 7 tes widget, tetapi ketiganya belum dilihat di emulator. Perubahan 4–5 (indikator navbar tunggal, peta layar penuh) masih dikerjakan.
+- Revisi UI/UX gelombang ini di perangkat. Tombol pil solid (Perubahan 1) lulus 8 tes widget, layar SOS baru (Perubahan 2: tombol tutup 44 px dengan konfirmasi batal, dua trek geser 115/112) lulus 18 tes widget SOS plus 9 tes widget `SlideToCall`, Beranda baru (Perubahan 3: kartu ringkasan perjalanan terakhir, kartu "Semua fitur" yang terlipat dengan gooey buka/tutup) lulus 13 + 9 + 7 tes widget, dan navbar baru (Perubahan 4: satu navbar persisten di shell, satu blob krem 500 ms, fade isi 180 ms) lulus 10 tes widget navbar plus 7 tes widget shell/router. Keempatnya belum dilihat di emulator. Perubahan 5 (peta layar penuh) masih dikerjakan. Rincian navbar ada di `docs/navbar.md`.
 - Rasa geser trek SOS di jari: ambang 85%, overshoot saat knob membal, lensa label di dalam knob, dan kekuatan haptic sedang. Semua baru diuji lewat tes widget, belum di perangkat.
 - Build release/AOT, keystore, dan penandatanganan aplikasi.
 - Penerusan SOS ke anggota, server, atau kontak darurat, serta uji lapangan GPS di dalam hutan. Layar SOS dan penyimpanan lokalnya sudah diuji di emulator; jalur kirimnya belum ada.
