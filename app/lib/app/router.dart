@@ -7,15 +7,15 @@ import '../features/map/presentation/map_page.dart';
 import '../features/preparation/presentation/siap_naik_page.dart';
 import '../features/profile/presentation/profil_page.dart';
 import '../features/safety/presentation/sos_page.dart';
-import '../features/shell/altracq_shell.dart';
+import '../features/shell/hiqeo_shell.dart';
 import '../features/splash/presentation/splash_page.dart';
 import '../features/tracking/presentation/tracking_page.dart';
 
 /// Rute sepuluh layar.
 ///
-/// Lima di antaranya hidup di dalam [AltracqShell] (punya navigasi bawah);
+/// Lima di antaranya hidup di dalam [HiqeoShell] (punya navigasi bawah);
 /// Splash, Siap Naik, SOS, dan Kartu Pendakian berdiri sendiri.
-GoRouter buildAltracqRouter() => GoRouter(
+GoRouter buildHiqeoRouter() => GoRouter(
   initialLocation: '/splash',
   routes: <RouteBase>[
     GoRoute(
@@ -41,7 +41,7 @@ GoRouter buildAltracqRouter() => GoRouter(
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
-          AltracqShell(navigationShell: navigationShell),
+          HiqeoShell(navigationShell: navigationShell),
       branches: <StatefulShellBranch>[
         StatefulShellBranch(
           routes: <RouteBase>[
@@ -93,6 +93,6 @@ GoRouter buildAltracqRouter() => GoRouter(
   ],
 );
 
-/// Instansi tunggal untuk aplikasi. Uji memakai [buildAltracqRouter] sendiri
+/// Instansi tunggal untuk aplikasi. Uji memakai [buildHiqeoRouter] sendiri
 /// agar tidak berbagi status navigasi antar kasus.
-final GoRouter altracqRouter = buildAltracqRouter();
+final GoRouter hiqeoRouter = buildHiqeoRouter();

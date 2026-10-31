@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 /// Tipografi Plus Jakarta Sans (400/500/700/800) sesuai rancangan.
-class AltracqTypography {
-  const AltracqTypography._();
+class HiqeoTypography {
+  const HiqeoTypography._();
 
   static const String family = 'PlusJakartaSans';
 

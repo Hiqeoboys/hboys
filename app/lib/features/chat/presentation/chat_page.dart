@@ -273,7 +273,7 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final hasGroup = _groupId != null;
 
@@ -283,10 +283,10 @@ class _ChatPageState extends State<ChatPage> {
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.fromLTRB(
-              AltracqSpacing.lg,
-              AltracqSpacing.xl,
-              AltracqSpacing.lg,
-              AltracqSpacing.md,
+              HiqeoSpacing.lg,
+              HiqeoSpacing.xl,
+              HiqeoSpacing.lg,
+              HiqeoSpacing.md,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -309,7 +309,7 @@ class _ChatPageState extends State<ChatPage> {
           ),
           Container(height: 1, color: colors.hairline),
           if (hasGroup) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.md),
+            const SizedBox(height: HiqeoSpacing.md),
             _memberStrip(theme, colors),
           ],
           Expanded(child: _messageArea(theme, colors)),
@@ -333,10 +333,10 @@ class _ChatPageState extends State<ChatPage> {
     return '$count anggota · pesan lokal di perangkat ini';
   }
 
-  Widget _memberStrip(ThemeData theme, AltracqColors colors) {
+  Widget _memberStrip(ThemeData theme, HiqeoColors colors) {
     if (_membersLoading) {
       return Padding(
-        padding: AltracqSpacing.page,
+        padding: HiqeoSpacing.page,
         child: Text(
           'Memuat anggota…',
           style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
@@ -345,7 +345,7 @@ class _ChatPageState extends State<ChatPage> {
     }
     if (_membersError != null) {
       return Padding(
-        padding: AltracqSpacing.page,
+        padding: HiqeoSpacing.page,
         child: Row(
           children: <Widget>[
             Expanded(
@@ -367,7 +367,7 @@ class _ChatPageState extends State<ChatPage> {
     }
     if (_members.isEmpty) {
       return Padding(
-        padding: AltracqSpacing.page,
+        padding: HiqeoSpacing.page,
         child: Text(
           'Belum ada anggota di grup ini.',
           style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
@@ -379,16 +379,16 @@ class _ChatPageState extends State<ChatPage> {
       height: 72,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: AltracqSpacing.page,
+        padding: HiqeoSpacing.page,
         itemCount: _members.length,
-        separatorBuilder: (_, __) => const SizedBox(width: AltracqSpacing.sm),
+        separatorBuilder: (_, __) => const SizedBox(width: HiqeoSpacing.sm),
         itemBuilder: (context, index) {
           final member = _members[index];
           final isSelf = member.userId == _userId;
           return SizedBox(
             width: 148,
             child: GlassSurface(
-              borderRadius: AltracqRadius.card,
+              borderRadius: HiqeoRadius.card,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -420,7 +420,7 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _messageArea(ThemeData theme, AltracqColors colors) {
+  Widget _messageArea(ThemeData theme, HiqeoColors colors) {
     if (_groupId == null) {
       final String title;
       final String body;
@@ -469,13 +469,13 @@ class _ChatPageState extends State<ChatPage> {
     return ListView.separated(
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(
-        AltracqSpacing.lg,
-        AltracqSpacing.lg,
-        AltracqSpacing.lg,
-        AltracqSpacing.lg,
+        HiqeoSpacing.lg,
+        HiqeoSpacing.lg,
+        HiqeoSpacing.lg,
+        HiqeoSpacing.lg,
       ),
       itemCount: _messages.length,
-      separatorBuilder: (_, __) => const SizedBox(height: AltracqSpacing.md),
+      separatorBuilder: (_, __) => const SizedBox(height: HiqeoSpacing.md),
       itemBuilder: (context, index) =>
           _messageBubble(_messages[index], theme, colors),
     );
@@ -484,7 +484,7 @@ class _ChatPageState extends State<ChatPage> {
   Widget _messageBubble(
     ChatMessage message,
     ThemeData theme,
-    AltracqColors colors,
+    HiqeoColors colors,
   ) {
     final outgoing = message.isOutgoing;
     final body = switch (message.type) {
@@ -528,7 +528,7 @@ class _ChatPageState extends State<ChatPage> {
     ChatMessage message,
     bool outgoing,
     ThemeData theme,
-    AltracqColors colors,
+    HiqeoColors colors,
   ) {
     final text = utf8.decode(message.payload, allowMalformed: true);
     return Container(
@@ -550,7 +550,7 @@ class _ChatPageState extends State<ChatPage> {
     ChatMessage message,
     bool outgoing,
     ThemeData theme,
-    AltracqColors colors,
+    HiqeoColors colors,
   ) {
     LocationPayload? payload;
     try {
@@ -587,11 +587,11 @@ class _ChatPageState extends State<ChatPage> {
               color: outgoing
                   ? colors.onPrimary.withValues(alpha: 0.12)
                   : colors.secondary.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(AltracqRadius.floating),
+              borderRadius: BorderRadius.circular(HiqeoRadius.floating),
             ),
             child: Center(
-              child: AltracqIcon(
-                AltracqIcons.pin,
+              child: HiqeoIcon(
+                HiqeoIcons.pin,
                 size: 28,
                 color: textColor,
               ),
@@ -622,7 +622,7 @@ class _ChatPageState extends State<ChatPage> {
     String text,
     bool outgoing,
     ThemeData theme,
-    AltracqColors colors,
+    HiqeoColors colors,
   ) {
     return Container(
       constraints: BoxConstraints(
@@ -639,43 +639,43 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  BoxDecoration _bubbleDecoration(bool outgoing, AltracqColors colors) {
+  BoxDecoration _bubbleDecoration(bool outgoing, HiqeoColors colors) {
     return BoxDecoration(
       color: outgoing ? colors.primary : colors.surface,
       border: outgoing ? null : Border.all(color: colors.hairline),
       borderRadius: BorderRadius.only(
-        topLeft: const Radius.circular(AltracqRadius.card),
-        topRight: const Radius.circular(AltracqRadius.card),
-        bottomLeft: Radius.circular(outgoing ? AltracqRadius.card : 4),
-        bottomRight: Radius.circular(outgoing ? 4 : AltracqRadius.card),
+        topLeft: const Radius.circular(HiqeoRadius.card),
+        topRight: const Radius.circular(HiqeoRadius.card),
+        bottomLeft: Radius.circular(outgoing ? HiqeoRadius.card : 4),
+        bottomRight: Radius.circular(outgoing ? 4 : HiqeoRadius.card),
       ),
     );
   }
 
-  Widget _composer(ThemeData theme, AltracqColors colors) {
+  Widget _composer(ThemeData theme, HiqeoColors colors) {
     final canSend = _input.text.trim().isNotEmpty && !_sending && _userId != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AltracqSpacing.lg,
-        AltracqSpacing.sm,
-        AltracqSpacing.lg,
-        AltracqSpacing.md,
+        HiqeoSpacing.lg,
+        HiqeoSpacing.sm,
+        HiqeoSpacing.lg,
+        HiqeoSpacing.md,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
           GlassSurface(
-            borderRadius: AltracqRadius.pill,
+            borderRadius: HiqeoRadius.pill,
             child: IconButton(
               tooltip: 'Pesan suara belum tersedia',
               onPressed: null,
-              icon: AltracqIcon(AltracqIcons.mic, size: 22),
+              icon: HiqeoIcon(HiqeoIcons.mic, size: 22),
             ),
           ),
-          const SizedBox(width: AltracqSpacing.sm),
+          const SizedBox(width: HiqeoSpacing.sm),
           Expanded(
             child: GlassSurface(
-              borderRadius: AltracqRadius.pill,
+              borderRadius: HiqeoRadius.pill,
               padding: const EdgeInsets.symmetric(horizontal: 18),
               child: TextField(
                 key: const ValueKey('chat-input'),
@@ -697,7 +697,7 @@ class _ChatPageState extends State<ChatPage> {
               ),
             ),
           ),
-          const SizedBox(width: AltracqSpacing.sm),
+          const SizedBox(width: HiqeoSpacing.sm),
           Semantics(
             label: 'Kirim pesan',
             button: true,
@@ -715,8 +715,8 @@ class _ChatPageState extends State<ChatPage> {
                   customBorder: const CircleBorder(),
                   onTap: canSend ? () => unawaited(_send()) : null,
                   child: Center(
-                    child: AltracqIcon(
-                      AltracqIcons.send,
+                    child: HiqeoIcon(
+                      HiqeoIcons.send,
                       size: 22,
                       color: canSend ? colors.onPrimary : colors.textSecondary,
                     ),
@@ -739,11 +739,11 @@ class _EmptyChat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(AltracqSpacing.xl),
+        padding: const EdgeInsets.all(HiqeoSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
@@ -752,7 +752,7 @@ class _EmptyChat extends StatelessWidget {
               textAlign: TextAlign.center,
               style: theme.textTheme.titleMedium,
             ),
-            const SizedBox(height: AltracqSpacing.sm),
+            const SizedBox(height: HiqeoSpacing.sm),
             Text(
               body,
               textAlign: TextAlign.center,

@@ -48,7 +48,7 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    /// Menyimpan PNG ke Pictures/Altracq lewat MediaStore. Hanya didukung
+    /// Menyimpan PNG ke Pictures/Hiqeo lewat MediaStore. Hanya didukung
     /// mulai Android Q; di bawah itu mengembalikan null agar aplikasi jujur
     /// menawarkan jalur Bagikan.
     private fun saveImage(name: String, bytes: ByteArray): String? {
@@ -59,7 +59,7 @@ class MainActivity : FlutterActivity() {
             put(MediaStore.Images.Media.MIME_TYPE, "image/png")
             put(
                 MediaStore.Images.Media.RELATIVE_PATH,
-                "${Environment.DIRECTORY_PICTURES}/Altracq",
+                "${Environment.DIRECTORY_PICTURES}/Hiqeo",
             )
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }

@@ -167,7 +167,7 @@ MapTrackSnapshot _snapshot(List<TrackPoint> points) => MapTrackSnapshot(
     );
 
 Widget _app(MapPage page, {ThemeData? theme}) =>
-    MaterialApp(theme: theme ?? altracqLightTheme, home: page);
+    MaterialApp(theme: theme ?? hiqeoLightTheme, home: page);
 
 void _setPhone(WidgetTester tester) {
   tester.view.physicalSize = const Size(390, 844);
@@ -213,7 +213,7 @@ void main() {
         offlineService: _FakeOfflineService(),
         trackSource: _StaticTrackSource(<MapTrackSnapshot>[_snapshot(const [])]),
       ),
-      theme: altracqDarkTheme,
+      theme: hiqeoDarkTheme,
     ));
     await tester.pumpAndSettle();
 
@@ -442,7 +442,7 @@ void main() {
   });
 
   test('panel dan atribusi peta dinaikkan di atas navbar mengambang', () {
-    expect(AltracqMetrics.floatingBottomInset(0), 80);
+    expect(HiqeoMetrics.floatingBottomInset(0), 80);
     expect(mapOrnamentBottomMargin(0), 88);
     expect(mapSheetBottomOffset(0), 124);
 
@@ -474,7 +474,7 @@ void main() {
           )
           .first,
     );
-    expect(root.color, AltracqColors.light.background);
+    expect(root.color, HiqeoColors.light.background);
 
     final map = tester.getRect(find.byType(MapPage));
     expect(map.top, 0);
@@ -489,7 +489,7 @@ void main() {
           )
           .first,
     );
-    expect(card.top, greaterThanOrEqualTo(24 + AltracqSpacing.lg));
+    expect(card.top, greaterThanOrEqualTo(24 + HiqeoSpacing.lg));
 
     // Panel panduan melayang di atas navbar, menyisakan ruang atribusi.
     final panel = tester.getRect(

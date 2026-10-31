@@ -7,8 +7,8 @@ import 'package:nama_app/design/typography.dart';
 import '../support/contrast.dart';
 
 void main() {
-  const light = AltracqColors.light;
-  const dark = AltracqColors.dark;
+  const light = HiqeoColors.light;
+  const dark = HiqeoColors.dark;
 
   group('kontras token memenuhi 4,5:1 untuk teks', () {
     test('mode terang', () {
@@ -40,19 +40,19 @@ void main() {
   });
 
   test('tema membawa extension dan bobot tipografi rancangan', () {
-    final theme = altracqLightTheme;
-    expect(theme.extension<AltracqColors>(), light);
-    expect(AltracqTypography.textTheme.displayLarge?.fontWeight, FontWeight.w800);
-    expect(AltracqTypography.textTheme.labelLarge?.fontWeight, FontWeight.w700);
-    expect(altracqDarkTheme.brightness, Brightness.dark);
-    expect(altracqDarkTheme.scaffoldBackgroundColor, const Color(0xFF313851));
+    final theme = hiqeoLightTheme;
+    expect(theme.extension<HiqeoColors>(), light);
+    expect(HiqeoTypography.textTheme.displayLarge?.fontWeight, FontWeight.w800);
+    expect(HiqeoTypography.textTheme.labelLarge?.fontWeight, FontWeight.w700);
+    expect(hiqeoDarkTheme.brightness, Brightness.dark);
+    expect(hiqeoDarkTheme.scaffoldBackgroundColor, const Color(0xFF313851));
   });
 
   testWidgets('teks memakai Plus Jakarta Sans dari tema', (tester) async {
     late String? family;
     await tester.pumpWidget(
       MaterialApp(
-        theme: altracqLightTheme,
+        theme: hiqeoLightTheme,
         home: Scaffold(
           body: Builder(
             builder: (context) {
@@ -63,17 +63,17 @@ void main() {
         ),
       ),
     );
-    expect(family, AltracqTypography.family);
+    expect(family, HiqeoTypography.family);
   });
 
-  testWidgets('AltracqColors.of membaca token dari tema aktif', (tester) async {
-    late AltracqColors resolved;
+  testWidgets('HiqeoColors.of membaca token dari tema aktif', (tester) async {
+    late HiqeoColors resolved;
     await tester.pumpWidget(
       MaterialApp(
-        theme: altracqDarkTheme,
+        theme: hiqeoDarkTheme,
         home: Builder(
           builder: (context) {
-            resolved = AltracqColors.of(context);
+            resolved = HiqeoColors.of(context);
             return const SizedBox();
           },
         ),

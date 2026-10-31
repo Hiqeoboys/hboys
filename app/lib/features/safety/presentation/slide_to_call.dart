@@ -176,7 +176,7 @@ class _SlideToCallState extends State<SlideToCall>
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final labelStyle = theme.textTheme.bodyMedium?.copyWith(
       color: colors.textPrimary,
@@ -288,11 +288,11 @@ class _Knob extends StatelessWidget {
   });
 
   /// Blur knob lebih halus daripada blur kartu karena luasnya kecil.
-  static const double _blurSigma = AltracqGlass.blurSigma / 2;
+  static const double _blurSigma = HiqeoGlass.blurSigma / 2;
 
   final String label;
   final TextStyle? labelStyle;
-  final AltracqColors colors;
+  final HiqeoColors colors;
   final bool blur;
   final bool lens;
   final double knobLeft;
@@ -333,8 +333,8 @@ class _Knob extends StatelessWidget {
                 ),
               ),
             Center(
-              child: AltracqIcon(
-                AltracqIcons.phone,
+              child: HiqeoIcon(
+                HiqeoIcons.phone,
                 size: 22,
                 color: colors.textPrimary,
               ),
@@ -351,7 +351,7 @@ class _TrackPainter extends CustomPainter {
 
   static const double _innerShadowBlur = 6;
 
-  final AltracqColors colors;
+  final HiqeoColors colors;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -363,7 +363,7 @@ class _TrackPainter extends CustomPainter {
       path,
       Paint()
         ..color =
-            AltracqColors.light.secondary.withValues(alpha: 0.30),
+            HiqeoColors.light.secondary.withValues(alpha: 0.30),
     );
 
     canvas.save();
@@ -386,7 +386,7 @@ class _TrackPainter extends CustomPainter {
       path,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = AltracqGlass.borderWidth
+        ..strokeWidth = HiqeoGlass.borderWidth
         ..color = colors.glassBorder,
     );
   }
@@ -399,7 +399,7 @@ class _TrackPainter extends CustomPainter {
 class _KnobPainter extends CustomPainter {
   const _KnobPainter({required this.colors});
 
-  final AltracqColors colors;
+  final HiqeoColors colors;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -423,10 +423,10 @@ class _KnobPainter extends CustomPainter {
 
     canvas.drawCircle(
       center,
-      radius - AltracqGlass.borderWidth / 2,
+      radius - HiqeoGlass.borderWidth / 2,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = AltracqGlass.borderWidth
+        ..strokeWidth = HiqeoGlass.borderWidth
         ..shader = ui.Gradient.linear(
           rect.topCenter,
           rect.bottomCenter,
@@ -455,7 +455,7 @@ class _LensPainter extends CustomPainter {
 
   final String text;
   final TextStyle? style;
-  final AltracqColors colors;
+  final HiqeoColors colors;
   final double knobLeft;
   final double trackWidth;
 

@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../design/glass/glass_surface.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
-import '../../design/widgets/altracq_button.dart';
+import '../../design/widgets/hiqeo_button.dart';
 import '../../design/widgets/line_icons.dart';
 import '../../infrastructure/database/app_database.dart';
 import '../../infrastructure/database/database_connection.dart';
@@ -196,49 +196,49 @@ class _BerandaPageState extends State<BerandaPage> {
 
   List<FeatureEntry> _features(BuildContext context) => <FeatureEntry>[
         FeatureEntry(
-          icon: AltracqIcons.activity,
+          icon: HiqeoIcons.activity,
           title: 'Pelacakan',
           subtitle: 'Jarak, pace, elevasi',
           onTap: () => context.go('/lacak'),
         ),
         FeatureEntry(
-          icon: AltracqIcons.map,
+          icon: HiqeoIcons.map,
           title: 'Peta offline',
           subtitle: 'Topografi per gunung',
           onTap: () => context.go('/peta'),
         ),
         FeatureEntry(
-          icon: AltracqIcons.trail,
+          icon: HiqeoIcons.trail,
           title: 'Jalur terverifikasi',
           subtitle: 'Pos, air, area bahaya',
           onTap: () => context.go('/peta'),
         ),
         FeatureEntry(
-          icon: AltracqIcons.compass,
+          icon: HiqeoIcons.compass,
           title: 'Kompas',
           subtitle: 'Bearing dan jarak',
           onTap: () => context.go('/peta'),
         ),
         FeatureEntry(
-          icon: AltracqIcons.group,
+          icon: HiqeoIcons.group,
           title: 'Grup chat',
           subtitle: 'Teks, suara, gambar',
           onTap: () => context.go('/grup'),
         ),
         FeatureEntry(
-          icon: AltracqIcons.pin,
+          icon: HiqeoIcons.pin,
           title: 'Lokasi terakhir',
           subtitle: 'Posisi tiap anggota',
           onTap: () => context.go('/grup'),
         ),
         FeatureEntry(
-          icon: AltracqIcons.image,
+          icon: HiqeoIcons.image,
           title: 'Kartu pendakian',
           subtitle: 'Foto dan ringkasan',
           onTap: () => context.push('/kartu'),
         ),
         FeatureEntry(
-          icon: AltracqIcons.warning,
+          icon: HiqeoIcons.warning,
           title: 'SOS',
           subtitle: 'Tekan-tahan 3 detik',
           onTap: () => context.push('/sos'),
@@ -248,7 +248,7 @@ class _BerandaPageState extends State<BerandaPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final sessionId = _summarySession?.id;
@@ -263,10 +263,10 @@ class _BerandaPageState extends State<BerandaPage> {
           final profile = _account.profile;
           return ListView(
             padding: EdgeInsets.fromLTRB(
-              AltracqSpacing.lg,
-              AltracqSpacing.xl,
-              AltracqSpacing.lg,
-              AltracqSpacing.xl + bottomInset,
+              HiqeoSpacing.lg,
+              HiqeoSpacing.xl,
+              HiqeoSpacing.lg,
+              HiqeoSpacing.xl + bottomInset,
             ),
             children: <Widget>[
               Row(
@@ -281,7 +281,7 @@ class _BerandaPageState extends State<BerandaPage> {
                           style: theme.textTheme.bodyMedium
                               ?.copyWith(color: colors.textSecondary),
                         ),
-                        const SizedBox(height: AltracqSpacing.xs),
+                        const SizedBox(height: HiqeoSpacing.xs),
                         Text(
                           'Halo, ${profile?.username ?? 'Pendaki'}',
                           maxLines: 1,
@@ -291,11 +291,11 @@ class _BerandaPageState extends State<BerandaPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: AltracqSpacing.md),
+                  const SizedBox(width: HiqeoSpacing.md),
                   _BatteryPill(controller: _power),
                 ],
               ),
-              const SizedBox(height: AltracqSpacing.xl),
+              const SizedBox(height: HiqeoSpacing.xl),
               _HeroCard(
                 title: next?.group.mountain ?? next?.group.name ?? 'Belum ada pendakian',
                 meta: next == null
@@ -303,7 +303,7 @@ class _BerandaPageState extends State<BerandaPage> {
                     : nextHikeMeta(keyStatus),
                 onPrepare: () => context.push('/siap-naik'),
               ),
-              const SizedBox(height: AltracqSpacing.xl),
+              const SizedBox(height: HiqeoSpacing.xl),
               LastTripSummaryCard(
                 data: _summary,
                 mountain: _mountainOf(_summarySession),
@@ -314,7 +314,7 @@ class _BerandaPageState extends State<BerandaPage> {
                           '/kartu?sesi=${Uri.encodeQueryComponent(sessionId)}',
                         ),
               ),
-              const SizedBox(height: AltracqSpacing.xl),
+              const SizedBox(height: HiqeoSpacing.xl),
               ExpandableFeaturesCard(features: _features(context)),
             ],
           );
@@ -336,10 +336,10 @@ class _BatteryPill extends StatelessWidget {
         ? 'Baterai tidak terbaca'
         : 'Baterai $level% · ${_profileLabel(controller.profile)}';
     return GlassSurface(
-      borderRadius: AltracqRadius.pill,
+      borderRadius: HiqeoRadius.pill,
       padding: const EdgeInsets.symmetric(
-        horizontal: AltracqSpacing.lg,
-        vertical: AltracqSpacing.sm,
+        horizontal: HiqeoSpacing.lg,
+        vertical: HiqeoSpacing.sm,
       ),
       child: Text(
         label,
@@ -368,23 +368,23 @@ class _HeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final muted = colors.onPrimary.withValues(alpha: 0.74);
     return Container(
-      padding: const EdgeInsets.all(AltracqSpacing.xl),
+      padding: const EdgeInsets.all(HiqeoSpacing.xl),
       decoration: BoxDecoration(
         color: colors.primary,
-        borderRadius: BorderRadius.circular(AltracqRadius.hero),
+        borderRadius: BorderRadius.circular(HiqeoRadius.hero),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
             'PENDAKIAN BERIKUTNYA',
-            style: AltracqTypography.overline(muted),
+            style: HiqeoTypography.overline(muted),
           ),
-          const SizedBox(height: AltracqSpacing.sm),
+          const SizedBox(height: HiqeoSpacing.sm),
           Text(
             title,
             maxLines: 2,
@@ -392,15 +392,15 @@ class _HeroCard extends StatelessWidget {
             style: theme.textTheme.displayMedium
                 ?.copyWith(color: colors.onPrimary),
           ),
-          const SizedBox(height: AltracqSpacing.xs),
+          const SizedBox(height: HiqeoSpacing.xs),
           Text(
             meta,
             style: theme.textTheme.bodyMedium?.copyWith(color: muted),
           ),
-          const SizedBox(height: AltracqSpacing.xl),
-          AltracqButton(
+          const SizedBox(height: HiqeoSpacing.xl),
+          HiqeoButton(
             label: 'Siapkan pendakian',
-            variant: AltracqButtonVariant.inverse,
+            variant: HiqeoButtonVariant.inverse,
             onPressed: onPrepare,
           ),
         ],

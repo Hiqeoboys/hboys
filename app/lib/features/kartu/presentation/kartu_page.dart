@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/brand/app_brand.dart';
 import '../../../design/tokens.dart';
 import '../../../design/widgets/header_icon_button.dart';
 import '../../../design/widgets/line_icons.dart';
@@ -168,7 +169,7 @@ class _KartuPageState extends State<KartuPage> {
         '${local.day.toString().padLeft(2, '0')}-'
         '${local.hour.toString().padLeft(2, '0')}'
         '${local.minute.toString().padLeft(2, '0')}';
-    return 'altracq-kartu-$stamp.png';
+    return 'hiqeo-kartu-$stamp.png';
   }
 
   Future<Uint8List?> _capture() async {
@@ -189,7 +190,7 @@ class _KartuPageState extends State<KartuPage> {
     setState(() => _busy = false);
     _showMessage(
       saved
-          ? 'PNG tersimpan di Pictures/Altracq.'
+          ? 'PNG tersimpan di ${AppBrand.kartuGalleryFolder}.'
           : (bytes == null
               ? 'PNG gagal dibuat. Coba lagi.'
               : 'PNG gagal disimpan. Coba Bagikan.'),
@@ -227,7 +228,7 @@ class _KartuPageState extends State<KartuPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final enabled = !_loading && _data != null && _loadError == null;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
@@ -245,7 +246,7 @@ class _KartuPageState extends State<KartuPage> {
                     children: <Widget>[
                       HeaderIconButton(
                         key: const ValueKey('kartu-close'),
-                        icon: AltracqIcons.close,
+                        icon: HiqeoIcons.close,
                         label: 'Tutup kartu',
                         onTap: () => Navigator.of(context).maybePop(),
                       ),
@@ -268,7 +269,7 @@ class _KartuPageState extends State<KartuPage> {
                           key: _boundaryKey,
                           child: ClipRRect(
                             borderRadius:
-                                BorderRadius.circular(AltracqRadius.hero),
+                                BorderRadius.circular(HiqeoRadius.hero),
                             child: _preview(theme, colors),
                           ),
                         ),
@@ -286,7 +287,7 @@ class _KartuPageState extends State<KartuPage> {
     );
   }
 
-  Widget _preview(ThemeData theme, AltracqColors colors) {
+  Widget _preview(ThemeData theme, HiqeoColors colors) {
     if (_loading) {
       return const ColoredBox(
         color: Color(0xFF4A5371),
@@ -319,16 +320,16 @@ class _KartuPageState extends State<KartuPage> {
     return DecoratedBox(
       decoration: const BoxDecoration(gradient: KartuCard.backgroundGradient),
       child: Padding(
-        padding: const EdgeInsets.all(AltracqSpacing.xl),
+        padding: const EdgeInsets.all(HiqeoSpacing.xl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            AltracqIcon(
-              _loadError == null ? AltracqIcons.mountain : AltracqIcons.warning,
+            HiqeoIcon(
+              _loadError == null ? HiqeoIcons.mountain : HiqeoIcons.warning,
               size: 44,
               color: const Color(0xFFF6F3ED),
             ),
-            const SizedBox(height: AltracqSpacing.lg),
+            const SizedBox(height: HiqeoSpacing.lg),
             Text(
               _loadError != null
                   ? 'Kartu belum bisa dibuat'
@@ -336,7 +337,7 @@ class _KartuPageState extends State<KartuPage> {
               textAlign: TextAlign.center,
               style: ink,
             ),
-            const SizedBox(height: AltracqSpacing.sm),
+            const SizedBox(height: HiqeoSpacing.sm),
             Text(
               _loadError ??
                   'Selesaikan pendakian di layar Lacak, lalu kembali ke sini '
@@ -345,7 +346,7 @@ class _KartuPageState extends State<KartuPage> {
               style: muted,
             ),
             if (_loadError != null) ...<Widget>[
-              const SizedBox(height: AltracqSpacing.lg),
+              const SizedBox(height: HiqeoSpacing.lg),
               _HeaderPill(
                 label: 'Coba lagi',
                 onTap: () => unawaited(_load()),
@@ -357,13 +358,13 @@ class _KartuPageState extends State<KartuPage> {
     );
   }
 
-  Widget _panel(ThemeData theme, AltracqColors colors, bool enabled) {
+  Widget _panel(ThemeData theme, HiqeoColors colors, bool enabled) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: BorderRadius.circular(AltracqRadius.hero),
+        borderRadius: BorderRadius.circular(HiqeoRadius.hero),
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: colors.glassShadow,
@@ -432,7 +433,7 @@ class _KartuPageState extends State<KartuPage> {
                   onTap: enabled && !_busy ? () => unawaited(_savePng()) : null,
                 ),
               ),
-              const SizedBox(width: AltracqSpacing.md),
+              const SizedBox(width: HiqeoSpacing.md),
               Expanded(
                 child: _PanelButton(
                   key: const ValueKey('kartu-share'),
@@ -474,7 +475,7 @@ class _HeaderPill extends StatelessWidget {
             onTap: onTap,
             child: Padding(
               padding: const EdgeInsets.symmetric(
-                horizontal: AltracqSpacing.xl,
+                horizontal: HiqeoSpacing.xl,
               ),
               child: Center(
                 child: Text(
@@ -507,7 +508,7 @@ class _StylePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final enabled = onTap != null;
     return Semantics(

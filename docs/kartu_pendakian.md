@@ -39,9 +39,9 @@ apa yang sudah dijalankan, dan apa yang belum diuji.
   teks tetap terbaca. Foto yang gagal didekode ditolak dan kartu tetap memakai
   gradasi. Kartu tidak pernah menyimpan foto ke database.
 - `Simpan PNG` menangkap kartu lewat `RepaintBoundary` pada lebar 1080 px
-  (4:5, jadi 1080×1350), lalu menyimpannya ke `Pictures/Altracq` lewat
+  (4:5, jadi 1080×1350), lalu menyimpannya ke `Pictures/Hiqeo` lewat
   MediaStore Android. Sudut kartu transparan karena `RepaintBoundary` berada di
-  luar `ClipRRect`. Pesan sukses: `PNG tersimpan di Pictures/Altracq.`
+  luar `ClipRRect`. Pesan sukses: `PNG tersimpan di Pictures/Hiqeo.`
 - `Bagikan` menangkap PNG yang sama, menulis berkas sementara, lalu membuka
   lembar berbagi Android. Lembar berbagi tidak melaporkan apakah pengguna
   benar-benar mengirim, jadi aplikasi tidak pernah menampilkan klaim
@@ -50,7 +50,7 @@ apa yang sudah dijalankan, dan apa yang belum diuji.
 - Penyimpanan MediaStore hanya tersedia di Android 10 (API 29) ke atas. Di
   perangkat lebih lama, `Simpan PNG` gagal dengan pesan jujur dan pengguna
   diarahkan memakai **Bagikan**.
-- Nama berkas: `altracq-kartu-yyyyMMdd-HHmm.png` memakai waktu lokal mulai
+- Nama berkas: `hiqeo-kartu-yyyyMMdd-HHmm.png` memakai waktu lokal mulai
   sesi.
 
 ## 2. Yang sengaja tidak dilakukan
@@ -105,7 +105,7 @@ apa yang sudah dijalankan, dan apa yang belum diuji.
   - ketiga gaya dapat dipilih;
   - sakelar menyembunyikan penanda awal/akhir di gaya Profil dan Peta;
   - simpan sukses memakai nama berkas tepat
-    `altracq-kartu-20261030-0712.png`;
+    `hiqeo-kartu-20261030-0712.png`;
   - kegagalan simpan, kegagalan tangkap, dan berbagi tidak tersedia memberi
     pesan jujur;
   - berbagi sukses tidak menampilkan SnackBar dan tidak pernah memuat kata
@@ -120,8 +120,8 @@ apa yang sudah dijalankan, dan apa yang belum diuji.
   - Beranda → Kartu membuka layar dengan kartu sesi terakhir;
   - gaya Profil, Tengah, dan Peta tampil sesuai tata letak;
   - sakelar menyembunyikan titik awal dan akhir benar-benar menghapus penanda;
-  - **Simpan PNG** menampilkan `PNG tersimpan di Pictures/Altracq.` dan baris
-    MediaStore mencatat `relative_path = Pictures/Altracq/`, lebar 1080,
+  - **Simpan PNG** menampilkan `PNG tersimpan di Pictures/Hiqeo.` dan baris
+    MediaStore mencatat `relative_path = Pictures/Hiqeo/`, lebar 1080,
     tinggi 1350;
   - berkas yang ditarik dari perangkat terdekode sebagai PNG 8-bit RGBA
     (color type 6) dengan sudut alfa 0 dan tengah `(89, 99, 129, 255)`, jadi
@@ -159,4 +159,4 @@ flutter test test/widget/kartu_page_test.dart
 
 Untuk mencoba di perangkat, selesaikan satu pendakian di layar Lacak, buka
 Beranda → Kartu, pilih gaya, coba sakelar, lalu **Simpan PNG**. Berkas muncul
-di `Pictures/Altracq` pada galeri.
+di `Pictures/Hiqeo` pada galeri.

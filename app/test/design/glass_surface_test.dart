@@ -6,10 +6,10 @@ import 'package:nama_app/design/app_theme.dart';
 import 'package:nama_app/design/glass/glass_surface.dart';
 import 'package:nama_app/design/motion/visual_effect_policy.dart';
 import 'package:nama_app/design/tokens.dart';
-import 'package:nama_app/design/widgets/altracq_nav_bar.dart';
+import 'package:nama_app/design/widgets/hiqeo_nav_bar.dart';
 import 'package:nama_app/infrastructure/power/power_profile_manager.dart';
 
-import '../support/altracq_app_harness.dart';
+import '../support/hiqeo_app_harness.dart';
 
 Widget glassApp({
   VisualEffectPolicy? policy,
@@ -21,7 +21,7 @@ Widget glassApp({
     child: child ?? const Text('Isi kaca'),
   );
   return MaterialApp(
-    theme: altracqLightTheme,
+    theme: hiqeoLightTheme,
     home: Scaffold(
       body: Center(
         child: policy == null
@@ -61,7 +61,7 @@ void main() {
     expect(find.byType(ColorFiltered), findsOneWidget);
     final blur = tester.widget<BackdropFilter>(find.byType(BackdropFilter));
     expect(blur.filter.toString(), contains('18'));
-    expect(backdropColor(tester), AltracqColors.light.glassFill);
+    expect(backdropColor(tester), HiqeoColors.light.glassFill);
   });
 
   testWidgets('tanpa scope, kaca dianggap perangkat mampu', (tester) async {
@@ -81,7 +81,7 @@ void main() {
 
       expect(find.byType(BackdropFilter), findsNothing, reason: '$power');
       expect(find.byType(ColorFiltered), findsNothing, reason: '$power');
-      expect(backdropColor(tester), AltracqColors.light.glassFillFallback);
+      expect(backdropColor(tester), HiqeoColors.light.glassFillFallback);
       expect(find.text('Isi kaca'), findsOneWidget, reason: '$power');
     }
   });
@@ -92,7 +92,7 @@ void main() {
     );
 
     expect(find.byType(BackdropFilter), findsNothing);
-    expect(backdropColor(tester), AltracqColors.light.glassFillFallback);
+    expect(backdropColor(tester), HiqeoColors.light.glassFillFallback);
     expect(find.text('Isi kaca'), findsOneWidget);
   });
 
@@ -122,7 +122,7 @@ void main() {
 
     expect(
       backdropColor(tester),
-      Color.alphaBlend(tint, AltracqColors.light.glassFill),
+      Color.alphaBlend(tint, HiqeoColors.light.glassFill),
     );
     expect(find.byType(BackdropFilter), findsOneWidget);
   });
@@ -139,7 +139,7 @@ void main() {
     expect(find.byType(BackdropFilter), findsNothing);
     expect(
       backdropColor(tester),
-      Color.alphaBlend(tint, AltracqColors.light.glassFillFallback),
+      Color.alphaBlend(tint, HiqeoColors.light.glassFillFallback),
     );
   });
 
@@ -157,19 +157,19 @@ void main() {
 
   testWidgets('navigasi bawah memakai permukaan kaca setinggi 64 px',
       (tester) async {
-    final GoRouter router = buildAltracqRouter();
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    final GoRouter router = buildHiqeoRouter();
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     router.go('/beranda');
     await tester.pumpAndSettle();
 
     final glass = find.descendant(
-      of: find.byType(AltracqNavBar),
+      of: find.byType(HiqeoNavBar),
       matching: find.byType(GlassSurface),
     );
     expect(glass, findsOneWidget);
     expect(
-      tester.getSize(find.byType(AltracqNavBar)).height,
-      AltracqMetrics.navbarHeight,
+      tester.getSize(find.byType(HiqeoNavBar)).height,
+      HiqeoMetrics.navbarHeight,
     );
   });
 }

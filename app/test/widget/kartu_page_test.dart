@@ -184,7 +184,7 @@ Future<_Harness> _pump(
 
   await tester.pumpWidget(
     MaterialApp(
-      theme: altracqLightTheme,
+      theme: hiqeoLightTheme,
       home: KartuPage(
         repository: repository,
         exporter: exporter,
@@ -239,7 +239,7 @@ void main() {
     expect(find.text('12,8 km'), findsNWidgets(2));
     expect(find.text('+1.140 m'), findsOneWidget);
     expect(find.text('07:12'), findsOneWidget);
-    expect(find.text('ALTRACQ · 30 OKT 2026'), findsOneWidget);
+    expect(find.text('HIQEO · 30 OKT 2026'), findsOneWidget);
     expect(find.byKey(const ValueKey('kartu-profile')), findsOneWidget);
     expect(find.byKey(const ValueKey('kartu-start-marker')), findsOneWidget);
     expect(find.byKey(const ValueKey('kartu-end-marker')), findsOneWidget);
@@ -311,9 +311,9 @@ void main() {
 
     expect(harness.exporter.captures, 1);
     expect(harness.exporter.savedNames, <String>[
-      'altracq-kartu-20261030-0712.png',
+      'hiqeo-kartu-20261030-0712.png',
     ]);
-    expect(find.text('PNG tersimpan di Pictures/Altracq.'), findsOneWidget);
+    expect(find.text('PNG tersimpan di Pictures/Hiqeo.'), findsOneWidget);
   });
 
   testWidgets('simpan gagal memakai pesan jujur tanpa klaim tersimpan',
@@ -349,7 +349,7 @@ void main() {
 
     expect(harness.exporter.captures, 1);
     expect(harness.exporter.sharedNames, <String>[
-      'altracq-kartu-20261030-0712.png',
+      'hiqeo-kartu-20261030-0712.png',
     ]);
     expect(find.byType(SnackBar), findsNothing);
     expect(find.textContaining('terkirim'), findsNothing);

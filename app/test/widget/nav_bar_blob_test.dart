@@ -6,8 +6,8 @@ import 'package:nama_app/design/app_theme.dart';
 import 'package:nama_app/design/gooey/gooey_layer.dart';
 import 'package:nama_app/design/motion/visual_effect_policy.dart';
 import 'package:nama_app/design/tokens.dart';
-import 'package:nama_app/design/widgets/altracq_nav_bar.dart';
-import 'package:nama_app/features/shell/altracq_shell.dart';
+import 'package:nama_app/design/widgets/hiqeo_nav_bar.dart';
+import 'package:nama_app/features/shell/hiqeo_shell.dart';
 import 'package:nama_app/infrastructure/power/power_profile_manager.dart';
 
 const ValueKey<String> blobKey = ValueKey<String>('navbar-blob');
@@ -38,11 +38,11 @@ class _Harness extends StatefulWidget {
   State<_Harness> createState() => _HarnessState();
 }
 
-/// Satu instance tema untuk seluruh uji. Getter [altracqLightTheme] membuat
+/// Satu instance tema untuk seluruh uji. Getter [hiqeoLightTheme] membuat
 /// ThemeData baru tiap panggilan; bila MaterialApp dibangun ulang dengan
 /// instance baru, AnimatedTheme bawaan MaterialApp ikut beranimasi dan
 /// mengaburkan pemeriksaan "tidak ada animasi".
-final ThemeData _lightTheme = altracqLightTheme;
+final ThemeData _lightTheme = hiqeoLightTheme;
 
 class _HarnessState extends State<_Harness> {
   late int _index = widget.initialIndex;
@@ -57,9 +57,9 @@ class _HarnessState extends State<_Harness> {
           padding: const EdgeInsets.all(16),
           child: VisualEffectPolicyScope(
             policy: widget.policy,
-            child: AltracqNavBar(
+            child: HiqeoNavBar(
               currentIndex: _index,
-              items: AltracqShell.navItems,
+              items: HiqeoShell.navItems,
               onTap: (index) {
                 widget.onTap?.call(index);
                 setState(() => _index = index);
@@ -93,8 +93,8 @@ NavBarBlobPainter blobPainter(WidgetTester tester) =>
         as NavBarBlobPainter;
 
 double cellWidthOf(WidgetTester tester) =>
-    tester.getSize(find.byType(AltracqNavBar)).width /
-    AltracqShell.navItems.length;
+    tester.getSize(find.byType(HiqeoNavBar)).width /
+    HiqeoShell.navItems.length;
 
 void main() {
   testWidgets('saat diam blob berupa satu pill tajam tanpa filter',
@@ -107,7 +107,7 @@ void main() {
     final painter = blobPainter(tester);
     expect(painter.headCenter, moreOrLessEquals(painter.tailCenter));
     expect(painter.headCenter, moreOrLessEquals(cellWidthOf(tester) / 2));
-    expect(painter.color, AltracqColors.light.primary);
+    expect(painter.color, HiqeoColors.light.primary);
   });
 
   testWidgets('selama bergerak hanya ada satu bentuk cair', (tester) async {

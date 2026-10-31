@@ -30,49 +30,49 @@ const VisualEffectPolicy _saverPolicy = VisualEffectPolicy(
 
 List<FeatureEntry> _features(List<String> taps) => <FeatureEntry>[
       FeatureEntry(
-        icon: AltracqIcons.activity,
+        icon: HiqeoIcons.activity,
         title: 'Pelacakan',
         subtitle: 'Catat jalur',
         onTap: () => taps.add('pelacakan'),
       ),
       FeatureEntry(
-        icon: AltracqIcons.map,
+        icon: HiqeoIcons.map,
         title: 'Peta offline',
         subtitle: 'Unduh area',
         onTap: () => taps.add('peta'),
       ),
       FeatureEntry(
-        icon: AltracqIcons.trail,
+        icon: HiqeoIcons.trail,
         title: 'Jalur terverifikasi',
         subtitle: 'Jalur resmi',
         onTap: () => taps.add('jalur'),
       ),
       FeatureEntry(
-        icon: AltracqIcons.compass,
+        icon: HiqeoIcons.compass,
         title: 'Kompas',
         subtitle: 'Arah dan kemiringan',
         onTap: () => taps.add('kompas'),
       ),
       FeatureEntry(
-        icon: AltracqIcons.group,
+        icon: HiqeoIcons.group,
         title: 'Grup chat',
         subtitle: 'Teman satu grup',
         onTap: () => taps.add('grup'),
       ),
       FeatureEntry(
-        icon: AltracqIcons.pin,
+        icon: HiqeoIcons.pin,
         title: 'Lokasi terakhir',
         subtitle: 'Titik terakhir',
         onTap: () => taps.add('lokasi'),
       ),
       FeatureEntry(
-        icon: AltracqIcons.image,
+        icon: HiqeoIcons.image,
         title: 'Kartu pendakian',
         subtitle: 'Foto dan ringkasan',
         onTap: () => taps.add('kartu'),
       ),
       FeatureEntry(
-        icon: AltracqIcons.warning,
+        icon: HiqeoIcons.warning,
         title: 'SOS',
         subtitle: 'Tekan-tahan 3 detik',
         onTap: () => taps.add('sos'),
@@ -93,7 +93,7 @@ Future<void> _pump(
 
   await tester.pumpWidget(
     MaterialApp(
-      theme: altracqLightTheme,
+      theme: hiqeoLightTheme,
       home: Scaffold(
         body: VisualEffectPolicyScope(
           policy: policy,
@@ -103,7 +103,7 @@ Future<void> _pump(
               SizedBox(height: leading),
               Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: AltracqSpacing.lg,
+                  horizontal: HiqeoSpacing.lg,
                 ),
                 child: ExpandableFeaturesCard(key: _cardKey, features: features),
               ),
@@ -262,7 +262,7 @@ void main() {
 
     await tester.tap(find.byKey(_toggleKey));
     await tester.pump();
-    await tester.pump(AltracqMotion.screenFade);
+    await tester.pump(HiqeoMotion.screenFade);
 
     expect(_cardHeight(tester), _openHeight, reason: 'selesai dalam 260 ms');
     expect(find.byType(GooeyLayer), findsNothing);

@@ -15,7 +15,7 @@ class HeaderIconButton extends StatelessWidget {
     this.onTap,
   });
 
-  final AltracqIconData icon;
+  final HiqeoIconData icon;
   final String label;
 
   /// `null` saat layar sedang sibuk dan tombol tidak boleh dipakai.
@@ -42,7 +42,7 @@ class HeaderIconButton extends StatelessWidget {
             customBorder: const CircleBorder(),
             onTap: onTap,
             child: Center(
-              child: AltracqIcon(icon, size: 20, color: _foreground),
+              child: HiqeoIcon(icon, size: 20, color: _foreground),
             ),
           ),
         ),

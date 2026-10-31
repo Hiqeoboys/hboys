@@ -1,10 +1,10 @@
-# Altracq
+# Hiqeo
 
 Aplikasi teman mendaki gunung untuk Android dan iOS. Isinya pelacakan, peta topografi offline, navigasi jalur, chat grup, dan SOS. Semuanya dibuat supaya masih bisa dipakai di tempat yang tidak ada sinyal.
 
 Blueprint v1.0, Oktober 2026. Masih tahap pengembangan, wilayah awal Jawa Barat.
 
-> **Baca ini dulu.** Altracq cuma alat bantu. Ia tidak menggantikan persiapan, perlengkapan, pengalaman, registrasi pendakian resmi, atau tim SAR.
+> **Baca ini dulu.** Hiqeo cuma alat bantu. Ia tidak menggantikan persiapan, perlengkapan, pengalaman, registrasi pendakian resmi, atau tim SAR.
 > SOS tidak menjamin bantuan datang. Pesannya baru terkirim kalau jaringan, baterai, dan perangkatnya mendukung. Aplikasi tidak pernah mengklaim sudah menghubungi Basarnas.
 > Kalori hanya perkiraan. Data jalur dan peta bisa berubah dan bisa saja keliru, jadi keputusan navigasi tetap di tangan pengguna.
 
@@ -112,6 +112,20 @@ docs/                protokol, ADR, model ancaman, tinjauan keamanan, setup nati
 tools/               skrip bootstrap, pemasangan dependensi, dan semua tes
 ```
 
+### Nama merek
+
+Nama yang terlihat pengguna berpusat di `app/lib/core/brand/app_brand.dart`
+(`AppBrand.name` untuk kalimat biasa, `AppBrand.lockup` untuk lockup judul).
+Label launcher Android dan `CFBundleDisplayName` iOS tidak bisa membaca
+konstanta Dart, jadi keduanya dicerminkan di `AndroidManifest.xml` dan
+`Info.plist` dan harus diubah bersamaan.
+
+`applicationId`, bundle id, dan skema deep link sengaja **tidak** diubah saat
+ganti nama: `id.nama.nama_app`, `id.nama.namaApp`, dan
+`id.nama.namaapp://login-callback` tetap dipakai agar build yang sudah
+terpasang dan redirect OAuth yang sudah terdaftar tidak rusak. Mengubahnya
+menuntut pendaftaran ulang di toko aplikasi dan dasbor Supabase.
+
 ## Menjalankan
 
 Yang dibutuhkan: Flutter stable (sudah termasuk Dart), Python 3, JDK 17 ke atas untuk Android, dan Android SDK atau Xcode kalau mau jalan di perangkat.
@@ -160,7 +174,7 @@ Di sini dipisahkan antara yang sudah benar-benar dijalankan dan yang baru dituli
 - Atribusi Mapbox tetap tampil: logo dan tombol `ⓘ` terlihat di atas navbar; scale bar bawaan dimatikan karena tidak ada di rancangan dan menabrak status bar.
 - Grup Chat memakai grup terbaru dan daftar anggota nyata dari server, dengan bubble pesan dari database perangkat. Pengiriman teks menyimpan pesan UTF-8 secara lokal dan berhenti pada status jujur `Tersimpan di HP · belum terkirim` karena belum ada transport chat. Di emulator, keadaan `Belum masuk` terlihat pada mode terang dan gelap; tata letak chat lengkap diuji lewat 8 tes widget. Rinciannya di `docs/grup_chat.md`.
 - SOS memakai layar terbalik biru gelap: tekan-tahan 3 detik, hitung mundur 3 detik, lalu simpan lokal hanya bila ada perbaikan GPS nyata. **Pengamatan emulator berikut berasal dari build sebelum revisi UI gelombang ini**, jadi tombol 115/112 saat itu masih berupa tombol ketuk, bukan trek geser. Di emulator, baris database berisi penanda `perangkat-lokal`, grup kosong, koordinat dan akurasi nyata, status `active`; memilih CEDERA mengubah `category_code`, dan tombol batal menulis status `cancelled` beserta waktunya. Tangga status hanya menyalakan `Tersimpan di HP`; nomor 115 dan 112 membuka aplikasi telepon Android dengan nomor terisi tanpa menelpon. Rinciannya di `docs/sos.md`.
-- Kartu Pendakian memakai sesi selesai terbaru dari database perangkat, dengan tiga gaya (Profil, Tengah, Peta), sakelar sembunyikan titik awal/akhir, pemilih foto, ekspor PNG transparan 1080×1350, dan lembar berbagi. Di emulator, ketiga gaya tampil, sakelar menghapus penanda, PNG tersimpan di `Pictures/Altracq` (MediaStore mencatat 1080×1350; berkas terbaca RGBA dengan sudut alfa 0), lembar berbagi terbuka, dan pemilih foto terbuka. Tidak ada pesan "terkirim" setelah berbagi. Rinciannya di `docs/kartu_pendakian.md`.
+- Kartu Pendakian memakai sesi selesai terbaru dari database perangkat, dengan tiga gaya (Profil, Tengah, Peta), sakelar sembunyikan titik awal/akhir, pemilih foto, ekspor PNG transparan 1080×1350, dan lembar berbagi. Di emulator, ketiga gaya tampil, sakelar menghapus penanda, PNG tersimpan di `Pictures/Hiqeo` (MediaStore mencatat 1080×1350; berkas terbaca RGBA dengan sudut alfa 0), lembar berbagi terbuka, dan pemilih foto terbuka. Tidak ada pesan "terkirim" setelah berbagi. Rinciannya di `docs/kartu_pendakian.md`.
 - Profil tamu memakai data lokal nyata: ringkasan hanya menjumlahkan sesi selesai, dan di emulator tampil **8 pendakian, 14.876 km, 1.469 m** dari database perangkat. Logo Google/Apple resmi tampil dan catatan privasi serta catatan "belum tersedia" terlihat. Profil sudah masuk (identitas, penyedia, lima baris pengaturan, sheet Tampilan, Keluar) baru diuji widget, belum dicoba di perangkat. Rinciannya di `docs/profil.md`.
 - Migrasi `0001` dan `0002` sudah diterapkan di proyek Supabase (dicek lewat REST dan RPC).
 - Inisialisasi Supabase di aplikasi berhasil dengan kredensial publishable.

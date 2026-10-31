@@ -130,7 +130,7 @@ Future<void> _pump(WidgetTester tester, Widget page) async {
   _setTallPhone(tester);
   await tester.pumpWidget(
     MaterialApp.router(
-      theme: altracqLightTheme,
+      theme: hiqeoLightTheme,
       routerConfig: _router(page),
     ),
   );

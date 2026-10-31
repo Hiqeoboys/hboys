@@ -5,7 +5,7 @@ import 'package:nama_app/design/app_theme.dart';
 import 'package:nama_app/design/theme_mode_controller.dart';
 
 /// Membungkus aplikasi dengan router dan pengendali tema terpisah untuk uji.
-Widget buildAltracqTestApp({
+Widget buildHiqeoTestApp({
   GoRouter? router,
   ThemeModeController? themeController,
 }) {
@@ -14,10 +14,10 @@ Widget buildAltracqTestApp({
   return ListenableBuilder(
     listenable: controller,
     builder: (context, child) => MaterialApp.router(
-      theme: altracqLightTheme,
-      darkTheme: altracqDarkTheme,
+      theme: hiqeoLightTheme,
+      darkTheme: hiqeoDarkTheme,
       themeMode: controller.mode,
-      routerConfig: router ?? buildAltracqRouter(),
+      routerConfig: router ?? buildHiqeoRouter(),
     ),
   );
 }

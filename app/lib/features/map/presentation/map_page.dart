@@ -48,13 +48,13 @@ const double mapAttributionInset = 44;
 /// Margin bawah logo dan atribusi Mapbox: di atas navbar mengambang.
 @visibleForTesting
 double mapOrnamentBottomMargin(double systemInset) =>
-    AltracqMetrics.floatingBottomInset(systemInset) + mapOrnamentGap;
+    HiqeoMetrics.floatingBottomInset(systemInset) + mapOrnamentGap;
 
 /// Jarak panel panduan dari tepi bawah layar: di atas navbar dan baris
 /// logo/atribusi.
 @visibleForTesting
 double mapSheetBottomOffset(double systemInset) =>
-    AltracqMetrics.floatingBottomInset(systemInset) + mapAttributionInset;
+    HiqeoMetrics.floatingBottomInset(systemInset) + mapAttributionInset;
 
 /// Layar Peta Offline: peta penuh, kartu status jalur, tombol kompas dan
 /// pemusatan posisi, serta sheet panduan jalur/pengelolaan unduhan.
@@ -169,7 +169,7 @@ class _MapPageState extends State<MapPage> {
     super.didChangeDependencies();
     // Inset sistem mentah dari kerangka tab; di dalam Scaffold ber-extendBody
     // padding bawah sudah termasuk tinggi navbar dan viewPadding dibuang.
-    final bottomInset = AltracqSystemInset.bottomOf(context);
+    final bottomInset = HiqeoSystemInset.bottomOf(context);
     if (bottomInset != _systemInset) {
       _systemInset = bottomInset;
       _updateMapOrnaments();
@@ -377,7 +377,7 @@ class _MapPageState extends State<MapPage> {
     final map = _map;
     if (map == null) return;
 
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     try {
       final trailSource = GeoJsonSource(
         id: _trailSourceId,
@@ -418,7 +418,7 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
-  List<Layer> _mapLayers(AltracqColors colors) => <Layer>[
+  List<Layer> _mapLayers(HiqeoColors colors) => <Layer>[
         LineLayer(
           id: _trailCasingLayerId,
           sourceId: _trailSourceId,
@@ -475,7 +475,7 @@ class _MapPageState extends State<MapPage> {
   Future<void> _syncLayerPalette() async {
     final map = _map;
     if (map == null || !_styleReady) return;
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     try {
       for (final layer in _mapLayers(colors)) {
         await map.updateLayer(layer);
@@ -698,8 +698,8 @@ class _MapPageState extends State<MapPage> {
   @override
   Widget build(BuildContext context) {
     final dimOpacity = mapDimOpacityFor(Theme.of(context).brightness);
-    final colors = AltracqColors.of(context);
-    final systemInset = AltracqSystemInset.bottomOf(context);
+    final colors = HiqeoColors.of(context);
+    final systemInset = HiqeoSystemInset.bottomOf(context);
     // Peta penuh sampai tepi layar; status bar dan navbar mengambang di
     // atasnya. Warna dasar token dipakai saat peta belum tersedia agar tidak
     // ada pita warna di tepi.
@@ -726,9 +726,9 @@ class _MapPageState extends State<MapPage> {
                 bottom: false,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(
-                    AltracqSpacing.lg,
-                    AltracqSpacing.lg,
-                    AltracqSpacing.lg,
+                    HiqeoSpacing.lg,
+                    HiqeoSpacing.lg,
+                    HiqeoSpacing.lg,
                     0,
                   ),
                   child: Column(
@@ -740,17 +740,17 @@ class _MapPageState extends State<MapPage> {
                           Expanded(
                             child: _TrailStatusCard(summary: _trailSummary),
                           ),
-                          const SizedBox(width: AltracqSpacing.md),
+                          const SizedBox(width: HiqeoSpacing.md),
                           Column(
                             children: <Widget>[
                               _GlassCircleButton(
-                                icon: AltracqIcons.compass,
+                                icon: HiqeoIcons.compass,
                                 semanticLabel: 'Buka kompas',
                                 onPressed: () => unawaited(_openCompassSheet()),
                               ),
-                              const SizedBox(height: AltracqSpacing.md),
+                              const SizedBox(height: HiqeoSpacing.md),
                               _GlassCircleButton(
-                                icon: AltracqIcons.locate,
+                                icon: HiqeoIcons.locate,
                                 semanticLabel: 'Pusatkan ke posisi terakhir',
                                 onPressed:
                                     _mapAvailable && _latestPoint != null
@@ -762,7 +762,7 @@ class _MapPageState extends State<MapPage> {
                         ],
                       ),
                       if (_mapNotice != null) ...<Widget>[
-                        const SizedBox(height: AltracqSpacing.sm),
+                        const SizedBox(height: HiqeoSpacing.sm),
                         _MapNotice(
                           text: _mapNotice!,
                           isError: _mapLoadError != null ||
@@ -777,8 +777,8 @@ class _MapPageState extends State<MapPage> {
             ),
             if (!_sheetVisible)
               Positioned(
-                left: AltracqSpacing.lg,
-                right: AltracqSpacing.lg,
+                left: HiqeoSpacing.lg,
+                right: HiqeoSpacing.lg,
                 bottom: mapSheetBottomOffset(systemInset),
                 child: ListenableBuilder(
                   listenable: _offlineController,
@@ -801,10 +801,10 @@ class _MapPageState extends State<MapPage> {
   }
 
   Widget _buildMapUnavailable() {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
-    final bottomClearance = AltracqMetrics.floatingBottomInset(
-      AltracqSystemInset.bottomOf(context),
+    final bottomClearance = HiqeoMetrics.floatingBottomInset(
+      HiqeoSystemInset.bottomOf(context),
     );
     final tokenMissing = _token.isEmpty;
     final body = tokenMissing
@@ -816,24 +816,24 @@ class _MapPageState extends State<MapPage> {
     return Center(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
-          AltracqSpacing.lg,
+          HiqeoSpacing.lg,
           140,
-          AltracqSpacing.lg,
+          HiqeoSpacing.lg,
           230 + bottomClearance,
         ),
         child: GlassSurface(
-          borderRadius: AltracqRadius.card,
+          borderRadius: HiqeoRadius.card,
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Row(
                 children: <Widget>[
-                  AltracqIcon(
-                    AltracqIcons.mountain,
+                  HiqeoIcon(
+                    HiqeoIcons.mountain,
                     color: colors.textPrimary,
                   ),
-                  const SizedBox(width: AltracqSpacing.md),
+                  const SizedBox(width: HiqeoSpacing.md),
                   Expanded(
                     child: Text(
                       'Peta belum tersedia',
@@ -842,14 +842,14 @@ class _MapPageState extends State<MapPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: AltracqSpacing.sm),
+              const SizedBox(height: HiqeoSpacing.sm),
               Text(
                 body,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colors.textSecondary,
                 ),
               ),
-              const SizedBox(height: AltracqSpacing.sm),
+              const SizedBox(height: HiqeoSpacing.sm),
               Text(
                 'Kompas dan pengelolaan paket offline tetap bisa dibuka. Saat '
                 'peta dipakai, logo dan atribusi Mapbox/OpenStreetMap wajib '
@@ -866,7 +866,7 @@ class _MapPageState extends State<MapPage> {
   }
 
   Widget _buildGuidanceSheet(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final trail = _selectedTrail;
     final hasPoint = _latestPoint != null;
@@ -878,7 +878,7 @@ class _MapPageState extends State<MapPage> {
         : (offlineReady ? 'Peta offline' : 'Peta offline belum siap');
 
     return GlassSurface(
-      borderRadius: AltracqRadius.hero,
+      borderRadius: HiqeoRadius.hero,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -894,7 +894,7 @@ class _MapPageState extends State<MapPage> {
                   style: theme.textTheme.headlineSmall,
                 ),
               ),
-              const SizedBox(width: AltracqSpacing.md),
+              const SizedBox(width: HiqeoSpacing.md),
               Flexible(
                 child: Text(
                   _guidanceText,
@@ -909,7 +909,7 @@ class _MapPageState extends State<MapPage> {
               ),
             ],
           ),
-          const SizedBox(height: AltracqSpacing.sm),
+          const SizedBox(height: HiqeoSpacing.sm),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -924,21 +924,21 @@ class _MapPageState extends State<MapPage> {
                   icon: !hasPoint
                       ? null
                       : (_trailState == TrailState.offTrail
-                          ? AltracqIcons.warning
-                          : AltracqIcons.check),
+                          ? HiqeoIcons.warning
+                          : HiqeoIcons.check),
                   ready: hasPoint && _trailState == TrailState.onTrail,
                   warning: hasPoint && _trailState == TrailState.offTrail,
                   key: const ValueKey('map-trail-state'),
                 ),
               _StatusPill(
                 label: offlineLabel,
-                icon: offlineReady ? AltracqIcons.check : null,
+                icon: offlineReady ? HiqeoIcons.check : null,
                 ready: offlineReady,
                 key: const ValueKey('map-offline-state'),
               ),
             ],
           ),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           _SheetAction(
             label: _sheetActionLabel,
             onTap: _onSheetAction,
@@ -968,10 +968,10 @@ class _TrailStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return GlassSurface(
-      borderRadius: AltracqRadius.card,
+      borderRadius: HiqeoRadius.card,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1004,7 +1004,7 @@ class _GlassCircleButton extends StatelessWidget {
     this.onPressed,
   });
 
-  final AltracqIconData icon;
+  final HiqeoIconData icon;
   final String semanticLabel;
   final VoidCallback? onPressed;
 
@@ -1024,9 +1024,9 @@ class _GlassCircleButton extends StatelessWidget {
             width: 48,
             height: 48,
             child: GlassSurface(
-              borderRadius: AltracqRadius.pill,
+              borderRadius: HiqeoRadius.pill,
               padding: const EdgeInsets.all(12),
-              child: AltracqIcon(icon, size: 24),
+              child: HiqeoIcon(icon, size: 24),
             ),
           ),
         ),
@@ -1046,12 +1046,12 @@ class _StatusPill extends StatelessWidget {
 
   final String label;
   final bool ready;
-  final AltracqIconData? icon;
+  final HiqeoIconData? icon;
   final bool warning;
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final foreground = warning ? colors.warningText : colors.textPrimary;
     return Semantics(
@@ -1066,14 +1066,14 @@ class _StatusPill extends StatelessWidget {
                     ? colors.warning.withValues(alpha: 0.12)
                     : colors.secondary)
                 : null,
-            borderRadius: BorderRadius.circular(AltracqRadius.pill),
+            borderRadius: BorderRadius.circular(HiqeoRadius.pill),
             border: warning ? Border.all(color: colors.warning) : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               if (icon != null) ...<Widget>[
-                AltracqIcon(
+                HiqeoIcon(
                   icon!,
                   size: 13,
                   strokeWidth: 2,
@@ -1088,7 +1088,7 @@ class _StatusPill extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: ready || warning ? foreground : colors.textSecondary,
-                    fontWeight: AltracqTypography.medium,
+                    fontWeight: HiqeoTypography.medium,
                   ),
                 ),
               ),
@@ -1108,7 +1108,7 @@ class _SheetAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Semantics(
       button: true,
@@ -1122,7 +1122,7 @@ class _SheetAction extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: colors.surface.withValues(alpha: 0.85),
-            borderRadius: BorderRadius.circular(AltracqRadius.floating),
+            borderRadius: BorderRadius.circular(HiqeoRadius.floating),
             border: Border.all(color: colors.hairline),
           ),
           child: ExcludeSemantics(
@@ -1147,10 +1147,10 @@ class _MapNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return GlassSurface(
-      borderRadius: AltracqRadius.floating,
+      borderRadius: HiqeoRadius.floating,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: <Widget>[
@@ -1160,7 +1160,7 @@ class _MapNotice extends StatelessWidget {
               height: 14,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            const SizedBox(width: AltracqSpacing.sm),
+            const SizedBox(width: HiqeoSpacing.sm),
           ],
           Expanded(
             child: Text(

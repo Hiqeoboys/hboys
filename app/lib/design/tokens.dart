@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-/// Warna rancangan UI/UX Altracq untuk mode terang dan gelap.
+/// Warna rancangan UI/UX Hiqeo untuk mode terang dan gelap.
 ///
-/// Ambil lewat [AltracqColors.of] agar pilihan Terang/Gelap/Ikuti sistem
+/// Ambil lewat [HiqeoColors.of] agar pilihan Terang/Gelap/Ikuti sistem
 /// berlaku seragam; jangan menuliskan warna langsung di layar.
 @immutable
-class AltracqColors extends ThemeExtension<AltracqColors> {
-  const AltracqColors({
+class HiqeoColors extends ThemeExtension<HiqeoColors> {
+  const HiqeoColors({
     required this.brightness,
     required this.background,
     required this.primary,
@@ -28,7 +28,7 @@ class AltracqColors extends ThemeExtension<AltracqColors> {
   });
 
   /// Token mode terang sesuai rancangan.
-  static const AltracqColors light = AltracqColors(
+  static const HiqeoColors light = HiqeoColors(
     brightness: Brightness.light,
     background: Color(0xFFF6F3ED),
     primary: Color(0xFF313851),
@@ -54,7 +54,7 @@ class AltracqColors extends ThemeExtension<AltracqColors> {
   /// [warningText] diperingan dari [warning] karena #E0705C di atas #313851
   /// hanya 3,7:1; teks kecil butuh minimal 4,5:1. [surface] dan kedua blob
   /// tidak dirinci rancangan, dipilih sedikit lebih terang dari latar.
-  static const AltracqColors dark = AltracqColors(
+  static const HiqeoColors dark = HiqeoColors(
     brightness: Brightness.dark,
     background: Color(0xFF313851),
     primary: Color(0xFFF6F3ED),
@@ -102,14 +102,14 @@ class AltracqColors extends ThemeExtension<AltracqColors> {
   final Color glassHighlight;
   final Color glassShadow;
 
-  static AltracqColors of(BuildContext context) {
-    final colors = Theme.of(context).extension<AltracqColors>();
-    assert(colors != null, 'AltracqColors belum dipasang di tema.');
+  static HiqeoColors of(BuildContext context) {
+    final colors = Theme.of(context).extension<HiqeoColors>();
+    assert(colors != null, 'HiqeoColors belum dipasang di tema.');
     return colors!;
   }
 
   @override
-  AltracqColors copyWith({
+  HiqeoColors copyWith({
     Brightness? brightness,
     Color? background,
     Color? primary,
@@ -129,7 +129,7 @@ class AltracqColors extends ThemeExtension<AltracqColors> {
     Color? glassHighlight,
     Color? glassShadow,
   }) {
-    return AltracqColors(
+    return HiqeoColors(
       brightness: brightness ?? this.brightness,
       background: background ?? this.background,
       primary: primary ?? this.primary,
@@ -152,9 +152,9 @@ class AltracqColors extends ThemeExtension<AltracqColors> {
   }
 
   @override
-  AltracqColors lerp(covariant ThemeExtension<AltracqColors>? other, double t) {
-    if (other is! AltracqColors) return this;
-    return AltracqColors(
+  HiqeoColors lerp(covariant ThemeExtension<HiqeoColors>? other, double t) {
+    if (other is! HiqeoColors) return this;
+    return HiqeoColors(
       brightness: t < 0.5 ? brightness : other.brightness,
       background: Color.lerp(background, other.background, t)!,
       primary: Color.lerp(primary, other.primary, t)!,
@@ -178,8 +178,8 @@ class AltracqColors extends ThemeExtension<AltracqColors> {
 }
 
 /// Jarak antar elemen. Skala 4 px.
-class AltracqSpacing {
-  const AltracqSpacing._();
+class HiqeoSpacing {
+  const HiqeoSpacing._();
 
   static const double xs = 4;
   static const double sm = 8;
@@ -192,8 +192,8 @@ class AltracqSpacing {
 }
 
 /// Sudut pembulatan.
-class AltracqRadius {
-  const AltracqRadius._();
+class HiqeoRadius {
+  const HiqeoRadius._();
 
   static const double card = 18;
   static const double floating = 16;
@@ -203,8 +203,8 @@ class AltracqRadius {
 }
 
 /// Ukuran tetap dari rancangan.
-class AltracqMetrics {
-  const AltracqMetrics._();
+class HiqeoMetrics {
+  const HiqeoMetrics._();
 
   static const double navbarHeight = 64;
   static const double navbarInset = 16;
@@ -223,8 +223,8 @@ class AltracqMetrics {
 }
 
 /// Parameter liquid glass.
-class AltracqGlass {
-  const AltracqGlass._();
+class HiqeoGlass {
+  const HiqeoGlass._();
 
   /// `backdrop-filter: blur(18px)` pada rancangan = deviasi standar 18.
   static const double blurSigma = 18;
@@ -234,7 +234,7 @@ class AltracqGlass {
   /// Kilau putih 1 px di sisi atas kaca.
   static const double highlightWidth = 1;
 
-  static BoxShadow shadow(AltracqColors colors) => BoxShadow(
+  static BoxShadow shadow(HiqeoColors colors) => BoxShadow(
         color: colors.glassShadow,
         blurRadius: 24,
         offset: const Offset(0, 8),
@@ -247,8 +247,8 @@ class AltracqGlass {
 ///
 /// [ColorFilter.matrix] bekerja pada kanal 0–255, bukan 0–1 seperti filter CSS.
 /// Nilai CSS `alpha' = alpha * 20 - 9` karena itu setara geseran -9 × 255.
-class AltracqGooey {
-  const AltracqGooey._();
+class HiqeoGooey {
+  const HiqeoGooey._();
 
   static const double blurSigma = 6;
   static const double alphaScale = 20;
@@ -256,8 +256,8 @@ class AltracqGooey {
 }
 
 /// Durasi dan kurva animasi.
-class AltracqMotion {
-  const AltracqMotion._();
+class HiqeoMotion {
+  const HiqeoMotion._();
 
   static const Duration fast = Duration(milliseconds: 140);
   static const Duration press = Duration(milliseconds: 180);

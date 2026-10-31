@@ -57,7 +57,7 @@ Future<void> _pump(
 
   await tester.pumpWidget(
     MaterialApp(
-      theme: altracqLightTheme,
+      theme: hiqeoLightTheme,
       home: Scaffold(
         body: Padding(
           padding: const EdgeInsets.all(16),
@@ -235,7 +235,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        theme: altracqLightTheme,
+        theme: hiqeoLightTheme,
         home: Scaffold(
           body: Padding(
             padding: const EdgeInsets.all(16),

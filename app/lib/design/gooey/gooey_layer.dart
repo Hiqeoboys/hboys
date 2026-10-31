@@ -13,7 +13,7 @@ const List<double> _kAlphaThreshold = <double>[
   1, 0, 0, 0, 0,
   0, 1, 0, 0, 0,
   0, 0, 1, 0, 0,
-  0, 0, 0, AltracqGooey.alphaScale, AltracqGooey.alphaShift,
+  0, 0, 0, HiqeoGooey.alphaScale, HiqeoGooey.alphaShift,
 ];
 
 /// Pembungkus gooey tunggal untuk seluruh aplikasi.
@@ -44,8 +44,8 @@ class GooeyLayer extends StatelessWidget {
         colorFilter: const ColorFilter.matrix(_kAlphaThreshold),
         child: ImageFiltered(
           imageFilter: ui.ImageFilter.blur(
-            sigmaX: AltracqGooey.blurSigma,
-            sigmaY: AltracqGooey.blurSigma,
+            sigmaX: HiqeoGooey.blurSigma,
+            sigmaY: HiqeoGooey.blurSigma,
           ),
           child: shapes,
         ),

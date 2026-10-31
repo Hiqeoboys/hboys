@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import '../../../design/glass/glass_surface.dart';
 import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
-import '../../../design/widgets/altracq_button.dart';
+import '../../../design/widgets/hiqeo_button.dart';
 import '../../../infrastructure/power/power_profile_controller.dart';
 import '../../../infrastructure/power/power_profile_manager.dart';
 import '../../onboarding/permission_onboarding_page.dart';
@@ -203,7 +203,7 @@ class TrackingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final status = this.status;
     final hasSession = status != null && status.pointCount > 0;
@@ -231,10 +231,10 @@ class TrackingView extends StatelessWidget {
       bottom: false,
       child: ListView(
         padding: EdgeInsets.fromLTRB(
-          AltracqSpacing.lg,
-          AltracqSpacing.xl,
-          AltracqSpacing.lg,
-          AltracqSpacing.xl + bottomInset,
+          HiqeoSpacing.lg,
+          HiqeoSpacing.xl,
+          HiqeoSpacing.lg,
+          HiqeoSpacing.xl + bottomInset,
         ),
         children: <Widget>[
           Row(
@@ -244,17 +244,17 @@ class TrackingView extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
                   color: colors.secondary,
-                  borderRadius: BorderRadius.circular(AltracqRadius.pill),
+                  borderRadius: BorderRadius.circular(HiqeoRadius.pill),
                 ),
                 child: Text(
                   'Tersimpan di HP',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: AltracqTypography.medium,
+                    fontWeight: HiqeoTypography.medium,
                     color: colors.textPrimary,
                   ),
                 ),
               ),
-              const SizedBox(width: AltracqSpacing.sm),
+              const SizedBox(width: HiqeoSpacing.sm),
               Expanded(
                 child: Text(
                   batteryStatusLabel(powerPercent, profile),
@@ -270,11 +270,11 @@ class TrackingView extends StatelessWidget {
           ),
           if (loading)
             const Padding(
-              padding: EdgeInsets.only(top: AltracqSpacing.sm),
+              padding: EdgeInsets.only(top: HiqeoSpacing.sm),
               child: LinearProgressIndicator(minHeight: 2),
             ),
           if (error != null) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.md),
+            const SizedBox(height: HiqeoSpacing.md),
             _NoticeCard(
               title: 'Rekaman tidak tersedia',
               body: error!,
@@ -286,11 +286,11 @@ class TrackingView extends StatelessWidget {
               onAction: onOpenPermissions,
             ),
           ] else if (notice != null) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.md),
+            const SizedBox(height: HiqeoSpacing.md),
             _NoticeCard(title: 'Catatan', body: notice!),
           ],
           if (showPermission) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.md),
+            const SizedBox(height: HiqeoSpacing.md),
             _NoticeCard(
               title: 'Izin belum lengkap',
               body: permissionSummary!,
@@ -301,7 +301,7 @@ class TrackingView extends StatelessWidget {
             ),
           ],
           if (recoveryPending && !recording && !paused) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.md),
+            const SizedBox(height: HiqeoSpacing.md),
             _NoticeCard(
               title: 'Sesi aktif ditemukan',
               body: 'Sesi terakhir belum selesai. Lanjutkan tanpa membuat '
@@ -310,7 +310,7 @@ class TrackingView extends StatelessWidget {
               onAction: permissionReady ? onStart : onOpenPermissions,
             ),
           ],
-          const SizedBox(height: AltracqSpacing.xl),
+          const SizedBox(height: HiqeoSpacing.xl),
           Semantics(
             label: 'Waktu bergerak $timer',
             container: true,
@@ -323,12 +323,12 @@ class TrackingView extends StatelessWidget {
                       color: colors.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: AltracqSpacing.xs),
+                  const SizedBox(height: HiqeoSpacing.xs),
                   Text(
                     timer,
                     style: TextStyle(
                       fontSize: 56,
-                      fontWeight: AltracqTypography.extraBold,
+                      fontWeight: HiqeoTypography.extraBold,
                       height: 1.05,
                       letterSpacing: -1.5,
                       color: colors.textPrimary,
@@ -338,11 +338,11 @@ class TrackingView extends StatelessWidget {
                     ),
                   ),
                   if (paused || finishing) ...<Widget>[
-                    const SizedBox(height: AltracqSpacing.xs),
+                    const SizedBox(height: HiqeoSpacing.xs),
                     Text(
                       finishing ? 'Menyelesaikan sesi…' : 'Dijeda',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: AltracqTypography.medium,
+                        fontWeight: HiqeoTypography.medium,
                         color: colors.textSecondary,
                       ),
                     ),
@@ -356,8 +356,8 @@ class TrackingView extends StatelessWidget {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: 2,
-            crossAxisSpacing: AltracqSpacing.md,
-            mainAxisSpacing: AltracqSpacing.md,
+            crossAxisSpacing: HiqeoSpacing.md,
+            mainAxisSpacing: HiqeoSpacing.md,
             mainAxisExtent: 86,
             children: <Widget>[
               _MetricCard(
@@ -396,9 +396,9 @@ class TrackingView extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           _ElevationCard(samples: elevation),
-          const SizedBox(height: AltracqSpacing.lg),
+          const SizedBox(height: HiqeoSpacing.lg),
           _controls(
             phase: phase,
             recording: recording,
@@ -407,7 +407,7 @@ class TrackingView extends StatelessWidget {
             finished: finished,
             permissionReady: permissionReady,
           ),
-          const SizedBox(height: AltracqSpacing.sm),
+          const SizedBox(height: HiqeoSpacing.sm),
           Text(
             paused || finishing
                 ? 'Waktu bergerak berhenti selama rekaman dijeda.'
@@ -431,7 +431,7 @@ class TrackingView extends StatelessWidget {
     required bool permissionReady,
   }) {
     if (recording || paused) {
-      return AltracqButtonPair(
+      return HiqeoButtonPair(
         leftLabel: paused ? 'Lanjut' : 'Jeda',
         rightLabel: finishing ? 'Menyelesaikan…' : 'Selesai',
         onLeftTap: finishing ? null : (paused ? onResume : onPause),
@@ -441,22 +441,22 @@ class TrackingView extends StatelessWidget {
       );
     }
     if (finishing) {
-      return const AltracqButton(label: 'Menyelesaikan…');
+      return const HiqeoButton(label: 'Menyelesaikan…');
     }
     if (phase == TrackingPhase.error) {
       return const SizedBox.shrink();
     }
     if (phase == TrackingPhase.initializing ||
         phase == TrackingPhase.uninitialized) {
-      return const AltracqButton(label: 'Menyiapkan…');
+      return const HiqeoButton(label: 'Menyiapkan…');
     }
     if (!permissionReady) {
-      return AltracqButton(
+      return HiqeoButton(
         label: 'Lengkapi izin',
         onPressed: onOpenPermissions,
       );
     }
-    return AltracqButton(
+    return HiqeoButton(
       label: finished ? 'Mulai pendakian baru' : 'Mulai pendakian',
       onPressed: onStart,
     );
@@ -478,15 +478,15 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final valueStyle = theme.textTheme.headlineMedium?.copyWith(
       color: colors.textPrimary,
-      fontWeight: AltracqTypography.extraBold,
+      fontWeight: HiqeoTypography.extraBold,
     );
     final unitStyle = theme.textTheme.bodySmall?.copyWith(
       color: colors.textSecondary,
-      fontWeight: AltracqTypography.medium,
+      fontWeight: HiqeoTypography.medium,
     );
     return Semantics(
       container: true,
@@ -494,7 +494,7 @@ class _MetricCard extends StatelessWidget {
           ? '$label: belum tersedia'
           : '$label: $semanticsValue',
       child: GlassSurface(
-        borderRadius: AltracqRadius.card,
+        borderRadius: HiqeoRadius.card,
         padding: const EdgeInsets.all(14),
         child: ExcludeSemantics(
           child: Column(
@@ -536,11 +536,11 @@ class _ElevationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final hasProfile = samples.length >= 2;
     return GlassSurface(
-      borderRadius: AltracqRadius.card,
+      borderRadius: HiqeoRadius.card,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -551,7 +551,7 @@ class _ElevationCard extends StatelessWidget {
               color: colors.textSecondary,
             ),
           ),
-          const SizedBox(height: AltracqSpacing.sm),
+          const SizedBox(height: HiqeoSpacing.sm),
           SizedBox(
             height: 104,
             width: double.infinity,
@@ -657,10 +657,10 @@ class _NoticeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return GlassSurface(
-      borderRadius: AltracqRadius.card,
+      borderRadius: HiqeoRadius.card,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -668,11 +668,11 @@ class _NoticeCard extends StatelessWidget {
           Text(
             title,
             style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: AltracqTypography.bold,
+              fontWeight: HiqeoTypography.bold,
               color: isError ? colors.warningText : colors.textPrimary,
             ),
           ),
-          const SizedBox(height: AltracqSpacing.xs),
+          const SizedBox(height: HiqeoSpacing.xs),
           Text(
             body,
             style: theme.textTheme.bodySmall?.copyWith(
@@ -680,7 +680,7 @@ class _NoticeCard extends StatelessWidget {
             ),
           ),
           if (actionLabel != null && onAction != null) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.xs),
+            const SizedBox(height: HiqeoSpacing.xs),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(

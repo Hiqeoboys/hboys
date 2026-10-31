@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geo_utils/geo_utils.dart';
 import 'package:nama_app/design/app_theme.dart';
-import 'package:nama_app/design/widgets/altracq_button.dart';
+import 'package:nama_app/design/widgets/hiqeo_button.dart';
 import 'package:nama_app/features/map/application/offline_download_controller.dart';
 import 'package:nama_app/features/map/application/offline_map_service.dart';
 import 'package:nama_app/features/map/domain/map_package.dart';
@@ -104,7 +104,7 @@ Future<OfflineDownloadController> _pump(
   final controller = OfflineDownloadController(service: resolvedService);
   addTearDown(controller.dispose);
   await tester.pumpWidget(MaterialApp(
-    theme: altracqLightTheme,
+    theme: hiqeoLightTheme,
     home: Scaffold(
       body: OfflineSheetBody(
         catalog: catalog,
@@ -180,7 +180,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(tester.widget<AltracqButton>(find.byType(AltracqButton)).onPressed,
+    expect(tester.widget<HiqeoButton>(find.byType(HiqeoButton)).onPressed,
         isNotNull);
   });
 
@@ -206,7 +206,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(tester.widget<AltracqButton>(find.byType(AltracqButton)).onPressed,
+    expect(tester.widget<HiqeoButton>(find.byType(HiqeoButton)).onPressed,
         isNull);
   });
 
@@ -233,7 +233,7 @@ void main() {
       find.text('Siap dipakai offline · 10/10 aset tersimpan.'),
       findsOneWidget,
     );
-    expect(tester.widget<AltracqButton>(find.byType(AltracqButton)).onPressed,
+    expect(tester.widget<HiqeoButton>(find.byType(HiqeoButton)).onPressed,
         isNull);
 
     await tester.tap(find.text('Unduh paket'));
@@ -255,7 +255,7 @@ void main() {
 
     expect(find.textContaining('melebihi batas paket 1'), findsOneWidget);
     expect(service.estimateCalls, 0);
-    expect(tester.widget<AltracqButton>(find.byType(AltracqButton)).onPressed,
+    expect(tester.widget<HiqeoButton>(find.byType(HiqeoButton)).onPressed,
         isNull);
 
     await tester.tap(find.text('Unduh paket'));

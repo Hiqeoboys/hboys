@@ -22,7 +22,7 @@ const List<double> _kSaturate170 = <double>[
 class GlassSurface extends StatelessWidget {
   const GlassSurface({
     super.key,
-    this.borderRadius = AltracqRadius.card,
+    this.borderRadius = HiqeoRadius.card,
     this.padding,
     this.child,
     this.tint,
@@ -39,7 +39,7 @@ class GlassSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final blur = VisualEffectPolicyScope.of(context).glassBlur;
     final radius = BorderRadius.circular(borderRadius);
 
@@ -50,7 +50,7 @@ class GlassSurface extends StatelessWidget {
         borderRadius: radius,
         border: Border.all(
           color: colors.glassBorder,
-          width: AltracqGlass.borderWidth,
+          width: HiqeoGlass.borderWidth,
         ),
       ),
     );
@@ -62,8 +62,8 @@ class GlassSurface extends StatelessWidget {
         colorFilter: const ColorFilter.matrix(_kSaturate170),
         child: BackdropFilter(
           filter: ui.ImageFilter.blur(
-            sigmaX: AltracqGlass.blurSigma,
-            sigmaY: AltracqGlass.blurSigma,
+            sigmaX: HiqeoGlass.blurSigma,
+            sigmaY: HiqeoGlass.blurSigma,
           ),
           child: backdrop,
         ),
@@ -73,7 +73,7 @@ class GlassSurface extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radius,
-        boxShadow: <BoxShadow>[AltracqGlass.shadow(colors)],
+        boxShadow: <BoxShadow>[HiqeoGlass.shadow(colors)],
       ),
       child: ClipRRect(
         borderRadius: radius,
@@ -87,7 +87,7 @@ class GlassSurface extends StatelessWidget {
               top: 0,
               left: 0,
               right: 0,
-              height: AltracqGlass.highlightWidth,
+              height: HiqeoGlass.highlightWidth,
               child: IgnorePointer(child: ColoredBox(color: colors.glassHighlight)),
             ),
             Padding(

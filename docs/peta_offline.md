@@ -256,7 +256,7 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
   sistem dari tepi bawah. Hanya cabang Peta yang memakai `extendBody`, jadi
   peta memanjang ke bawah navbar; tab lain menata navbar di luar isi agar
   kartu terang tidak tampak di belakang kaca. Peta melihat inset mentah lewat
-  `AltracqSystemInset` karena Scaffold mengosongkan `viewPadding.bottom` di
+  `HiqeoSystemInset` karena Scaffold mengosongkan `viewPadding.bottom` di
   dalam body saat ada `bottomNavigationBar`.
 - **Jarak bawah saat peta aktif.** Panel panduan memakai
   `floatingBottomInset + 44` dan ornamen Mapbox `floatingBottomInset + 8`.
@@ -266,7 +266,7 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
   `SafeArea(bottom: false)` sehingga turun sebesar inset status bar dan tidak
   menabrak ikon status.
 - **System bar transparan.** `SystemUiMode.edgeToEdge` di Android plus
-  `altracqOverlayStyle`/`AltracqSystemUiRegion` yang transparan; ikon status
+  `hiqeoOverlayStyle`/`HiqeoSystemUiRegion` yang transparan; ikon status
   bar mengikuti tema aktif.
 - **Navbar di atas peta.** Tint navy 60% (mode gelap) dan label `textPrimary`
   menjaga kontras ≥ 4,5:1 pada peta yang diredupkan 35%; rinciannya di

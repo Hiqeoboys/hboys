@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nama_app/app/app.dart';
 import 'package:nama_app/app/router.dart';
 import 'package:nama_app/bootstrap.dart';
-import 'package:nama_app/design/widgets/altracq_nav_bar.dart';
+import 'package:nama_app/design/widgets/hiqeo_nav_bar.dart';
 
 // Catatan: kasus lama memeriksa teks "115" dan "112" karena beranda versi
 // sebelumnya menampilkan nomor darurat. Pada rancangan sepuluh layar, nomor
@@ -14,11 +14,11 @@ void main() {
         .pumpWidget(const NamaApp(config: AppConfig(flavor: Flavor.dev)));
     expect(find.text('Menyiapkan data lokal di HP'), findsOneWidget);
 
-    altracqRouter.go('/beranda');
+    hiqeoRouter.go('/beranda');
     await tester.pumpAndSettle();
-    expect(find.byType(AltracqNavBar), findsOneWidget);
+    expect(find.byType(HiqeoNavBar), findsOneWidget);
 
-    altracqRouter.go('/splash');
+    hiqeoRouter.go('/splash');
     await tester.pumpAndSettle();
   });
 }

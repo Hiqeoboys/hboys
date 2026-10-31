@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../design/glass/glass_surface.dart';
 import '../../../design/theme_mode_controller.dart';
 import '../../../design/tokens.dart';
-import '../../../design/widgets/altracq_button.dart';
+import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../../../infrastructure/database/app_database.dart';
 import '../../../infrastructure/database/database_connection.dart';
@@ -242,10 +242,10 @@ class _ProfilPageState extends State<ProfilPage> {
                   .clamp(0.0, double.infinity);
               return SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
-                  AltracqSpacing.lg,
-                  AltracqSpacing.xl,
-                  AltracqSpacing.lg,
-                  AltracqSpacing.xxl + bottomInset,
+                  HiqeoSpacing.lg,
+                  HiqeoSpacing.xl,
+                  HiqeoSpacing.lg,
+                  HiqeoSpacing.xxl + bottomInset,
                 ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(minHeight: minHeight),
@@ -262,7 +262,7 @@ class _ProfilPageState extends State<ProfilPage> {
                             'Profil',
                             style: Theme.of(context).textTheme.displaySmall,
                           ),
-                          const SizedBox(height: AltracqSpacing.xl),
+                          const SizedBox(height: HiqeoSpacing.xl),
                           if (signedIn) ..._signedIn() else ..._guestTop(),
                         ],
                       ),
@@ -281,35 +281,35 @@ class _ProfilPageState extends State<ProfilPage> {
   List<Widget> _guestTop() {
     return <Widget>[
       const _ProfileAvatar(),
-      const SizedBox(height: AltracqSpacing.lg),
+      const SizedBox(height: HiqeoSpacing.lg),
       Center(
         child: Text(
           'Pendaki tamu',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
       ),
-      const SizedBox(height: AltracqSpacing.xs),
+      const SizedBox(height: HiqeoSpacing.xs),
       Center(
         child: Text(
           'Data pendakian tersimpan di HP ini',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AltracqColors.of(context).textSecondary,
+                color: HiqeoColors.of(context).textSecondary,
               ),
         ),
       ),
-      const SizedBox(height: AltracqSpacing.xl),
+      const SizedBox(height: HiqeoSpacing.xl),
       _StatsCard(
         summary: _summary,
         failed: _summaryFailed,
       ),
-      const SizedBox(height: AltracqSpacing.lg),
+      const SizedBox(height: HiqeoSpacing.lg),
       const _GuestBenefitsCard(),
     ];
   }
 
   Widget _guestBottom() {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final enabled = _account.isConfigured && !_account.isBusy;
     return Column(
@@ -317,7 +317,7 @@ class _ProfilPageState extends State<ProfilPage> {
       children: <Widget>[
         if (!_account.isConfigured)
           Padding(
-            padding: const EdgeInsets.only(bottom: AltracqSpacing.md),
+            padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
             child: Text(
               'Login Google/Apple belum aktif di build ini.',
               textAlign: TextAlign.center,
@@ -332,7 +332,7 @@ class _ProfilPageState extends State<ProfilPage> {
           _Message(text: _account.notice!),
         if (_account.isBusy)
           Padding(
-            padding: const EdgeInsets.only(bottom: AltracqSpacing.md),
+            padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
             child: Text(
               'Membuka browser login…',
               textAlign: TextAlign.center,
@@ -341,13 +341,13 @@ class _ProfilPageState extends State<ProfilPage> {
               ),
             ),
           ),
-        const SizedBox(height: AltracqSpacing.lg),
+        const SizedBox(height: HiqeoSpacing.lg),
         _AuthButtons(
           enabled: enabled,
           onGoogle: () => _signIn(AuthProviderKind.google),
           onApple: () => _signIn(AuthProviderKind.apple),
         ),
-        const SizedBox(height: AltracqSpacing.md),
+        const SizedBox(height: HiqeoSpacing.md),
         Text(
           'Isi pesanmu tidak dibaca server. Lokasi hanya tersimpan di HP ini.',
           textAlign: TextAlign.center,
@@ -360,7 +360,7 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   List<Widget> _signedIn() {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final user = _account.user!;
     final profile = _account.profile;
@@ -372,11 +372,11 @@ class _ProfilPageState extends State<ProfilPage> {
         : '@${profile.username}';
     return <Widget>[
       _ProfileAvatar(initial: _initialOf(name)),
-      const SizedBox(height: AltracqSpacing.lg),
+      const SizedBox(height: HiqeoSpacing.lg),
       Center(
         child: Text(name, style: theme.textTheme.headlineSmall),
       ),
-      const SizedBox(height: AltracqSpacing.xs),
+      const SizedBox(height: HiqeoSpacing.xs),
       Center(
         child: Text(
           handle,
@@ -386,13 +386,13 @@ class _ProfilPageState extends State<ProfilPage> {
         ),
       ),
       if (user.provider != null) ...<Widget>[
-        const SizedBox(height: AltracqSpacing.md),
+        const SizedBox(height: HiqeoSpacing.md),
         Center(
           child: _ProviderPill(provider: user.provider!),
         ),
       ],
       if (profile == null) ...<Widget>[
-        const SizedBox(height: AltracqSpacing.xs),
+        const SizedBox(height: HiqeoSpacing.xs),
         Center(
           child: TextButton(
             key: const ValueKey('profil-complete-account'),
@@ -402,7 +402,7 @@ class _ProfilPageState extends State<ProfilPage> {
         ),
       ],
       if (_account.deviceKeyMismatch) ...<Widget>[
-        const SizedBox(height: AltracqSpacing.sm),
+        const SizedBox(height: HiqeoSpacing.sm),
         Text(
           'Kunci perangkat berbeda dari direktori. Buka akun untuk '
           'mendaftarkan ulang kunci.',
@@ -416,51 +416,51 @@ class _ProfilPageState extends State<ProfilPage> {
           ),
         ),
       ],
-      const SizedBox(height: AltracqSpacing.xl),
+      const SizedBox(height: HiqeoSpacing.xl),
       _StatsCard(summary: _summary, failed: _summaryFailed),
-      const SizedBox(height: AltracqSpacing.lg),
+      const SizedBox(height: HiqeoSpacing.lg),
       _ProfilRow(
         key: const ValueKey('profil-row-kontak'),
-        icon: AltracqIcons.phone,
+        icon: HiqeoIcons.phone,
         title: 'Kontak darurat',
         subtitle: _contactsSubtitle(),
         onTap: () => unawaited(_showContactsSheet()),
       ),
-      const SizedBox(height: AltracqSpacing.sm),
+      const SizedBox(height: HiqeoSpacing.sm),
       _ProfilRow(
         key: const ValueKey('profil-row-peta'),
-        icon: AltracqIcons.map,
+        icon: HiqeoIcons.map,
         title: 'Peta terunduh',
         subtitle: _mapsLoading
             ? 'Memuat…'
             : downloadedMountainLabel(_downloadedMountains),
         onTap: () => unawaited(_showMapsSheet()),
       ),
-      const SizedBox(height: AltracqSpacing.sm),
+      const SizedBox(height: HiqeoSpacing.sm),
       _ProfilRow(
         key: const ValueKey('profil-row-daya'),
-        icon: AltracqIcons.battery,
+        icon: HiqeoIcons.battery,
         title: 'Profil daya',
         subtitle: _powerProfileLabel(_power.profile),
         onTap: () => unawaited(_showPowerSheet()),
       ),
-      const SizedBox(height: AltracqSpacing.sm),
+      const SizedBox(height: HiqeoSpacing.sm),
       _ProfilRow(
         key: const ValueKey('profil-row-privasi'),
-        icon: AltracqIcons.lock,
+        icon: HiqeoIcons.lock,
         title: 'Privasi lokasi',
         subtitle: 'Belum ada berbagi lokasi',
         onTap: () => unawaited(_showPrivacySheet()),
       ),
-      const SizedBox(height: AltracqSpacing.sm),
+      const SizedBox(height: HiqeoSpacing.sm),
       _ProfilRow(
         key: const ValueKey('profil-row-tampilan'),
-        icon: AltracqIcons.sun,
+        icon: HiqeoIcons.sun,
         title: 'Tampilan',
         subtitle: themeModeLabel(_theme.mode),
         onTap: () => unawaited(_showThemeSheet()),
       ),
-      const SizedBox(height: AltracqSpacing.xl),
+      const SizedBox(height: HiqeoSpacing.xl),
       if (_account.error != null)
         _Message(text: _account.error!, isError: true)
       else if (_account.notice != null)
@@ -469,7 +469,7 @@ class _ProfilPageState extends State<ProfilPage> {
         enabled: !_account.isBusy,
         onTap: () => unawaited(_account.signOut()),
       ),
-      const SizedBox(height: AltracqSpacing.xs),
+      const SizedBox(height: HiqeoSpacing.xs),
       Center(
         child: TextButton(
           key: const ValueKey('profil-delete-account'),
@@ -495,7 +495,7 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   Future<void> _showContactsSheet() {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return _showSheet(
       title: 'Kontak darurat',
@@ -505,7 +505,7 @@ class _ProfilPageState extends State<ProfilPage> {
         children: <Widget>[
           if (_contactsLoading)
             const Padding(
-              padding: EdgeInsets.symmetric(vertical: AltracqSpacing.lg),
+              padding: EdgeInsets.symmetric(vertical: HiqeoSpacing.lg),
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_contactsFailed)
@@ -525,7 +525,7 @@ class _ProfilPageState extends State<ProfilPage> {
           else
             for (final contact in _contacts)
               Padding(
-                padding: const EdgeInsets.only(bottom: AltracqSpacing.md),
+                padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
@@ -547,7 +547,7 @@ class _ProfilPageState extends State<ProfilPage> {
                   ],
                 ),
               ),
-          const SizedBox(height: AltracqSpacing.sm),
+          const SizedBox(height: HiqeoSpacing.sm),
           Text(
             'Penerusan SOS ke kontak darurat belum tersedia di build ini.',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -560,7 +560,7 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   Future<void> _showMapsSheet() {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return _showSheet(
       title: 'Peta terunduh',
@@ -575,7 +575,7 @@ class _ProfilPageState extends State<ProfilPage> {
               color: colors.textSecondary,
             ),
           ),
-          const SizedBox(height: AltracqSpacing.lg),
+          const SizedBox(height: HiqeoSpacing.lg),
           Text(
             'Unduhan peta offline memakai Mapbox dan memerlukan jaringan saat '
             'mengunduh. Setelah tersimpan, peta bisa dibuka tanpa sinyal.',
@@ -583,7 +583,7 @@ class _ProfilPageState extends State<ProfilPage> {
               color: colors.textSecondary,
             ),
           ),
-          const SizedBox(height: AltracqSpacing.lg),
+          const SizedBox(height: HiqeoSpacing.lg),
           _SheetAction(
             label: 'Buka Peta',
             onTap: () {
@@ -597,7 +597,7 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   Future<void> _showPowerSheet() {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return _showSheet(
       title: 'Profil daya',
@@ -614,10 +614,10 @@ class _ProfilPageState extends State<ProfilPage> {
               color: colors.textSecondary,
             ),
           ),
-          const SizedBox(height: AltracqSpacing.lg),
+          const SizedBox(height: HiqeoSpacing.lg),
           for (final profile in PowerProfile.values)
             Padding(
-              padding: const EdgeInsets.only(bottom: AltracqSpacing.md),
+              padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
               child: Text(
                 '${_powerProfileLabel(profile)}: GPS tiap '
                 '${PowerProfileConfig.of(profile).gpsInterval.inSeconds} detik, '
@@ -642,7 +642,7 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   Future<void> _showPrivacySheet() {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return _showSheet(
       title: 'Privasi lokasi',
@@ -657,7 +657,7 @@ class _ProfilPageState extends State<ProfilPage> {
               color: colors.textSecondary,
             ),
           ),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           Text(
             'Saat membuat Kartu Pendakian, titik awal dan akhir bisa '
             'disembunyikan sebelum kartu disimpan atau dibagikan.',
@@ -665,7 +665,7 @@ class _ProfilPageState extends State<ProfilPage> {
               color: colors.textSecondary,
             ),
           ),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           Text(
             'Kontrol berbagi lokasi untuk anggota grup belum tersedia di '
             'build ini.',
@@ -679,7 +679,7 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   Future<void> _showThemeSheet() {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return showModalBottomSheet<void>(
       context: context,
@@ -688,7 +688,7 @@ class _ProfilPageState extends State<ProfilPage> {
       builder: (sheetContext) => SafeArea(
         top: false,
         child: GlassSurface(
-          borderRadius: AltracqRadius.hero,
+          borderRadius: HiqeoRadius.hero,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
             child: Column(
@@ -702,7 +702,7 @@ class _ProfilPageState extends State<ProfilPage> {
                     decoration: BoxDecoration(
                       color: colors.textSecondary.withValues(alpha: 0.4),
                       borderRadius:
-                          BorderRadius.circular(AltracqRadius.pill),
+                          BorderRadius.circular(HiqeoRadius.pill),
                     ),
                   ),
                 ),
@@ -745,7 +745,7 @@ class _ProfilPageState extends State<ProfilPage> {
     String? subtitle,
     required Widget body,
   }) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return showModalBottomSheet<void>(
       context: context,
@@ -759,7 +759,7 @@ class _ProfilPageState extends State<ProfilPage> {
             maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.8,
           ),
           child: GlassSurface(
-            borderRadius: AltracqRadius.hero,
+            borderRadius: HiqeoRadius.hero,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
@@ -769,7 +769,7 @@ class _ProfilPageState extends State<ProfilPage> {
                   height: 4,
                   decoration: BoxDecoration(
                     color: colors.textSecondary.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(AltracqRadius.pill),
+                    borderRadius: BorderRadius.circular(HiqeoRadius.pill),
                   ),
                 ),
                 Padding(
@@ -865,7 +865,7 @@ class _ProfileAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final signedIn = initial != null;
     return Center(
       child: Container(
@@ -891,8 +891,8 @@ class _ProfileAvatar extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                 )
-              : AltracqIcon(
-                  AltracqIcons.user,
+              : HiqeoIcon(
+                  HiqeoIcons.user,
                   size: 38,
                   color: colors.textPrimary,
                 ),
@@ -910,16 +910,16 @@ class _StatsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final summary = this.summary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         GlassSurface(
-          borderRadius: AltracqRadius.card,
+          borderRadius: HiqeoRadius.card,
           padding: const EdgeInsets.symmetric(
-            horizontal: AltracqSpacing.sm,
+            horizontal: HiqeoSpacing.sm,
             vertical: 20,
           ),
           child: Row(
@@ -950,7 +950,7 @@ class _StatsCard extends StatelessWidget {
         ),
         if (failed)
           Padding(
-            padding: const EdgeInsets.only(top: AltracqSpacing.sm),
+            padding: const EdgeInsets.only(top: HiqeoSpacing.sm),
             child: Text(
               'Data pendakian lokal belum dapat dibuka.',
               textAlign: TextAlign.center,
@@ -972,7 +972,7 @@ class _Stat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Column(
       children: <Widget>[
@@ -1009,31 +1009,31 @@ class _GuestBenefitsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return GlassSurface(
-      borderRadius: AltracqRadius.card,
+      borderRadius: HiqeoRadius.card,
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text('Masuk untuk membuka', style: theme.textTheme.titleMedium),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           for (final benefit in _benefits)
             Padding(
-              padding: const EdgeInsets.only(bottom: AltracqSpacing.sm),
+              padding: const EdgeInsets.only(bottom: HiqeoSpacing.sm),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: AltracqIcon(
-                      AltracqIcons.check,
+                    child: HiqeoIcon(
+                      HiqeoIcons.check,
                       size: 18,
                       color: colors.textPrimary,
                     ),
                   ),
-                  const SizedBox(width: AltracqSpacing.md),
+                  const SizedBox(width: HiqeoSpacing.md),
                   Expanded(
                     child: Text(
                       benefit,
@@ -1043,7 +1043,7 @@ class _GuestBenefitsCard extends StatelessWidget {
                 ],
               ),
             ),
-          const SizedBox(height: AltracqSpacing.xs),
+          const SizedBox(height: HiqeoSpacing.xs),
           Text(
             'Penerusan SOS dan cadangan jejak belum tersedia di build ini.',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -1072,13 +1072,13 @@ class _AuthButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     return Column(
       children: <Widget>[
-        AltracqButton(
+        HiqeoButton(
           key: const ValueKey('profil-login-google'),
           label: 'Lanjutkan dengan Google',
-          variant: AltracqButtonVariant.secondary,
+          variant: HiqeoButtonVariant.secondary,
           leading: Image.asset(
             'assets/brand/google_g.png',
             width: 20,
@@ -1090,7 +1090,7 @@ class _AuthButtons extends StatelessWidget {
           onPressed: enabled ? onGoogle : null,
         ),
         const SizedBox(height: _gap),
-        AltracqButton(
+        HiqeoButton(
           key: const ValueKey('profil-login-apple'),
           label: 'Lanjutkan dengan Apple',
           leading: Image.asset(
@@ -1116,16 +1116,16 @@ class _ProviderPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final label = provider == AuthProviderKind.google
         ? 'Terhubung dengan Google'
         : 'Terhubung dengan Apple';
     return Semantics(
       label: label,
       child: GlassSurface(
-        borderRadius: AltracqRadius.pill,
+        borderRadius: HiqeoRadius.pill,
         padding: const EdgeInsets.symmetric(
-          horizontal: AltracqSpacing.lg,
+          horizontal: HiqeoSpacing.lg,
           vertical: 8,
         ),
         child: FittedBox(
@@ -1150,7 +1150,7 @@ class _ProviderPill extends StatelessWidget {
                   colorBlendMode: BlendMode.srcIn,
                   excludeFromSemantics: true,
                 ),
-              const SizedBox(width: AltracqSpacing.sm),
+              const SizedBox(width: HiqeoSpacing.sm),
               ExcludeSemantics(
                 child: Text(
                   label,
@@ -1177,33 +1177,33 @@ class _ProfilRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final AltracqIconData icon;
+  final HiqeoIconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Semantics(
       button: true,
       label: '$title. $subtitle',
       child: GlassSurface(
-        borderRadius: AltracqRadius.card,
+        borderRadius: HiqeoRadius.card,
         child: Material(
           type: MaterialType.transparency,
           child: InkWell(
-            borderRadius: BorderRadius.circular(AltracqRadius.card),
+            borderRadius: BorderRadius.circular(HiqeoRadius.card),
             onTap: onTap,
             child: Padding(
               padding: const EdgeInsets.symmetric(
-                horizontal: AltracqSpacing.lg,
+                horizontal: HiqeoSpacing.lg,
                 vertical: 14,
               ),
               child: Row(
                 children: <Widget>[
-                  AltracqIcon(
+                  HiqeoIcon(
                     icon,
                     size: 24,
                     color: colors.textPrimary,
@@ -1224,9 +1224,9 @@ class _ProfilRow extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: AltracqSpacing.sm),
-                  AltracqIcon(
-                    AltracqIcons.chevronRight,
+                  const SizedBox(width: HiqeoSpacing.sm),
+                  HiqeoIcon(
+                    HiqeoIcons.chevronRight,
                     size: 18,
                     color: colors.textSecondary,
                   ),
@@ -1248,7 +1248,7 @@ class _SignOutButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     return Semantics(
       button: true,
       enabled: enabled,
@@ -1256,12 +1256,12 @@ class _SignOutButton extends StatelessWidget {
       child: Opacity(
         opacity: enabled ? 1 : 0.6,
         child: GlassSurface(
-          borderRadius: AltracqRadius.pill,
+          borderRadius: HiqeoRadius.pill,
           child: Material(
             type: MaterialType.transparency,
             child: InkWell(
               key: const ValueKey('profil-sign-out'),
-              borderRadius: BorderRadius.circular(AltracqRadius.pill),
+              borderRadius: BorderRadius.circular(HiqeoRadius.pill),
               onTap: enabled ? onTap : null,
               child: SizedBox(
                 height: 56,
@@ -1296,14 +1296,14 @@ class _ThemeOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Semantics(
       button: true,
       selected: selected,
       label: label,
       child: InkWell(
-        borderRadius: BorderRadius.circular(AltracqRadius.card),
+        borderRadius: BorderRadius.circular(HiqeoRadius.card),
         onTap: onTap,
         child: SizedBox(
           height: 52,
@@ -1318,8 +1318,8 @@ class _ThemeOption extends StatelessWidget {
                 ),
               ),
               if (selected)
-                AltracqIcon(
-                  AltracqIcons.check,
+                HiqeoIcon(
+                  HiqeoIcons.check,
                   size: 20,
                   color: colors.textPrimary,
                 ),
@@ -1339,7 +1339,7 @@ class _SheetAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     return SizedBox(
       height: 52,
       child: Material(
@@ -1370,10 +1370,10 @@ class _Message extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: AltracqSpacing.md),
+      padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
       child: Text(
         text,
         textAlign: TextAlign.center,

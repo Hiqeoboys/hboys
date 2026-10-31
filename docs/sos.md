@@ -52,7 +52,7 @@ sudah dijalankan, dan apa yang belum diuji.
 - "Kurangi animasi" mematikan lensa label di dalam knob dan mengganti spring
   dengan perpindahan biasa. Profil daya Hemat/Kritis mengganti blur knob
   dengan isi kaca padat. Fungsi geser tidak berubah pada kedua kondisi itu.
-- Layar menegaskan `SOS tidak menjamin pertolongan datang. Altracq tidak
+- Layar menegaskan `SOS tidak menjamin pertolongan datang. Hiqeo tidak
   mengklaim telah menghubungi Basarnas.`
 - Tombol kembali sistem mengikuti aturan tombol tutup: langsung kembali bila
   SOS diam, meminta konfirmasi bila SOS berjalan.
@@ -70,7 +70,7 @@ sudah dijalankan, dan apa yang belum diuji.
 - Tidak ada penjadwalan pengingat, riwayat SOS, atau pengiriman ulang otomatis.
   Membuka kembali layar memulai alur baru.
 - Tidak ada warna baru dan tidak ada warna merah pada trek geser. Seluruh isian,
-  garis tepi, dan kilau diambil dari token kaca `AltracqColors` yang sudah ada.
+  garis tepi, dan kilau diambil dari token kaca `HiqeoColors` yang sudah ada.
 
 ## 3. Berkas utama
 

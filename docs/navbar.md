@@ -5,7 +5,7 @@ yang sudah dijalankan, dan apa yang belum diuji.
 
 ## 1. Lingkup yang sudah ada
 
-- **Satu widget persisten.** `AltracqShell` memegang satu `AltracqNavBar` di
+- **Satu widget persisten.** `HiqeoShell` memegang satu `HiqeoNavBar` di
   luar `StatefulShellRoute.indexedStack`. Berpindah tab mengganti cabang di
   dalam `IndexedStack`, bukan membangun ulang navbar; tes memastikan instance
   `State` navbar sama sebelum dan sesudah pindah tab.
@@ -57,7 +57,7 @@ yang sudah dijalankan, dan apa yang belum diuji.
   hampir sepenuhnya opak sehingga ambang tidak berfungsi.
 - **Navbar melayang di atas peta (Perubahan 5).** Hanya cabang Peta yang
   memakai `extendBody: true`, jadi peta memanjang sampai tepi layar dan navbar
-  mengambang 16 px di atasnya. Di tab Peta, `AltracqNavBar` menerima
+  mengambang 16 px di atasnya. Di tab Peta, `HiqeoNavBar` menerima
   `overMap: true`: `GlassSurface` mendapat `tint` navy
   (`colors.background` alfa 0,6, hanya mode gelap) supaya peta terang tidak
   membuat label tidak terbaca, dan label diam memakai `textPrimary` (bukan
@@ -65,7 +65,7 @@ yang sudah dijalankan, dan apa yang belum diuji.
   Tab lain tidak memakai `extendBody`: navbar ditata di luar isi, sehingga
   kartu atau tombol terang tidak tampak menembus kaca dan menyatu dengan blob.
 - **Inset sistem transparan.** `bootstrap.dart` memanggil
-  `SystemUiMode.edgeToEdge` di Android dan `AltracqSystemUiRegion` memasang
+  `SystemUiMode.edgeToEdge` di Android dan `HiqeoSystemUiRegion` memasang
   `SystemUiOverlayStyle` transparan dengan ikon yang mengikuti tema aktif.
 - **Jarak bawah isi tab.** Di Peta, `extendBody` menaikkan
   `MediaQuery.padding.bottom` isi tab setinggi navbar + 16 px + inset sistem,
@@ -73,7 +73,7 @@ yang sudah dijalankan, dan apa yang belum diuji.
   tidak mendapat padding tambahan karena isinya berhenti tepat di atas navbar.
   Inset sistem mentah tidak terbaca lewat `viewPadding` di dalam body (Scaffold
   menguranginya saat ada `bottomNavigationBar`), jadi shell menyediakan
-  `AltracqSystemInset`.
+  `HiqeoSystemInset`.
 
 Spesifikasi gooey lama untuk tombol — tonjolan cair di tepi tombol dan leher
 penyambung antar-tombol — dibatalkan. `nav_bar_gooey_test.dart` yang menguji
@@ -128,7 +128,7 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
   Peta yang edge-to-edge; tab lain menata navbar di luar isi. Alternatifnya,
   membungkus setiap cabang dengan padding di router, membangun padding ganda
   di layar penuh dan menyulitkan Peta yang butuh edge-to-edge.
-- **`AltracqSystemInset` disediakan shell.** `MediaQueryData.removePadding`
+- **`HiqeoSystemInset` disediakan shell.** `MediaQueryData.removePadding`
   milik Scaffold mengurangi `viewPadding` saat ada `bottomNavigationBar`,
   sehingga `viewPadding.bottom` menjadi 0 di dalam isi tab. InheritedWidget ini
   membawa inset asli dari luar shell dan dipakai Peta; di luar shell ia jatuh
@@ -143,17 +143,17 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
 
 ## 3. Berkas utama
 
-- `app/lib/design/widgets/altracq_nav_bar.dart` — navbar, kurva gerak,
+- `app/lib/design/widgets/hiqeo_nav_bar.dart` — navbar, kurva gerak,
   perhitungan cakupan, tint peta, warna label, dan `NavBarBlobPainter`.
-- `app/lib/features/shell/altracq_shell.dart` — shell persisten, fade 180 ms,
-  `extendBody`, pengabaian ketukan tab aktif, dan `AltracqSystemInset`.
+- `app/lib/features/shell/hiqeo_shell.dart` — shell persisten, fade 180 ms,
+  `extendBody`, pengabaian ketukan tab aktif, dan `HiqeoSystemInset`.
 - `app/lib/design/system_ui.dart` — gaya system bar transparan,
-  `AltracqSystemUiRegion`, dan `AltracqSystemInset`.
+  `HiqeoSystemUiRegion`, dan `HiqeoSystemInset`.
 - `app/lib/bootstrap.dart` — `SystemUiMode.edgeToEdge` di Android.
-- `app/lib/app/app.dart` — memasang `AltracqSystemUiRegion` mengikuti tema.
+- `app/lib/app/app.dart` — memasang `HiqeoSystemUiRegion` mengikuti tema.
 - `app/lib/design/gooey/gooey_layer.dart` — blur + ambang alfa metaball.
-- `app/lib/design/tokens.dart` — `AltracqGooey`, ukuran navbar, dan
-  `AltracqMetrics.floatingBottomInset`.
+- `app/lib/design/tokens.dart` — `HiqeoGooey`, ukuran navbar, dan
+  `HiqeoMetrics.floatingBottomInset`.
 - `app/lib/design/glass/glass_surface.dart` — kaca, tint, dan bayangan navbar.
 - `app/lib/features/map/presentation/map_page.dart` — peta edge-to-edge,
   jarak panel/ornamen Mapbox, dan latar penuh saat peta tidak tersedia.
@@ -177,7 +177,7 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
 - Seluruh suite aplikasi lulus: **401 tes**.
 - Tes widget navbar/blob (10 tes) mencakup:
   - saat diam blob berupa satu pill tajam tanpa `GooeyLayer` maupun filter,
-    berpusat di sel pertama, dengan warna `AltracqColors.light.primary`;
+    berpusat di sel pertama, dengan warna `HiqeoColors.light.primary`;
   - selama bergerak hanya ada satu `GooeyLayer`, kepala memimpin ekor, dan
     setelah selesai kembali menjadi satu pill tajam di tab tujuan;
   - lompatan Beranda–Profil memanjang lebih dari 0,7 sel di tengah jalan dan
@@ -205,7 +205,7 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
   - isi Beranda, Lacak, dan Profil berhenti tepat di atas navbar tanpa padding
     bawah tambahan, sedangkan Peta menempati 0..844 dengan `extendBody` aktif;
   - `PageBackground.showBlobs` mati di Peta dan hidup di tab lain,
-    `AltracqNavBar.overMap` hidup di Peta, dan `AltracqSystemInset` membawa
+    `HiqeoNavBar.overMap` hidup di Peta, dan `HiqeoSystemInset` membawa
     inset mentah 24 px ke dalam Peta.
 - Tes tint dan kontras navbar di atas peta (6 tes) mencakup:
   - `navBarMapTint` null di mode terang dan navy 60% di mode gelap;
@@ -216,7 +216,7 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
     35%, `textSecondary` < 4,5:1 di atas peta putih, dan kaca terang ≥ 4,5:1.
 - Tes system bar (3 tes) mencakup bilah transparan dengan ikon gelap di tema
   terang, ikon terang di tema gelap, dan `SystemUiOverlayStyle` yang terpasang
-  lewat `AltracqSystemUiRegion`.
+  lewat `HiqeoSystemUiRegion`.
 - Tes `map_page_test.dart` bertambah 2 tes: nilai jarak panel/ornamen untuk
   inset 0 dan 24 px beserta hubungannya, serta peta kosong tanpa
   `PageBackground`, berlatar `colors.background`, setinggi layar penuh, dengan

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'tokens.dart';
 import 'typography.dart';
 
-/// Tema Material 3 yang seluruh warnanya berasal dari [AltracqColors].
-ThemeData buildAltracqTheme(AltracqColors colors) {
+/// Tema Material 3 yang seluruh warnanya berasal dari [HiqeoColors].
+ThemeData buildHiqeoTheme(HiqeoColors colors) {
   final scheme = ColorScheme(
     brightness: colors.brightness,
     primary: colors.primary,
@@ -28,9 +28,9 @@ ThemeData buildAltracqTheme(AltracqColors colors) {
     colorScheme: scheme,
     scaffoldBackgroundColor: colors.background,
     canvasColor: colors.background,
-    fontFamily: AltracqTypography.family,
-    textTheme: AltracqTypography.textTheme.apply(
-      fontFamily: AltracqTypography.family,
+    fontFamily: HiqeoTypography.family,
+    textTheme: HiqeoTypography.textTheme.apply(
+      fontFamily: HiqeoTypography.family,
       bodyColor: colors.textPrimary,
       displayColor: colors.textPrimary,
     ),
@@ -48,14 +48,14 @@ ThemeData buildAltracqTheme(AltracqColors colors) {
       foregroundColor: colors.textPrimary,
       elevation: 0,
       centerTitle: false,
-      titleTextStyle: AltracqTypography.textTheme.titleLarge
+      titleTextStyle: HiqeoTypography.textTheme.titleLarge
           ?.copyWith(color: colors.textPrimary),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: colors.textPrimary,
-        minimumSize: const Size(AltracqMetrics.minTouchTarget, AltracqMetrics.minTouchTarget),
-        textStyle: AltracqTypography.textTheme.labelLarge,
+        minimumSize: const Size(HiqeoMetrics.minTouchTarget, HiqeoMetrics.minTouchTarget),
+        textStyle: HiqeoTypography.textTheme.labelLarge,
       ),
     ),
     iconTheme: IconThemeData(color: colors.textPrimary, size: 24),
@@ -80,6 +80,6 @@ ThemeData buildAltracqTheme(AltracqColors colors) {
   );
 }
 
-ThemeData get altracqLightTheme => buildAltracqTheme(AltracqColors.light);
+ThemeData get hiqeoLightTheme => buildHiqeoTheme(HiqeoColors.light);
 
-ThemeData get altracqDarkTheme => buildAltracqTheme(AltracqColors.dark);
+ThemeData get hiqeoDarkTheme => buildHiqeoTheme(HiqeoColors.dark);

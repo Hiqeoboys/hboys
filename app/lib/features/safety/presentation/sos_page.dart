@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/brand/app_brand.dart';
 import '../../../core/constants/emergency_numbers.dart';
 import '../../../core/platform/phone_dialer.dart';
 import '../../../core/utils/clock.dart';
@@ -444,7 +445,7 @@ class _SosPageState extends State<SosPage> {
       builder: (dialogContext) => AlertDialog(
         title: Text('Telepon $label?'),
         content: const Text(
-          'Altracq membuka aplikasi telepon dengan nomor terisi. '
+          '${AppBrand.name} membuka aplikasi telepon dengan nomor terisi. '
           'Panggilan tidak dilakukan otomatis.',
         ),
         actions: <Widget>[
@@ -537,10 +538,10 @@ class _SosPageState extends State<SosPage> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: altracqDarkTheme,
+      data: hiqeoDarkTheme,
       child: Builder(
         builder: (context) {
-          final colors = AltracqColors.of(context);
+          final colors = HiqeoColors.of(context);
           final theme = Theme.of(context);
           // SOS tidak membaca baterai; kebijakan efek di layar ini hanya
           // mengikuti permintaan kurangi animasi dan golongan perangkat.
@@ -567,10 +568,10 @@ class _SosPageState extends State<SosPage> {
                         Expanded(
                           child: SingleChildScrollView(
                             padding: const EdgeInsets.fromLTRB(
-                              AltracqSpacing.lg,
+                              HiqeoSpacing.lg,
                               20,
-                              AltracqSpacing.lg,
-                              AltracqSpacing.sm,
+                              HiqeoSpacing.lg,
+                              HiqeoSpacing.sm,
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -578,7 +579,7 @@ class _SosPageState extends State<SosPage> {
                                 _header(theme, colors),
                                 const SizedBox(height: 20),
                                 Center(child: _ring(theme, colors)),
-                                const SizedBox(height: AltracqSpacing.lg),
+                                const SizedBox(height: HiqeoSpacing.lg),
                                 Text(
                                   _copyText(),
                                   textAlign: TextAlign.center,
@@ -590,7 +591,7 @@ class _SosPageState extends State<SosPage> {
                                   ),
                                 ),
                                 if (_repositoryError != null && !_active) ...<Widget>[
-                                  const SizedBox(height: AltracqSpacing.sm),
+                                  const SizedBox(height: HiqeoSpacing.sm),
                                   Text(
                                     _repositoryError!,
                                     textAlign: TextAlign.center,
@@ -600,19 +601,19 @@ class _SosPageState extends State<SosPage> {
                                   ),
                                 ],
                                 if (_active) ...<Widget>[
-                                  const SizedBox(height: AltracqSpacing.lg),
+                                  const SizedBox(height: HiqeoSpacing.lg),
                                   _SosPillButton(
                                     key: const ValueKey('sos-cancel'),
                                     label: 'Batal, saya aman',
                                     onTap: () => unawaited(_cancel()),
                                   ),
-                                  const SizedBox(height: AltracqSpacing.lg),
+                                  const SizedBox(height: HiqeoSpacing.lg),
                                   _categoryChips(theme),
                                   const SizedBox(height: 20),
                                   _ladder(theme, colors),
                                 ],
                                 if (_state == SosTriggerState.cancelled) ...<Widget>[
-                                  const SizedBox(height: AltracqSpacing.lg),
+                                  const SizedBox(height: HiqeoSpacing.lg),
                                   _SosPillButton(
                                     key: const ValueKey('sos-reset'),
                                     label: 'Mulai SOS lagi',
@@ -638,17 +639,17 @@ class _SosPageState extends State<SosPage> {
     );
   }
 
-  Widget _header(ThemeData theme, AltracqColors colors) {
+  Widget _header(ThemeData theme, HiqeoColors colors) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
         HeaderIconButton(
           key: const ValueKey('sos-close'),
-          icon: AltracqIcons.close,
+          icon: HiqeoIcons.close,
           label: 'Tutup',
           onTap: _cancelling ? null : () => unawaited(_requestClose()),
         ),
-        const SizedBox(width: AltracqSpacing.lg),
+        const SizedBox(width: HiqeoSpacing.lg),
         Expanded(
           child: Text(
             _headerHint(),
@@ -662,7 +663,7 @@ class _SosPageState extends State<SosPage> {
     );
   }
 
-  Widget _ring(ThemeData theme, AltracqColors colors) {
+  Widget _ring(ThemeData theme, HiqeoColors colors) {
     final enabled =
         _state == SosTriggerState.idle || _state == SosTriggerState.cancelled;
     return Listener(
@@ -694,7 +695,7 @@ class _SosPageState extends State<SosPage> {
     );
   }
 
-  Widget _ringCenter(ThemeData theme, AltracqColors colors) {
+  Widget _ringCenter(ThemeData theme, HiqeoColors colors) {
     final base = theme.textTheme.displayLarge?.copyWith(
       color: colors.textPrimary,
       fontWeight: FontWeight.w800,
@@ -711,14 +712,14 @@ class _SosPageState extends State<SosPage> {
           '${_countdownSeconds() ?? 0}',
           style: base?.copyWith(fontSize: 56, letterSpacing: -1),
         ),
-      SosTriggerState.triggered => AltracqIcon(
-          AltracqIcons.warning,
+      SosTriggerState.triggered => HiqeoIcon(
+          HiqeoIcons.warning,
           size: 56,
           color: colors.textPrimary,
           strokeWidth: 1.6,
         ),
-      SosTriggerState.cancelled => AltracqIcon(
-          AltracqIcons.check,
+      SosTriggerState.cancelled => HiqeoIcon(
+          HiqeoIcons.check,
           size: 60,
           color: colors.textPrimary,
         ),
@@ -741,7 +742,7 @@ class _SosPageState extends State<SosPage> {
     );
   }
 
-  Widget _ladder(ThemeData theme, AltracqColors colors) {
+  Widget _ladder(ThemeData theme, HiqeoColors colors) {
     final saved = _tracker.reached(SosDeliveryStage.savedLocally);
     final delivered = _tracker.reached(SosDeliveryStage.sentToPeers) ||
         _tracker.reached(SosDeliveryStage.acknowledgedByMember) ||
@@ -780,7 +781,7 @@ class _SosPageState extends State<SosPage> {
           ),
         ),
         if (saved && !delivered) ...<Widget>[
-          const SizedBox(height: AltracqSpacing.sm),
+          const SizedBox(height: HiqeoSpacing.sm),
           Text(
             'Hanya penyimpanan lokal yang terjadi. Pengiriman ke anggota, '
             'server, dan kontak darurat belum aktif.',
@@ -793,12 +794,12 @@ class _SosPageState extends State<SosPage> {
     );
   }
 
-  Widget _bottomBar(ThemeData theme, AltracqColors colors) {
+  Widget _bottomBar(ThemeData theme, HiqeoColors colors) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AltracqSpacing.lg,
-        AltracqSpacing.sm,
-        AltracqSpacing.lg,
+        HiqeoSpacing.lg,
+        HiqeoSpacing.sm,
+        HiqeoSpacing.lg,
         10,
       ),
       child: Column(
@@ -811,18 +812,18 @@ class _SosPageState extends State<SosPage> {
             label: 'Basarnas ${EmergencyNumbers.basarnas}',
             number: EmergencyNumbers.basarnas,
           ),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           _callTrack(
             sliderKey: 'sos-call-112',
             otherKey: 'sos-call-115',
             label: 'Darurat ${EmergencyNumbers.unified}',
             number: EmergencyNumbers.unified,
           ),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           Row(
             children: <Widget>[
-              AltracqIcon(
-                AltracqIcons.phone,
+              HiqeoIcon(
+                HiqeoIcons.phone,
                 size: 14,
                 color: colors.textSecondary,
               ),
@@ -837,8 +838,8 @@ class _SosPageState extends State<SosPage> {
           ),
           const SizedBox(height: 10),
           Text(
-            'SOS tidak menjamin pertolongan datang. Altracq tidak mengklaim '
-            'telah menghubungi Basarnas.',
+            'SOS tidak menjamin pertolongan datang. ${AppBrand.name} tidak '
+            'mengklaim telah menghubungi Basarnas.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: colors.textSecondary,
             ),
@@ -937,7 +938,7 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Semantics(
       button: true,
@@ -950,8 +951,8 @@ class _CategoryChip extends StatelessWidget {
           height: 44,
           padding: const EdgeInsets.symmetric(horizontal: 18),
           decoration: BoxDecoration(
-            color: selected ? AltracqColors.light.warning : Colors.transparent,
-            borderRadius: BorderRadius.circular(AltracqRadius.pill),
+            color: selected ? HiqeoColors.light.warning : Colors.transparent,
+            borderRadius: BorderRadius.circular(HiqeoRadius.pill),
             border: selected
                 ? null
                 : Border.all(
@@ -966,7 +967,7 @@ class _CategoryChip extends StatelessWidget {
                 label,
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: selected
-                      ? AltracqColors.light.surface
+                      ? HiqeoColors.light.surface
                       : colors.textPrimary,
                   letterSpacing: 0.4,
                 ),
@@ -996,7 +997,7 @@ class _SosPillButton extends StatelessWidget {
       button: true,
       label: label,
       child: Material(
-        color: AltracqColors.light.surface,
+        color: HiqeoColors.light.surface,
         shape: const StadiumBorder(),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -1009,7 +1010,7 @@ class _SosPillButton extends StatelessWidget {
                 child: Text(
                   label,
                   style: theme.textTheme.titleSmall?.copyWith(
-                    color: AltracqColors.light.textPrimary,
+                    color: HiqeoColors.light.textPrimary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1034,7 +1035,7 @@ class _LadderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Semantics(
       container: true,
@@ -1049,7 +1050,7 @@ class _LadderRow extends StatelessWidget {
                 height: 22,
                 decoration: reached
                     ? BoxDecoration(
-                        color: AltracqColors.light.secondary,
+                        color: HiqeoColors.light.secondary,
                         shape: BoxShape.circle,
                       )
                     : BoxDecoration(
@@ -1061,16 +1062,16 @@ class _LadderRow extends StatelessWidget {
                       ),
                 child: reached
                     ? Center(
-                        child: AltracqIcon(
-                          AltracqIcons.check,
+                        child: HiqeoIcon(
+                          HiqeoIcons.check,
                           size: 14,
                           strokeWidth: 2.2,
-                          color: AltracqColors.light.textPrimary,
+                          color: HiqeoColors.light.textPrimary,
                         ),
                       )
                     : null,
               ),
-              const SizedBox(width: AltracqSpacing.md),
+              const SizedBox(width: HiqeoSpacing.md),
               Expanded(
                 child: Text(
                   label,

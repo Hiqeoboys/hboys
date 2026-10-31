@@ -21,7 +21,7 @@ class FeatureEntry {
     this.emphasis = false,
   });
 
-  final AltracqIconData icon;
+  final HiqeoIconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -48,8 +48,8 @@ class ExpandableFeaturesCard extends StatefulWidget {
 
   static const double collapsedHeight = 64;
   static const double cellHeight = 140;
-  static const double cellGap = AltracqSpacing.md;
-  static const double toggleSize = AltracqMetrics.minTouchTarget;
+  static const double cellGap = HiqeoSpacing.md;
+  static const double toggleSize = HiqeoMetrics.minTouchTarget;
 
   @override
   State<ExpandableFeaturesCard> createState() => _ExpandableFeaturesCardState();
@@ -58,7 +58,7 @@ class ExpandableFeaturesCard extends StatefulWidget {
 class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
     with SingleTickerProviderStateMixin {
   static const Duration _morphDuration = Duration(milliseconds: 550);
-  static const Duration _plainDuration = AltracqMotion.screenFade;
+  static const Duration _plainDuration = HiqeoMotion.screenFade;
 
   /// Jeda antar kartu 35 ms, dinyatakan sebagai bagian dari durasi total.
   static const double _staggerFraction = 35 / 550;
@@ -118,8 +118,8 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
     await Scrollable.ensureVisible(
       target,
       alignment: 1,
-      duration: AltracqMotion.spring,
-      curve: AltracqMotion.standard,
+      duration: HiqeoMotion.spring,
+      curve: HiqeoMotion.standard,
     );
   }
 
@@ -138,7 +138,7 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
   double get _gridHeight =>
       _rows * ExpandableFeaturesCard.cellHeight +
       (_rows - 1) * ExpandableFeaturesCard.cellGap +
-      AltracqSpacing.lg;
+      HiqeoSpacing.lg;
 
   double get _staggerTotal => _reduceMotion
       ? 0
@@ -162,7 +162,7 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
       : _tileProgress(math.max(0, widget.features.length - 1), t);
 
   double _radiusFor(double t) => ExpandableFeaturesCard.collapsedHeight / 2 +
-      (AltracqRadius.hero - ExpandableFeaturesCard.collapsedHeight / 2) * t;
+      (HiqeoRadius.hero - ExpandableFeaturesCard.collapsedHeight / 2) * t;
 
   /// 0 berarti kaca tajam, 1 berarti seluruhnya bentuk cair.
   double _gooeyOpacity(double t) {
@@ -175,7 +175,7 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
 
   Offset _toggleCenter(double width) => Offset(
         width -
-            AltracqSpacing.lg -
+            HiqeoSpacing.lg -
             ExpandableFeaturesCard.toggleSize / 2,
         ExpandableFeaturesCard.collapsedHeight / 2,
       );
@@ -183,11 +183,11 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
   /// Kotak tujuan kartu fitur, dalam koordinat kartu (bukan koordinat grid).
   Rect _cellRect(int index, double width) {
     final cellWidth =
-        (width - AltracqSpacing.lg * 2 - ExpandableFeaturesCard.cellGap) / 2;
+        (width - HiqeoSpacing.lg * 2 - ExpandableFeaturesCard.cellGap) / 2;
     final column = index % 2;
     final row = index ~/ 2;
     return Rect.fromLTWH(
-      AltracqSpacing.lg + column * (cellWidth + ExpandableFeaturesCard.cellGap),
+      HiqeoSpacing.lg + column * (cellWidth + ExpandableFeaturesCard.cellGap),
       ExpandableFeaturesCard.collapsedHeight +
           row * (ExpandableFeaturesCard.cellHeight + ExpandableFeaturesCard.cellGap),
       cellWidth,
@@ -208,7 +208,7 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -239,7 +239,7 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
   }
 
   Widget _background(
-    AltracqColors colors,
+    HiqeoColors colors,
     double t,
     double width,
     double gooey,
@@ -281,7 +281,7 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
                             decoration: BoxDecoration(
                               color: colors.surface,
                               borderRadius:
-                                  BorderRadius.circular(AltracqRadius.card),
+                                  BorderRadius.circular(HiqeoRadius.card),
                             ),
                           ),
                         ),
@@ -354,7 +354,7 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
   }
 
   Widget _header() {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Semantics(
       key: const ValueKey<String>('semua-fitur-toggle'),
@@ -372,7 +372,7 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
         child: ExcludeSemantics(
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: AltracqSpacing.lg,
+              horizontal: HiqeoSpacing.lg,
             ),
             child: Row(
               children: <Widget>[
@@ -385,15 +385,15 @@ class _ExpandableFeaturesCardState extends State<ExpandableFeaturesCard>
                         ?.copyWith(color: colors.textPrimary),
                   ),
                 ),
-                const SizedBox(width: AltracqSpacing.md),
+                const SizedBox(width: HiqeoSpacing.md),
                 SizedBox(
                   width: ExpandableFeaturesCard.toggleSize,
                   height: ExpandableFeaturesCard.toggleSize,
                   child: GlassSurface(
-                    borderRadius: AltracqRadius.pill,
+                    borderRadius: HiqeoRadius.pill,
                     child: Center(
-                      child: AltracqIcon(
-                        _expanded ? AltracqIcons.close : AltracqIcons.grid,
+                      child: HiqeoIcon(
+                        _expanded ? HiqeoIcons.close : HiqeoIcons.grid,
                         size: 22,
                         color: colors.textPrimary,
                       ),
@@ -423,7 +423,7 @@ class FeatureTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final emphasis = feature.emphasis;
     final titleColor = emphasis ? colors.onPrimary : colors.textPrimary;
@@ -431,7 +431,7 @@ class FeatureTile extends StatelessWidget {
         ? colors.onPrimary.withValues(alpha: 0.74)
         : colors.textSecondary;
     final content = Padding(
-      padding: const EdgeInsets.all(AltracqSpacing.lg),
+      padding: const EdgeInsets.all(HiqeoSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -445,7 +445,7 @@ class FeatureTile extends StatelessWidget {
                   : colors.secondary.withValues(alpha: 0.62),
             ),
             child: Center(
-              child: AltracqIcon(
+              child: HiqeoIcon(
                 feature.icon,
                 size: 22,
                 color: emphasis ? colors.onPrimary : colors.textPrimary,
@@ -459,7 +459,7 @@ class FeatureTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleMedium?.copyWith(color: titleColor),
           ),
-          const SizedBox(height: AltracqSpacing.xs),
+          const SizedBox(height: HiqeoSpacing.xs),
           Text(
             feature.subtitle,
             maxLines: 1,
@@ -474,12 +474,12 @@ class FeatureTile extends StatelessWidget {
         ? Container(
             decoration: BoxDecoration(
               color: colors.primary,
-              borderRadius: BorderRadius.circular(AltracqRadius.card),
+              borderRadius: BorderRadius.circular(HiqeoRadius.card),
             ),
             child: content,
           )
         : GlassSurface(
-            borderRadius: AltracqRadius.card,
+            borderRadius: HiqeoRadius.card,
             child: content,
           );
 

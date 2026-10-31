@@ -7,6 +7,8 @@ import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/brand/app_brand.dart';
+
 /// Menangkap, menyimpan, dan membagikan PNG kartu pendakian.
 ///
 /// Antarmuka ini disuntikkan agar tes tidak perlu menjalankan galeri atau
@@ -70,7 +72,7 @@ class DeviceKartuExporter implements KartuExporter {
       final result = await SharePlus.instance.share(
         ShareParams(
           files: <XFile>[XFile(file.path, mimeType: 'image/png')],
-          subject: 'Kartu pendakian Altracq',
+          subject: AppBrand.shareSubject,
         ),
       );
       return result.status != ShareResultStatus.unavailable;

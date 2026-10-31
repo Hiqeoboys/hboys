@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/brand/app_brand.dart';
 import '../../../design/app_theme.dart';
 import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
@@ -77,11 +78,11 @@ class _SplashPageState extends State<SplashPage> {
 
   @override
   Widget build(BuildContext context) {
-    const dark = AltracqColors.dark;
+    const dark = HiqeoColors.dark;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Theme(
-        data: altracqDarkTheme,
+        data: hiqeoDarkTheme,
         child: Scaffold(
           backgroundColor: dark.background,
           body: Stack(
@@ -102,7 +103,7 @@ class _SplashPageState extends State<SplashPage> {
                           borderRadius: BorderRadius.circular(32),
                           border: Border.all(
                             color: dark.glassBorder,
-                            width: AltracqGlass.borderWidth,
+                            width: HiqeoGlass.borderWidth,
                           ),
                           boxShadow: <BoxShadow>[
                             BoxShadow(
@@ -113,8 +114,8 @@ class _SplashPageState extends State<SplashPage> {
                           ],
                         ),
                         child: Center(
-                          child: AltracqIcon(
-                            AltracqIcons.mountain,
+                          child: HiqeoIcon(
+                            HiqeoIcons.mountain,
                             size: 52,
                             color: dark.textPrimary,
                           ),
@@ -122,15 +123,15 @@ class _SplashPageState extends State<SplashPage> {
                       ),
                       const SizedBox(height: 28),
                       Text(
-                        'Altracq',
-                        style: AltracqTypography.textTheme.displayLarge
+                        AppBrand.name,
+                        style: HiqeoTypography.textTheme.displayLarge
                             ?.copyWith(color: dark.textPrimary),
                       ),
                       const SizedBox(height: 12),
                       Text(
                         'Pendamping pendakian yang tetap bekerja tanpa sinyal.',
                         textAlign: TextAlign.center,
-                        style: AltracqTypography.textTheme.bodyLarge
+                        style: HiqeoTypography.textTheme.bodyLarge
                             ?.copyWith(color: dark.textSecondary),
                       ),
                     ],
@@ -164,7 +165,7 @@ class _SplashPageState extends State<SplashPage> {
                       const SizedBox(height: 16),
                       Text(
                         'Menyiapkan data lokal di HP',
-                        style: AltracqTypography.textTheme.bodySmall
+                        style: HiqeoTypography.textTheme.bodySmall
                             ?.copyWith(color: dark.textSecondary),
                       ),
                     ],
@@ -185,7 +186,7 @@ class _ContourPainter extends CustomPainter {
 
   @override
   void paint(ui.Canvas canvas, ui.Size size) {
-    const dark = AltracqColors.dark;
+    const dark = HiqeoColors.dark;
     final center = ui.Offset(size.width / 2, size.height * 0.37);
     final paint = ui.Paint()
       ..style = ui.PaintingStyle.stroke

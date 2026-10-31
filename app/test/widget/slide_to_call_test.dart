@@ -51,7 +51,7 @@ Future<_Recorder> _pump(
   _mockPlatformChannel(tester, recorder);
   await tester.pumpWidget(
     MaterialApp(
-      theme: altracqDarkTheme,
+      theme: hiqeoDarkTheme,
       home: Scaffold(
         body: Padding(
           padding: const EdgeInsets.symmetric(horizontal: _trackPadding),
@@ -86,7 +86,7 @@ Finder get _track => find.byType(SlideToCall);
 /// Jarak knob dari posisi diamnya, diukur dari pusat ikon telepon.
 double _knobOffset(WidgetTester tester) {
   final track = tester.getRect(_track);
-  final icon = tester.getCenter(find.byType(AltracqIcon));
+  final icon = tester.getCenter(find.byType(HiqeoIcon));
   return icon.dx -
       SlideToCall.knobSize / 2 -
       track.left -
@@ -122,10 +122,10 @@ void main() {
     expect(size.height, SlideToCall.trackHeight);
     expect(size.height, 64);
     expect(size.width, _phone.width - 2 * _trackPadding);
-    expect(size.height, greaterThanOrEqualTo(AltracqMetrics.minTouchTarget));
+    expect(size.height, greaterThanOrEqualTo(HiqeoMetrics.minTouchTarget));
 
     final track = tester.getRect(_track);
-    final icon = tester.getCenter(find.byType(AltracqIcon));
+    final icon = tester.getCenter(find.byType(HiqeoIcon));
     expect(icon.dx - track.left, SlideToCall.knobInset + SlideToCall.knobSize / 2);
     expect(icon.dy, track.center.dy);
     expect(_knobOffset(tester), 0);
@@ -137,7 +137,7 @@ void main() {
     expect(find.byType(ImageFiltered), findsNothing);
     expect(find.byType(ColorFiltered), findsNothing);
     // Empat bidang gambar: trek, badan knob, lensa label, dan ikon telepon
-    // (AltracqIcon sendiri juga sebuah CustomPaint).
+    // (HiqeoIcon sendiri juga sebuah CustomPaint).
     expect(
       find.descendant(of: _track, matching: find.byType(CustomPaint)),
       findsNWidgets(4),

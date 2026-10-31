@@ -44,7 +44,7 @@ Finder _plain(String text) => find.byWidgetPredicate(
     );
 
 Widget _app(TrackingView view) => MaterialApp(
-      theme: altracqLightTheme,
+      theme: hiqeoLightTheme,
       home: Scaffold(body: view),
     );
 
@@ -228,7 +228,7 @@ void main() {
       (tester) async {
     _setTallPhone(tester);
     await tester.pumpWidget(MaterialApp(
-      theme: altracqLightTheme,
+      theme: hiqeoLightTheme,
       home: const TrackingPage(),
     ));
     await tester.pumpAndSettle();

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
-import '../../../design/widgets/altracq_button.dart';
-import '../../../design/widgets/altracq_sheet.dart';
+import '../../../design/widgets/hiqeo_button.dart';
+import '../../../design/widgets/hiqeo_sheet.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../application/offline_download_controller.dart';
 import '../application/offline_map_service.dart';
@@ -71,9 +71,9 @@ class OfflineSheetBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
-    return AltracqSheet(
+    return HiqeoSheet(
       title: 'Peta offline',
       subtitle: 'Unduh area sebelum berangkat',
       child: ListenableBuilder(
@@ -90,14 +90,14 @@ class OfflineSheetBody extends StatelessWidget {
               ),
             ),
             if (!mapAvailable) ...<Widget>[
-              const SizedBox(height: AltracqSpacing.md),
+              const SizedBox(height: HiqeoSpacing.md),
               const _Notice(
                 title: 'Mapbox belum aktif',
                 body: 'Daftar paket tetap bisa dibaca, tetapi estimasi dan '
                     'unduhan memerlukan Mapbox di Android atau iOS.',
               ),
             ],
-            const SizedBox(height: AltracqSpacing.lg),
+            const SizedBox(height: HiqeoSpacing.lg),
             if (loading)
               const _LoadingCatalog()
             else if (error != null)
@@ -107,12 +107,12 @@ class OfflineSheetBody extends StatelessWidget {
             else ...<Widget>[
               Text(
                 'PAKET TERSEDIA',
-                style: AltracqTypography.overline(colors.textSecondary),
+                style: HiqeoTypography.overline(colors.textSecondary),
               ),
-              const SizedBox(height: AltracqSpacing.sm),
+              const SizedBox(height: HiqeoSpacing.sm),
               for (final package in catalog!.packages)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: AltracqSpacing.md),
+                  padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
                   child: _PackCard(
                     package: package,
                     selected: controller.package?.id == package.id,
@@ -120,14 +120,14 @@ class OfflineSheetBody extends StatelessWidget {
                   ),
                 ),
               if (controller.package != null) ...<Widget>[
-                const SizedBox(height: AltracqSpacing.xs),
+                const SizedBox(height: HiqeoSpacing.xs),
                 _SelectedPackage(
                   controller: controller,
                   mapAvailable: mapAvailable,
                 ),
               ],
             ],
-            const SizedBox(height: AltracqSpacing.xl),
+            const SizedBox(height: HiqeoSpacing.xl),
             _FooterNotes(),
           ],
         ),
@@ -149,7 +149,7 @@ class _PackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final plan = OfflinePlan.evaluate(package.offline);
     final area = plan.areaKm2.toStringAsFixed(1).replaceAll('.', ',');
@@ -164,12 +164,12 @@ class _PackCard extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(AltracqSpacing.md),
+          padding: const EdgeInsets.all(HiqeoSpacing.md),
           decoration: BoxDecoration(
             color: selected
                 ? colors.secondary.withValues(alpha: 0.5)
                 : colors.surface.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(AltracqRadius.floating),
+            borderRadius: BorderRadius.circular(HiqeoRadius.floating),
             border: Border.all(
               color: selected ? colors.primary : colors.hairline,
               width: selected ? 1.5 : 1,
@@ -178,12 +178,12 @@ class _PackCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              AltracqIcon(
-                AltracqIcons.mountain,
+              HiqeoIcon(
+                HiqeoIcons.mountain,
                 color: colors.textPrimary,
                 size: 22,
               ),
-              const SizedBox(width: AltracqSpacing.md),
+              const SizedBox(width: HiqeoSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,7 +198,7 @@ class _PackCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: AltracqSpacing.sm),
+                        const SizedBox(width: HiqeoSpacing.sm),
                         _VerifiedBadge(verified: package.verified),
                       ],
                     ),
@@ -227,14 +227,14 @@ class _VerifiedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final color = verified ? colors.textSecondary : colors.warningText;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        AltracqIcon(
-          verified ? AltracqIcons.check : AltracqIcons.warning,
+        HiqeoIcon(
+          verified ? HiqeoIcons.check : HiqeoIcons.warning,
           size: 13,
           strokeWidth: 2,
           color: color,
@@ -244,7 +244,7 @@ class _VerifiedBadge extends StatelessWidget {
           verified ? 'Terverifikasi' : 'Belum terverifikasi',
           style: theme.textTheme.bodySmall?.copyWith(
             color: color,
-            fontWeight: AltracqTypography.medium,
+            fontWeight: HiqeoTypography.medium,
           ),
         ),
       ],
@@ -260,7 +260,7 @@ class _SelectedPackage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final status = controller.status;
     final phase = controller.phase;
@@ -284,10 +284,10 @@ class _SelectedPackage extends StatelessWidget {
     final progress = controller.progress;
 
     return Container(
-      padding: const EdgeInsets.all(AltracqSpacing.md),
+      padding: const EdgeInsets.all(HiqeoSpacing.md),
       decoration: BoxDecoration(
         color: colors.surface.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(AltracqRadius.floating),
+        borderRadius: BorderRadius.circular(HiqeoRadius.floating),
         border: Border.all(color: colors.hairline),
       ),
       child: Column(
@@ -295,12 +295,12 @@ class _SelectedPackage extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              AltracqIcon(
-                statusReady ? AltracqIcons.check : AltracqIcons.map,
+              HiqeoIcon(
+                statusReady ? HiqeoIcons.check : HiqeoIcons.map,
                 size: 18,
                 color: statusReady ? colors.textPrimary : colors.textSecondary,
               ),
-              const SizedBox(width: AltracqSpacing.sm),
+              const SizedBox(width: HiqeoSpacing.sm),
               Expanded(
                 child: Text(
                   statusText,
@@ -311,7 +311,7 @@ class _SelectedPackage extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: AltracqSpacing.sm),
+          const SizedBox(height: HiqeoSpacing.sm),
           if (controller.plan != null && !controller.plan!.canDownload)
             for (final violation in controller.plan!.violations)
               Padding(
@@ -341,7 +341,7 @@ class _SelectedPackage extends StatelessWidget {
               ),
             ),
           if (controller.error != null) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.xs),
+            const SizedBox(height: HiqeoSpacing.xs),
             Text(
               controller.error!,
               style: theme.textTheme.bodySmall
@@ -349,16 +349,16 @@ class _SelectedPackage extends StatelessWidget {
             ),
           ],
           if (phase == OfflineDownloadPhase.downloading) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.sm),
+            const SizedBox(height: HiqeoSpacing.sm),
             ClipRRect(
-              borderRadius: BorderRadius.circular(AltracqRadius.pill),
+              borderRadius: BorderRadius.circular(HiqeoRadius.pill),
               child: LinearProgressIndicator(
                 value: progress?.fraction,
                 minHeight: 6,
                 backgroundColor: colors.hairline,
               ),
             ),
-            const SizedBox(height: AltracqSpacing.xs),
+            const SizedBox(height: HiqeoSpacing.xs),
             Text(
               progress == null
                   ? 'Menunggu progres dari SDK…'
@@ -369,7 +369,7 @@ class _SelectedPackage extends StatelessWidget {
             ),
           ],
           if (phase == OfflineDownloadPhase.downloaded) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.sm),
+            const SizedBox(height: HiqeoSpacing.sm),
             Text(
               'SDK melaporkan unduhan selesai pada sesi ini. Aplikasi belum '
               'memverifikasi ulang seluruh tile.',
@@ -378,8 +378,8 @@ class _SelectedPackage extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: AltracqSpacing.md),
-          AltracqButton(
+          const SizedBox(height: HiqeoSpacing.md),
+          HiqeoButton(
             label: !mapAvailable
                 ? 'Unduhan butuh Mapbox aktif'
                 : switch (phase) {
@@ -412,13 +412,13 @@ class _EmptyCatalog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(AltracqSpacing.lg),
+      padding: const EdgeInsets.all(HiqeoSpacing.lg),
       decoration: BoxDecoration(
         color: colors.surface.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(AltracqRadius.floating),
+        borderRadius: BorderRadius.circular(HiqeoRadius.floating),
         border: Border.all(color: colors.hairline),
       ),
       child: Column(
@@ -426,8 +426,8 @@ class _EmptyCatalog extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              AltracqIcon(AltracqIcons.mountain, color: colors.textPrimary),
-              const SizedBox(width: AltracqSpacing.md),
+              HiqeoIcon(HiqeoIcons.mountain, color: colors.textPrimary),
+              const SizedBox(width: HiqeoSpacing.md),
               Expanded(
                 child: Text(
                   'Belum ada paket gunung',
@@ -436,7 +436,7 @@ class _EmptyCatalog extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: AltracqSpacing.sm),
+          const SizedBox(height: HiqeoSpacing.sm),
           Text(
             'Katalog aplikasi kosong dan tidak membundel data gunung fiktif. '
             'Tambahkan paket dari pipeline data yang sudah diverifikasi; lihat '
@@ -463,7 +463,7 @@ class _LoadingCatalog extends StatelessWidget {
           height: 18,
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
-        const SizedBox(width: AltracqSpacing.md),
+        const SizedBox(width: HiqeoSpacing.md),
         Text('Memuat katalog paket…', style: Theme.of(context).textTheme.bodyMedium),
       ],
     );
@@ -502,13 +502,13 @@ class _Notice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(AltracqSpacing.md),
+      padding: const EdgeInsets.all(HiqeoSpacing.md),
       decoration: BoxDecoration(
         color: colors.surface.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(AltracqRadius.floating),
+        borderRadius: BorderRadius.circular(HiqeoRadius.floating),
         border: Border.all(
           color: isError ? colors.warning : colors.hairline,
         ),
@@ -546,7 +546,7 @@ class _Notice extends StatelessWidget {
 class _FooterNotes extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final style = theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary);
     return Column(
@@ -557,7 +557,7 @@ class _FooterNotes extends StatelessWidget {
           'jumlah aset unduhan. Mapbox mengelompokkan tile menjadi tile pack.',
           style: style,
         ),
-        const SizedBox(height: AltracqSpacing.sm),
+        const SizedBox(height: HiqeoSpacing.sm),
         Text(
           'Batas Mapbox: maksimum ${MapGuardrails.mapboxTilePackLimit} tile pack '
           'kumulatif untuk semua region; batas ini tidak bisa dihitung dari '
@@ -565,7 +565,7 @@ class _FooterNotes extends StatelessWidget {
           'otomatis.',
           style: style,
         ),
-        const SizedBox(height: AltracqSpacing.sm),
+        const SizedBox(height: HiqeoSpacing.sm),
         Text(
           'Unduhan memakai kuota data bila tidak ada Wi-Fi. Logo dan atribusi '
           'Mapbox/OpenStreetMap wajib tetap terlihat, termasuk saat memakai '

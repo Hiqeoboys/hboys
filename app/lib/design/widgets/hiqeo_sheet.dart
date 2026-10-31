@@ -7,8 +7,8 @@ import '../tokens.dart';
 ///
 /// Anak [child] harus bisa menggulir sendiri karena tinggi sheet ditentukan
 /// pemanggil (lihat `DraggableScrollableSheet`).
-class AltracqSheet extends StatelessWidget {
-  const AltracqSheet({
+class HiqeoSheet extends StatelessWidget {
+  const HiqeoSheet({
     super.key,
     required this.title,
     this.subtitle,
@@ -21,10 +21,10 @@ class AltracqSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return GlassSurface(
-      borderRadius: AltracqRadius.hero,
+      borderRadius: HiqeoRadius.hero,
       child: Column(
         children: <Widget>[
           const SizedBox(height: 10),
@@ -33,7 +33,7 @@ class AltracqSheet extends StatelessWidget {
             height: 4,
             decoration: BoxDecoration(
               color: colors.textSecondary.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(AltracqRadius.pill),
+              borderRadius: BorderRadius.circular(HiqeoRadius.pill),
             ),
           ),
           Padding(

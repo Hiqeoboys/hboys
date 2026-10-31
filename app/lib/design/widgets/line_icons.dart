@@ -5,30 +5,30 @@ import 'package:flutter/material.dart';
 
 import '../tokens.dart';
 
-/// Ikon garis khas Altracq: digambar sebagai path vektor pada kisi 24×24
+/// Ikon garis khas Hiqeo: digambar sebagai path vektor pada kisi 24×24
 /// dengan goresan 1,8 px dan ujung membulat.
 ///
 /// Ikon Material tidak bisa diatur tebal goresannya, jadi seluruh ikon
 /// rancangan digambar sendiri di sini.
-class AltracqIconData {
-  AltracqIconData(this._builder);
+class HiqeoIconData {
+  HiqeoIconData(this._builder);
 
   final List<ui.Path> Function() _builder;
 
   late final List<ui.Path> paths = _builder();
 }
 
-class AltracqIcon extends StatelessWidget {
-  const AltracqIcon(
+class HiqeoIcon extends StatelessWidget {
+  const HiqeoIcon(
     this.data, {
     super.key,
     this.size = 24,
     this.color,
-    this.strokeWidth = AltracqMetrics.iconStroke,
+    this.strokeWidth = HiqeoMetrics.iconStroke,
     this.semanticLabel,
   });
 
-  final AltracqIconData data;
+  final HiqeoIconData data;
   final double size;
   final Color? color;
 
@@ -39,7 +39,7 @@ class AltracqIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final resolved =
-        color ?? IconTheme.of(context).color ?? AltracqColors.of(context).textPrimary;
+        color ?? IconTheme.of(context).color ?? HiqeoColors.of(context).textPrimary;
     return Semantics(
       label: semanticLabel,
       container: semanticLabel != null,
@@ -47,15 +47,15 @@ class AltracqIcon extends StatelessWidget {
         width: size,
         height: size,
         child: CustomPaint(
-          painter: _AltracqIconPainter(data.paths, resolved, strokeWidth),
+          painter: _HiqeoIconPainter(data.paths, resolved, strokeWidth),
         ),
       ),
     );
   }
 }
 
-class _AltracqIconPainter extends CustomPainter {
-  const _AltracqIconPainter(this.paths, this.color, this.strokeWidth);
+class _HiqeoIconPainter extends CustomPainter {
+  const _HiqeoIconPainter(this.paths, this.color, this.strokeWidth);
 
   final List<ui.Path> paths;
   final ui.Color color;
@@ -80,7 +80,7 @@ class _AltracqIconPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_AltracqIconPainter oldDelegate) =>
+  bool shouldRepaint(_HiqeoIconPainter oldDelegate) =>
       oldDelegate.color != color ||
       oldDelegate.strokeWidth != strokeWidth ||
       oldDelegate.paths != paths;
@@ -94,10 +94,10 @@ ui.Path _dome(double centerX, double baseY, double radius) => ui.Path()
   );
 
 /// Kumpulan ikon. Ditambah sesuai layar yang dikerjakan.
-class AltracqIcons {
-  const AltracqIcons._();
+class HiqeoIcons {
+  const HiqeoIcons._();
 
-  static final AltracqIconData home = AltracqIconData(
+  static final HiqeoIconData home = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(3.2, 10.8)
@@ -111,7 +111,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData map = AltracqIconData(
+  static final HiqeoIconData map = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(9, 4.4)
@@ -132,7 +132,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData activity = AltracqIconData(
+  static final HiqeoIconData activity = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(2.8, 12.6)
@@ -144,7 +144,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData group = AltracqIconData(
+  static final HiqeoIconData group = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..addOval(
@@ -159,7 +159,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData user = AltracqIconData(
+  static final HiqeoIconData user = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..addOval(
@@ -169,7 +169,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData mountain = AltracqIconData(
+  static final HiqeoIconData mountain = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(2.8, 19.2)
@@ -184,7 +184,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData trail = AltracqIconData(
+  static final HiqeoIconData trail = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(4.4, 19.6)
@@ -197,7 +197,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData compass = AltracqIconData(
+  static final HiqeoIconData compass = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..addOval(
@@ -212,7 +212,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData pin = AltracqIconData(
+  static final HiqeoIconData pin = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(12, 20.6)
@@ -228,7 +228,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData image = AltracqIconData(
+  static final HiqeoIconData image = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..addRRect(
@@ -250,7 +250,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData warning = AltracqIconData(
+  static final HiqeoIconData warning = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(12, 3.8)
@@ -266,7 +266,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData check = AltracqIconData(
+  static final HiqeoIconData check = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(5, 12.6)
@@ -275,7 +275,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData locate = AltracqIconData(
+  static final HiqeoIconData locate = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(12, 3.6)
@@ -286,7 +286,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData mic = AltracqIconData(
+  static final HiqeoIconData mic = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..addRRect(
@@ -305,7 +305,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData close = AltracqIconData(
+  static final HiqeoIconData close = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(6.4, 6.4)
@@ -316,7 +316,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData phone = AltracqIconData(
+  static final HiqeoIconData phone = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(7.2, 3.5)
@@ -337,7 +337,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData send = AltracqIconData(
+  static final HiqeoIconData send = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(20, 4)
@@ -349,7 +349,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData battery = AltracqIconData(
+  static final HiqeoIconData battery = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..addRRect(
@@ -364,7 +364,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData lock = AltracqIconData(
+  static final HiqeoIconData lock = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..addRRect(
@@ -385,7 +385,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData grid = AltracqIconData(
+  static final HiqeoIconData grid = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..addRRect(
@@ -415,7 +415,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData chevronRight = AltracqIconData(
+  static final HiqeoIconData chevronRight = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..moveTo(9.4, 5.8)
@@ -424,7 +424,7 @@ class AltracqIcons {
     ],
   );
 
-  static final AltracqIconData sun = AltracqIconData(
+  static final HiqeoIconData sun = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()
         ..addOval(

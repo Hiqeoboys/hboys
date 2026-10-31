@@ -7,7 +7,7 @@ import '../../design/background/page_background.dart';
 import '../../design/motion/visual_effect_policy.dart';
 import '../../design/system_ui.dart';
 import '../../design/tokens.dart';
-import '../../design/widgets/altracq_nav_bar.dart';
+import '../../design/widgets/hiqeo_nav_bar.dart';
 import '../../design/widgets/line_icons.dart';
 import '../../infrastructure/power/power_profile_controller.dart';
 
@@ -15,8 +15,8 @@ import '../../infrastructure/power/power_profile_controller.dart';
 ///
 /// Layar di luar tab — Splash, Siap Naik, SOS, Kartu Pendakian — berada di
 /// rute terpisah sehingga tidak menampilkan navigasi bawah.
-class AltracqShell extends StatefulWidget {
-  const AltracqShell({
+class HiqeoShell extends StatefulWidget {
+  const HiqeoShell({
     super.key,
     required this.navigationShell,
     this.powerController,
@@ -27,12 +27,12 @@ class AltracqShell extends StatefulWidget {
   /// Disuntikkan untuk uji; produksi membaca baterai perangkat.
   final PowerProfileController? powerController;
 
-  static final List<AltracqNavBarItem> navItems = <AltracqNavBarItem>[
-    AltracqNavBarItem(label: 'Beranda', icon: AltracqIcons.home, route: '/beranda'),
-    AltracqNavBarItem(label: 'Peta', icon: AltracqIcons.map, route: '/peta'),
-    AltracqNavBarItem(label: 'Lacak', icon: AltracqIcons.activity, route: '/lacak'),
-    AltracqNavBarItem(label: 'Grup', icon: AltracqIcons.group, route: '/grup'),
-    AltracqNavBarItem(label: 'Profil', icon: AltracqIcons.user, route: '/profil'),
+  static final List<HiqeoNavBarItem> navItems = <HiqeoNavBarItem>[
+    HiqeoNavBarItem(label: 'Beranda', icon: HiqeoIcons.home, route: '/beranda'),
+    HiqeoNavBarItem(label: 'Peta', icon: HiqeoIcons.map, route: '/peta'),
+    HiqeoNavBarItem(label: 'Lacak', icon: HiqeoIcons.activity, route: '/lacak'),
+    HiqeoNavBarItem(label: 'Grup', icon: HiqeoIcons.group, route: '/grup'),
+    HiqeoNavBarItem(label: 'Profil', icon: HiqeoIcons.user, route: '/profil'),
   ];
 
   /// Indeks cabang Peta. Peta digambar penuh di bawah navbar (edge-to-edge),
@@ -41,10 +41,10 @@ class AltracqShell extends StatefulWidget {
   static const int mapBranchIndex = 1;
 
   @override
-  State<AltracqShell> createState() => _AltracqShellState();
+  State<HiqeoShell> createState() => _HiqeoShellState();
 }
 
-class _AltracqShellState extends State<AltracqShell> {
+class _HiqeoShellState extends State<HiqeoShell> {
   static final DeviceTier _deviceTier = VisualEffectPolicy.probeDeviceTier();
 
   late final PowerProfileController _power =
@@ -80,16 +80,16 @@ class _AltracqShellState extends State<AltracqShell> {
         ),
         child: child!,
       ),
-      child: AltracqSystemInset(
+      child: HiqeoSystemInset(
         bottom: systemInset,
         child: PageBackground(
           // Peta digambar penuh tanpa blob latar; tab lain tetap memakai blob.
-          showBlobs: index != AltracqShell.mapBranchIndex,
+          showBlobs: index != HiqeoShell.mapBranchIndex,
           child: Scaffold(
             // Hanya Peta yang memanjang sampai tepi bawah layar. Tab lain
             // menata navbar di luar isi supaya kartu/tombol terang tidak
             // tampak menembus kaca dan menyatu dengan blob.
-            extendBody: index == AltracqShell.mapBranchIndex,
+            extendBody: index == HiqeoShell.mapBranchIndex,
             backgroundColor: Colors.transparent,
             body: _TabFade(
               index: index,
@@ -97,15 +97,15 @@ class _AltracqShellState extends State<AltracqShell> {
             ),
             bottomNavigationBar: Padding(
               padding: EdgeInsets.fromLTRB(
-                AltracqMetrics.navbarInset,
+                HiqeoMetrics.navbarInset,
                 0,
-                AltracqMetrics.navbarInset,
-                AltracqMetrics.navbarInset + systemInset,
+                HiqeoMetrics.navbarInset,
+                HiqeoMetrics.navbarInset + systemInset,
               ),
-              child: AltracqNavBar(
+              child: HiqeoNavBar(
                 currentIndex: index,
-                items: AltracqShell.navItems,
-                overMap: index == AltracqShell.mapBranchIndex,
+                items: HiqeoShell.navItems,
+                overMap: index == HiqeoShell.mapBranchIndex,
                 onTap: (target) {
                   // Tab yang sudah aktif tidak memicu animasi apa pun.
                   if (target == index) return;

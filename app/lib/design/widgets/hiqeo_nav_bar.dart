@@ -8,15 +8,15 @@ import '../motion/visual_effect_policy.dart';
 import '../tokens.dart';
 import 'line_icons.dart';
 
-class AltracqNavBarItem {
-  const AltracqNavBarItem({
+class HiqeoNavBarItem {
+  const HiqeoNavBarItem({
     required this.label,
     required this.icon,
     required this.route,
   });
 
   final String label;
-  final AltracqIconData icon;
+  final HiqeoIconData icon;
   final String route;
 }
 
@@ -27,7 +27,7 @@ class AltracqNavBarItem {
 @visibleForTesting
 double navBarHeadProgress(double t) {
   final eased = Curves.easeOutBack.transform(t);
-  return 1 + (eased - 1) * AltracqNavBar.headOvershootScale;
+  return 1 + (eased - 1) * HiqeoNavBar.headOvershootScale;
 }
 
 /// Kemajuan ekor blob: menyusul lebih lambat dan tanpa pantulan.
@@ -47,7 +47,7 @@ const double navBarMapTintAlpha = 0.6;
 /// Tint kaca navbar saat di atas peta. Mode terang tidak perlu tint karena
 /// kaca 55% krem sudah menerangkan latar; mode gelap memakai navy 60%.
 @visibleForTesting
-Color? navBarMapTint(AltracqColors colors) {
+Color? navBarMapTint(HiqeoColors colors) {
   if (colors.brightness != Brightness.dark) return null;
   return colors.background.withValues(alpha: navBarMapTintAlpha);
 }
@@ -58,7 +58,7 @@ Color? navBarMapTint(AltracqColors colors) {
 /// terhadap peta terang maupun gelap.
 @visibleForTesting
 Color navBarLabelColor({
-  required AltracqColors colors,
+  required HiqeoColors colors,
   required bool overMap,
   required double coverage,
 }) {
@@ -96,8 +96,8 @@ double navBarCoverage({
 /// bergerak keduanya disatukan [GooeyLayer] sehingga membentuk satu cairan yang
 /// memanjang, tanpa gelembung atau tetesan terpisah. Kaca dan bayangan navbar
 /// berada di luar lapisan gooey sehingga tidak ikut dikaburkan.
-class AltracqNavBar extends StatefulWidget {
-  const AltracqNavBar({
+class HiqeoNavBar extends StatefulWidget {
+  const HiqeoNavBar({
     super.key,
     required this.currentIndex,
     required this.items,
@@ -106,7 +106,7 @@ class AltracqNavBar extends StatefulWidget {
   });
 
   final int currentIndex;
-  final List<AltracqNavBarItem> items;
+  final List<HiqeoNavBarItem> items;
   final ValueChanged<int> onTap;
 
   /// Benar saat kaca melayang di atas peta; menyalakan tint dan label
@@ -120,10 +120,10 @@ class AltracqNavBar extends StatefulWidget {
   static const double headOvershootScale = 0.45;
 
   @override
-  State<AltracqNavBar> createState() => _AltracqNavBarState();
+  State<HiqeoNavBar> createState() => _HiqeoNavBarState();
 }
 
-class _AltracqNavBarState extends State<AltracqNavBar>
+class _HiqeoNavBarState extends State<HiqeoNavBar>
     with SingleTickerProviderStateMixin {
   late final AnimationController _slide;
   late double _startHead;
@@ -139,7 +139,7 @@ class _AltracqNavBarState extends State<AltracqNavBar>
     _startTail = _target;
     _slide = AnimationController(
       vsync: this,
-      duration: AltracqNavBar.slideDuration,
+      duration: HiqeoNavBar.slideDuration,
       value: 1,
     );
   }
@@ -151,12 +151,12 @@ class _AltracqNavBarState extends State<AltracqNavBar>
     if (reduceMotion == _reduceMotion) return;
     _reduceMotion = reduceMotion;
     _slide.duration = reduceMotion
-        ? AltracqNavBar.reducedSlideDuration
-        : AltracqNavBar.slideDuration;
+        ? HiqeoNavBar.reducedSlideDuration
+        : HiqeoNavBar.slideDuration;
   }
 
   @override
-  void didUpdateWidget(AltracqNavBar oldWidget) {
+  void didUpdateWidget(HiqeoNavBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.currentIndex == oldWidget.currentIndex) return;
     // Mulai dari posisi yang sedang terlihat supaya ketukan beruntun tidak
@@ -187,13 +187,13 @@ class _AltracqNavBarState extends State<AltracqNavBar>
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final gooey = GooeyLayer.enabledOf(context) && !_reduceMotion;
     return Semantics(
       container: true,
       explicitChildNodes: true,
       child: GlassSurface(
-        borderRadius: AltracqRadius.navbar,
+        borderRadius: HiqeoRadius.navbar,
         tint: widget.overMap ? navBarMapTint(colors) : null,
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -210,8 +210,8 @@ class _AltracqNavBarState extends State<AltracqNavBar>
                   painter: NavBarBlobPainter(
                     headCenter: headCenter,
                     tailCenter: tailCenter,
-                    pillWidth: AltracqMetrics.navbarPillWidth,
-                    pillHeight: AltracqMetrics.navbarPillHeight,
+                    pillWidth: HiqeoMetrics.navbarPillWidth,
+                    pillHeight: HiqeoMetrics.navbarPillHeight,
                     color: colors.primary,
                   ),
                 );
@@ -220,7 +220,7 @@ class _AltracqNavBarState extends State<AltracqNavBar>
                 // Nilai 0 berarti belum ada perpindahan, jadi belum perlu cair.
                 final morphing = _slide.isAnimating && _slide.value > 0;
                 return SizedBox(
-                  height: AltracqMetrics.navbarHeight,
+                  height: HiqeoMetrics.navbarHeight,
                   child: Stack(
                     children: <Widget>[
                       Positioned.fill(
@@ -245,7 +245,7 @@ class _AltracqNavBarState extends State<AltracqNavBar>
                                   headCenter: headCenter,
                                   tailCenter: tailCenter,
                                   pillWidth:
-                                      AltracqMetrics.navbarPillWidth,
+                                      HiqeoMetrics.navbarPillWidth,
                                 ),
                                 onTap: () => widget.onTap(i),
                               ),
@@ -273,7 +273,7 @@ class _NavBarTab extends StatelessWidget {
     required this.onTap,
   });
 
-  final AltracqNavBarItem item;
+  final HiqeoNavBarItem item;
   final bool active;
   final bool overMap;
 
@@ -283,7 +283,7 @@ class _NavBarTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final iconColor =
         Color.lerp(colors.textPrimary, colors.onPrimary, coverage)!;
@@ -303,7 +303,7 @@ class _NavBarTab extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              AltracqIcon(item.icon, size: 22, color: iconColor),
+              HiqeoIcon(item.icon, size: 22, color: iconColor),
               const SizedBox(height: 2),
               // Label diambil dari Semantics di atas; teks terlihat
               // dikecualikan agar nama aksesibel tidak dobel.

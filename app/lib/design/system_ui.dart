@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 /// Ikon status dan navigasi mengikuti [brightness]: latar terang memakai ikon
 /// gelap, latar gelap memakai ikon terang. Di layar Peta, [brightness] diambil
 /// dari tema aktif karena peredup navy membuat peta mode gelap lebih gelap.
-SystemUiOverlayStyle altracqOverlayStyle(Brightness brightness) {
+SystemUiOverlayStyle hiqeoOverlayStyle(Brightness brightness) {
   final lightIcons = brightness == Brightness.dark;
   return SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -22,9 +22,9 @@ SystemUiOverlayStyle altracqOverlayStyle(Brightness brightness) {
   );
 }
 
-/// Memasang [altracqOverlayStyle] untuk seluruh isi layar di bawahnya.
-class AltracqSystemUiRegion extends StatelessWidget {
-  const AltracqSystemUiRegion({
+/// Memasang [hiqeoOverlayStyle] untuk seluruh isi layar di bawahnya.
+class HiqeoSystemUiRegion extends StatelessWidget {
+  const HiqeoSystemUiRegion({
     super.key,
     required this.brightness,
     required this.child,
@@ -35,7 +35,7 @@ class AltracqSystemUiRegion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-        value: altracqOverlayStyle(brightness),
+        value: hiqeoOverlayStyle(brightness),
         child: child,
       );
 }
@@ -46,8 +46,8 @@ class AltracqSystemUiRegion extends StatelessWidget {
 /// dinaikkan setinggi navbar dan `viewPadding` bawah dibuang oleh Scaffold
 /// karena ada navigasi bawah. Kerangka tab menaruh nilai mentahnya di sini
 /// supaya layar Peta bisa menghitung jarak di atas navbar dengan tepat.
-class AltracqSystemInset extends InheritedWidget {
-  const AltracqSystemInset({
+class HiqeoSystemInset extends InheritedWidget {
+  const HiqeoSystemInset({
     super.key,
     required this.bottom,
     required super.child,
@@ -56,12 +56,12 @@ class AltracqSystemInset extends InheritedWidget {
   final double bottom;
 
   static double bottomOf(BuildContext context) {
-    final inset = context.dependOnInheritedWidgetOfExactType<AltracqSystemInset>();
+    final inset = context.dependOnInheritedWidgetOfExactType<HiqeoSystemInset>();
     return inset?.bottom ?? MediaQuery.viewPaddingOf(context).bottom;
   }
 
   @override
-  bool updateShouldNotify(AltracqSystemInset oldWidget) =>
+  bool updateShouldNotify(HiqeoSystemInset oldWidget) =>
       oldWidget.bottom != bottom;
 }
 

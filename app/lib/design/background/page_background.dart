@@ -14,7 +14,7 @@ class PageBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     return ColoredBox(
       color: colors.background,
       child: CustomPaint(
@@ -28,7 +28,7 @@ class PageBackground extends StatelessWidget {
 class _PageBackgroundPainter extends CustomPainter {
   const _PageBackgroundPainter(this.colors, this.showBlobs);
 
-  final AltracqColors colors;
+  final HiqeoColors colors;
   final bool showBlobs;
 
   @override

@@ -276,7 +276,7 @@ void main() {
     final router = _router(account: account, power: power);
 
     await tester.pumpWidget(
-      MaterialApp.router(theme: altracqLightTheme, routerConfig: router),
+      MaterialApp.router(theme: hiqeoLightTheme, routerConfig: router),
     );
     await tester.pumpAndSettle();
 
@@ -329,7 +329,7 @@ void main() {
     final router = _router(account: account, power: power);
 
     await tester.pumpWidget(
-      MaterialApp.router(theme: altracqLightTheme, routerConfig: router),
+      MaterialApp.router(theme: hiqeoLightTheme, routerConfig: router),
     );
     await tester.pumpAndSettle();
 
@@ -348,7 +348,7 @@ void main() {
     final router = _router(account: account, power: power);
 
     await tester.pumpWidget(
-      MaterialApp.router(theme: altracqLightTheme, routerConfig: router),
+      MaterialApp.router(theme: hiqeoLightTheme, routerConfig: router),
     );
     await tester.pumpAndSettle();
     await _openFeatures(tester);
@@ -385,7 +385,7 @@ void main() {
     final handle = tester.ensureSemantics();
 
     await tester.pumpWidget(
-      MaterialApp.router(theme: altracqLightTheme, routerConfig: router),
+      MaterialApp.router(theme: hiqeoLightTheme, routerConfig: router),
     );
     await tester.pumpAndSettle();
     await _openFeatures(tester);
@@ -432,7 +432,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp.router(theme: altracqLightTheme, routerConfig: router),
+      MaterialApp.router(theme: hiqeoLightTheme, routerConfig: router),
     );
     await tester.pumpAndSettle();
 
@@ -487,7 +487,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp.router(theme: altracqLightTheme, routerConfig: router),
+      MaterialApp.router(theme: hiqeoLightTheme, routerConfig: router),
     );
     await tester.pumpAndSettle();
 
@@ -524,7 +524,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp.router(
-        theme: altracqLightTheme,
+        theme: hiqeoLightTheme,
         routerConfig: router,
         builder: (context, child) => Scaffold(
           body: child,

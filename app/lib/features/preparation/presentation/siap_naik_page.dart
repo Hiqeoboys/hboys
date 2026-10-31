@@ -8,7 +8,7 @@ import '../../../design/background/page_background.dart';
 import '../../../design/glass/glass_surface.dart';
 import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
-import '../../../design/widgets/altracq_button.dart';
+import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../../../infrastructure/database/database_connection.dart';
 import '../../../infrastructure/database/repositories/drift_safety_repository.dart';
@@ -336,10 +336,10 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
     final children = <Widget>[
       _Header(group: next),
       if (next == null) ...<Widget>[
-        const SizedBox(height: AltracqSpacing.xl),
+        const SizedBox(height: HiqeoSpacing.xl),
         _EmptyRombongan(account: _account),
       ] else ...<Widget>[
-        const SizedBox(height: AltracqSpacing.lg),
+        const SizedBox(height: HiqeoSpacing.lg),
         _ReadinessHero(
           readyMembers: readyMembers,
           totalMembers: totalMembers,
@@ -348,13 +348,13 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
             totalMembers: totalMembers,
           ),
         ),
-        const SizedBox(height: AltracqSpacing.lg),
+        const SizedBox(height: HiqeoSpacing.lg),
         ..._rosterWidgets(
           checks: checks,
           selfId: selfId,
           totalMembers: totalMembers,
         ),
-        const SizedBox(height: AltracqSpacing.md),
+        const SizedBox(height: HiqeoSpacing.md),
         _ContactCard(
           contact: primaryContact(_contacts),
           total: _contacts.length,
@@ -372,9 +372,9 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
             slivers: <Widget>[
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(
-                  AltracqSpacing.lg,
-                  AltracqSpacing.xl,
-                  AltracqSpacing.lg,
+                  HiqeoSpacing.lg,
+                  HiqeoSpacing.xl,
+                  HiqeoSpacing.lg,
                   0,
                 ),
                 sliver: SliverList(
@@ -386,10 +386,10 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
                   hasScrollBody: false,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(
-                      AltracqSpacing.lg,
-                      AltracqSpacing.lg,
-                      AltracqSpacing.lg,
-                      AltracqSpacing.lg,
+                      HiqeoSpacing.lg,
+                      HiqeoSpacing.lg,
+                      HiqeoSpacing.lg,
+                      HiqeoSpacing.lg,
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -405,11 +405,11 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
                               .textTheme
                               .bodySmall
                               ?.copyWith(
-                                color: AltracqColors.of(context).textSecondary,
+                                color: HiqeoColors.of(context).textSecondary,
                               ),
                         ),
-                        const SizedBox(height: AltracqSpacing.sm),
-                        AltracqButton(
+                        const SizedBox(height: HiqeoSpacing.sm),
+                        HiqeoButton(
                           label: _starting ? 'Memulai…' : 'Mulai pendakian',
                           onPressed: _starting ? null : _startHike,
                         ),
@@ -433,7 +433,7 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
       return <Widget>[
         for (final member in _members)
           Padding(
-            padding: const EdgeInsets.only(bottom: AltracqSpacing.md),
+            padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
             child: _MemberCard(
               name: member.username,
               isSelf: member.userId == selfId,
@@ -445,14 +445,14 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
     if (_membersLoading) {
       return const <Widget>[
         Padding(
-          padding: EdgeInsets.only(bottom: AltracqSpacing.md),
+          padding: EdgeInsets.only(bottom: HiqeoSpacing.md),
           child: _RosterNotice(text: 'Memuat anggota…', loading: true),
         ),
       ];
     }
     return <Widget>[
       Padding(
-        padding: const EdgeInsets.only(bottom: AltracqSpacing.md),
+        padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
         child: _RosterNotice(
           text: _membersError ?? 'Daftar anggota belum dimuat.',
           detail: totalMembers > 0
@@ -472,7 +472,7 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final mountain = group?.group.mountain?.trim();
     final subtitle = group == null
@@ -485,11 +485,11 @@ class _Header extends StatelessWidget {
       children: <Widget>[
         Text(
           'PERSIAPAN · UNDUH SEBELUM BERANGKAT',
-          style: AltracqTypography.overline(colors.textSecondary),
+          style: HiqeoTypography.overline(colors.textSecondary),
         ),
-        const SizedBox(height: AltracqSpacing.sm),
+        const SizedBox(height: HiqeoSpacing.sm),
         Text('Siap naik?', style: theme.textTheme.displaySmall),
-        const SizedBox(height: AltracqSpacing.xs),
+        const SizedBox(height: HiqeoSpacing.xs),
         Text(
           subtitle,
           style: theme.textTheme.bodyLarge?.copyWith(
@@ -514,17 +514,17 @@ class _ReadinessHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final fraction = totalMembers <= 0 ? 0.0 : (percent / 100).clamp(0.0, 1.0);
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: AltracqSpacing.lg,
+        horizontal: HiqeoSpacing.lg,
         vertical: 18,
       ),
       decoration: BoxDecoration(
         color: colors.primary,
-        borderRadius: BorderRadius.circular(AltracqRadius.hero),
+        borderRadius: BorderRadius.circular(HiqeoRadius.hero),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -542,7 +542,7 @@ class _ReadinessHero extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: AltracqSpacing.md),
+              const SizedBox(width: HiqeoSpacing.md),
               Text(
                 totalMembers <= 0 ? '—' : '$percent%',
                 style: theme.textTheme.titleMedium?.copyWith(
@@ -553,7 +553,7 @@ class _ReadinessHero extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           ClipRRect(
-            borderRadius: BorderRadius.circular(AltracqRadius.pill),
+            borderRadius: BorderRadius.circular(HiqeoRadius.pill),
             child: SizedBox(
               height: 8,
               child: Stack(
@@ -593,10 +593,10 @@ class _MemberCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return GlassSurface(
-      borderRadius: AltracqRadius.card,
+      borderRadius: HiqeoRadius.card,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -620,8 +620,8 @@ class _MemberCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Wrap(
-            spacing: AltracqSpacing.sm,
-            runSpacing: AltracqSpacing.sm,
+            spacing: HiqeoSpacing.sm,
+            runSpacing: HiqeoSpacing.sm,
             children: <Widget>[
               if (isSelf)
                 for (final check in checks)
@@ -653,14 +653,14 @@ class _ReadinessChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final content = Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         if (ready) ...<Widget>[
-          AltracqIcon(
-            AltracqIcons.check,
+          HiqeoIcon(
+            HiqeoIcons.check,
             size: 14,
             strokeWidth: 2,
             color: colors.textPrimary,
@@ -670,7 +670,7 @@ class _ReadinessChip extends StatelessWidget {
         Text(
           label,
           style: theme.textTheme.bodySmall?.copyWith(
-            fontWeight: AltracqTypography.medium,
+            fontWeight: HiqeoTypography.medium,
             color: ready ? colors.textPrimary : colors.textSecondary,
           ),
         ),
@@ -691,7 +691,7 @@ class _ReadinessChip extends StatelessWidget {
             decoration: ready
                 ? BoxDecoration(
                     color: colors.secondary,
-                    borderRadius: BorderRadius.circular(AltracqRadius.pill),
+                    borderRadius: BorderRadius.circular(HiqeoRadius.pill),
                   )
                 : null,
             child: content,
@@ -750,14 +750,14 @@ class _ContactCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final ready = contact?.consentStatus == EmergencyContactConsentStatus.granted;
     final subtitle = loading
         ? 'Memuat kontak…'
         : (failed ? 'Kontak darurat belum dapat dibaca' : contactSubtitle(contact, total));
     return GlassSurface(
-      borderRadius: AltracqRadius.card,
+      borderRadius: HiqeoRadius.card,
       padding: const EdgeInsets.all(14),
       child: Row(
         children: <Widget>[
@@ -778,7 +778,7 @@ class _ContactCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: AltracqSpacing.md),
+          const SizedBox(width: HiqeoSpacing.md),
           if (loading)
             const _ReadinessChip(
               label: 'Memuat',
@@ -819,11 +819,11 @@ class _RosterNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return GlassSurface(
-      borderRadius: AltracqRadius.card,
-      padding: const EdgeInsets.all(AltracqSpacing.lg),
+      borderRadius: HiqeoRadius.card,
+      padding: const EdgeInsets.all(HiqeoSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -835,7 +835,7 @@ class _RosterNotice extends StatelessWidget {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                const SizedBox(width: AltracqSpacing.sm),
+                const SizedBox(width: HiqeoSpacing.sm),
               ],
               Expanded(
                 child: Text(text, style: theme.textTheme.titleMedium),
@@ -843,7 +843,7 @@ class _RosterNotice extends StatelessWidget {
             ],
           ),
           if (detail != null) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.xs),
+            const SizedBox(height: HiqeoSpacing.xs),
             Text(
               detail!,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -852,7 +852,7 @@ class _RosterNotice extends StatelessWidget {
             ),
           ],
           if (onRetry != null) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.sm),
+            const SizedBox(height: HiqeoSpacing.sm),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
@@ -874,7 +874,7 @@ class _EmptyRombongan extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final signedIn = account.user != null;
     final configured = account.isConfigured;
@@ -906,13 +906,13 @@ class _EmptyRombongan extends StatelessWidget {
       route = '/grup';
     }
     return GlassSurface(
-      borderRadius: AltracqRadius.card,
+      borderRadius: HiqeoRadius.card,
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(title, style: theme.textTheme.headlineSmall),
-          const SizedBox(height: AltracqSpacing.sm),
+          const SizedBox(height: HiqeoSpacing.sm),
           Text(
             body,
             style: theme.textTheme.bodyMedium?.copyWith(
@@ -920,15 +920,15 @@ class _EmptyRombongan extends StatelessWidget {
             ),
           ),
           if (account.isLoading) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.lg),
+            const SizedBox(height: HiqeoSpacing.lg),
             const SizedBox(
               width: 20,
               height: 20,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
           ] else ...<Widget>[
-            const SizedBox(height: AltracqSpacing.xl),
-            AltracqButton(
+            const SizedBox(height: HiqeoSpacing.xl),
+            HiqeoButton(
               label: action,
               onPressed: () => context.go(route),
             ),

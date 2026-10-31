@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/brand/app_brand.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../domain/kartu_data.dart';
 
@@ -353,10 +354,10 @@ class KartuCard extends StatelessWidget {
     final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        AltracqIcon(AltracqIcons.mountain, size: 18, color: _ink),
+        HiqeoIcon(HiqeoIcons.mountain, size: 18, color: _ink),
         const SizedBox(width: 8),
         Text(
-          'ALTRACQ · ${data.dateLabel}',
+          '${AppBrand.lockup} · ${data.dateLabel}',
           style: theme.textTheme.labelSmall?.copyWith(
             color: _ink.withValues(alpha: 0.92),
             fontWeight: FontWeight.w700,

@@ -12,7 +12,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        theme: altracqLightTheme,
+        theme: hiqeoLightTheme,
         home: SplashPage(
           initializer: () async => initialized++,
           minimumDuration: const Duration(milliseconds: 50),
@@ -21,7 +21,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Altracq'), findsOneWidget);
+    expect(find.text('Hiqeo'), findsOneWidget);
     expect(
       find.text('Pendamping pendakian yang tetap bekerja tanpa sinyal.'),
       findsOneWidget,
@@ -39,7 +39,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: altracqLightTheme,
+        theme: hiqeoLightTheme,
         home: SplashPage(
           initializer: () async {},
           minimumDuration: Duration.zero,
@@ -49,14 +49,14 @@ void main() {
     );
 
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
-    expect(scaffold.backgroundColor, AltracqColors.dark.background);
+    expect(scaffold.backgroundColor, HiqeoColors.dark.background);
   });
 
   testWidgets('galat penyiapan lokal tidak menahan splash', (tester) async {
     var ready = 0;
     await tester.pumpWidget(
       MaterialApp(
-        theme: altracqLightTheme,
+        theme: hiqeoLightTheme,
         home: SplashPage(
           initializer: () async => throw StateError('gagal'),
           minimumDuration: Duration.zero,

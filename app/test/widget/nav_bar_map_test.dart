@@ -3,22 +3,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nama_app/design/app_theme.dart';
 import 'package:nama_app/design/glass/glass_surface.dart';
 import 'package:nama_app/design/tokens.dart';
-import 'package:nama_app/design/widgets/altracq_nav_bar.dart';
+import 'package:nama_app/design/widgets/hiqeo_nav_bar.dart';
 import 'package:nama_app/design/widgets/line_icons.dart';
 import 'package:nama_app/features/map/presentation/map_page.dart';
 
 import '../support/contrast.dart';
 
-final List<AltracqNavBarItem> _items = <AltracqNavBarItem>[
-  AltracqNavBarItem(label: 'Beranda', icon: AltracqIcons.home, route: '/beranda'),
-  AltracqNavBarItem(label: 'Peta', icon: AltracqIcons.map, route: '/peta'),
+final List<HiqeoNavBarItem> _items = <HiqeoNavBarItem>[
+  HiqeoNavBarItem(label: 'Beranda', icon: HiqeoIcons.home, route: '/beranda'),
+  HiqeoNavBarItem(label: 'Peta', icon: HiqeoIcons.map, route: '/peta'),
 ];
 
 Widget _navbarApp({required ThemeData theme, required bool overMap}) {
   return MaterialApp(
     theme: theme,
     home: Scaffold(
-      bottomNavigationBar: AltracqNavBar(
+      bottomNavigationBar: HiqeoNavBar(
         currentIndex: 1,
         items: _items,
         overMap: overMap,
@@ -41,14 +41,14 @@ Color _backdrop(WidgetTester tester) {
 Color _labelColor(WidgetTester tester, String label) {
   final text = tester.widget<Text>(
     find.descendant(
-      of: find.byType(AltracqNavBar),
+      of: find.byType(HiqeoNavBar),
       matching: find.text(label),
     ),
   );
   return text.style!.color!;
 }
 
-Color _composite(AltracqColors colors, Color fill, Color map) {
+Color _composite(HiqeoColors colors, Color fill, Color map) {
   final dimmed = Color.alphaBlend(
     colors.background.withValues(alpha: mapDimOpacityFor(Brightness.dark)),
     map,
@@ -57,8 +57,8 @@ Color _composite(AltracqColors colors, Color fill, Color map) {
 }
 
 void main() {
-  final AltracqColors dark = altracqDarkTheme.extension<AltracqColors>()!;
-  final AltracqColors light = altracqLightTheme.extension<AltracqColors>()!;
+  final HiqeoColors dark = hiqeoDarkTheme.extension<HiqeoColors>()!;
+  final HiqeoColors light = hiqeoLightTheme.extension<HiqeoColors>()!;
 
   test('tint kaca peta hanya menyala di mode gelap', () {
     expect(navBarMapTint(light), isNull);
@@ -85,7 +85,7 @@ void main() {
 
   testWidgets('navbar di atas peta mode gelap memakai tint dan label utama',
       (tester) async {
-    await tester.pumpWidget(_navbarApp(theme: altracqDarkTheme, overMap: true));
+    await tester.pumpWidget(_navbarApp(theme: hiqeoDarkTheme, overMap: true));
 
     expect(
       _backdrop(tester),
@@ -98,7 +98,7 @@ void main() {
   testWidgets('navbar di luar peta tetap memakai isi kaca dan label sekunder',
       (tester) async {
     await tester.pumpWidget(
-      _navbarApp(theme: altracqDarkTheme, overMap: false),
+      _navbarApp(theme: hiqeoDarkTheme, overMap: false),
     );
 
     expect(_backdrop(tester), dark.glassFill);

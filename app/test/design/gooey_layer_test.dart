@@ -6,7 +6,7 @@ import 'package:nama_app/design/motion/visual_effect_policy.dart';
 import 'package:nama_app/infrastructure/power/power_profile_manager.dart';
 
 Widget policyApp(VisualEffectPolicy policy, Widget child) => MaterialApp(
-      theme: altracqLightTheme,
+      theme: hiqeoLightTheme,
       home: Scaffold(
         body: Center(
           child: VisualEffectPolicyScope(policy: policy, child: child),

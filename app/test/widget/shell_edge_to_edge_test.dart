@@ -5,13 +5,13 @@ import 'package:nama_app/app/router.dart';
 import 'package:nama_app/design/background/page_background.dart';
 import 'package:nama_app/design/system_ui.dart';
 import 'package:nama_app/design/tokens.dart';
-import 'package:nama_app/design/widgets/altracq_nav_bar.dart';
+import 'package:nama_app/design/widgets/hiqeo_nav_bar.dart';
 import 'package:nama_app/features/home/beranda_page.dart';
 import 'package:nama_app/features/map/presentation/map_page.dart';
 import 'package:nama_app/features/profile/presentation/profil_page.dart';
 import 'package:nama_app/features/tracking/presentation/tracking_page.dart';
 
-import '../support/altracq_app_harness.dart';
+import '../support/hiqeo_app_harness.dart';
 import '../support/real_font.dart';
 
 const double _gestureInset = 24;
@@ -40,26 +40,26 @@ double _bodyBottomPadding(WidgetTester tester, Type page) =>
 void main() {
   late GoRouter router;
 
-  setUp(() => router = buildAltracqRouter());
+  setUp(() => router = buildHiqeoRouter());
 
   testWidgets('navbar mengambang di atas inset navigasi sistem',
       (tester) async {
     _phoneWithInsets(tester);
     await loadPlusJakartaSans(tester);
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     router.go('/beranda');
     await tester.pumpAndSettle();
 
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
     expect(scaffold.extendBody, isFalse);
 
-    final nav = tester.getRect(find.byType(AltracqNavBar));
-    expect(nav.height, AltracqMetrics.navbarHeight);
-    expect(nav.left, AltracqMetrics.navbarInset);
-    expect(nav.right, 390 - AltracqMetrics.navbarInset);
+    final nav = tester.getRect(find.byType(HiqeoNavBar));
+    expect(nav.height, HiqeoMetrics.navbarHeight);
+    expect(nav.left, HiqeoMetrics.navbarInset);
+    expect(nav.right, 390 - HiqeoMetrics.navbarInset);
     expect(
       nav.bottom,
-      844 - AltracqMetrics.navbarInset - _gestureInset,
+      844 - HiqeoMetrics.navbarInset - _gestureInset,
     );
   });
 
@@ -67,19 +67,19 @@ void main() {
       (tester) async {
     _phoneWithInsets(tester);
     await loadPlusJakartaSans(tester);
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     router.go('/beranda');
     await tester.pumpAndSettle();
 
     // extendBody hanya untuk Peta; tab lain tetap mendapat tinggi penuh
     // navbar di layout sehingga tidak ada padding tambahan dan tidak ada
     // kartu terang yang tampak di belakang kaca.
-    final navTop = tester.getRect(find.byType(AltracqNavBar)).top;
+    final navTop = tester.getRect(find.byType(HiqeoNavBar)).top;
     expect(_bodyBottomPadding(tester, BerandaPage), 0);
     expect(tester.getRect(find.byType(BerandaPage)).bottom, navTop);
 
     await tester.tap(find.descendant(
-      of: find.byType(AltracqNavBar),
+      of: find.byType(HiqeoNavBar),
       matching: find.text('Lacak'),
     ));
     await tester.pumpAndSettle();
@@ -87,7 +87,7 @@ void main() {
     expect(tester.getRect(find.byType(TrackingPage)).bottom, navTop);
 
     await tester.tap(find.descendant(
-      of: find.byType(AltracqNavBar),
+      of: find.byType(HiqeoNavBar),
       matching: find.text('Profil'),
     ));
     await tester.pumpAndSettle();
@@ -99,7 +99,7 @@ void main() {
       (tester) async {
     _phoneWithInsets(tester);
     await loadPlusJakartaSans(tester);
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     router.go('/peta');
     await tester.pumpAndSettle();
 
@@ -113,20 +113,20 @@ void main() {
     final background = tester.widget<PageBackground>(find.byType(PageBackground));
     expect(background.showBlobs, isFalse);
 
-    final navbar = tester.widget<AltracqNavBar>(find.byType(AltracqNavBar));
+    final navbar = tester.widget<HiqeoNavBar>(find.byType(HiqeoNavBar));
     expect(navbar.overMap, isTrue);
     expect(
-      tester.getRect(find.byType(AltracqNavBar)).bottom,
-      844 - AltracqMetrics.navbarInset - _gestureInset,
+      tester.getRect(find.byType(HiqeoNavBar)).bottom,
+      844 - HiqeoMetrics.navbarInset - _gestureInset,
     );
 
     // Inset sistem mentah tetap terbaca di dalam Peta walau padding isi
     // sudah dinaikkan setinggi navbar dan viewPadding Scaffold dibuang.
-    expect(_bodyBottomPadding(tester, MapPage), AltracqMetrics.navbarHeight +
-        AltracqMetrics.navbarInset +
+    expect(_bodyBottomPadding(tester, MapPage), HiqeoMetrics.navbarHeight +
+        HiqeoMetrics.navbarInset +
         _gestureInset);
     expect(
-      AltracqSystemInset.bottomOf(tester.element(find.byType(MapPage))),
+      HiqeoSystemInset.bottomOf(tester.element(find.byType(MapPage))),
       _gestureInset,
     );
 
@@ -137,7 +137,7 @@ void main() {
       isFalse,
     );
     expect(
-      tester.widget<AltracqNavBar>(find.byType(AltracqNavBar)).overMap,
+      tester.widget<HiqeoNavBar>(find.byType(HiqeoNavBar)).overMap,
       isFalse,
     );
     expect(

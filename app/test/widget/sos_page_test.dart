@@ -135,7 +135,7 @@ Future<_Harness> _pump(
 
   await tester.pumpWidget(
     MaterialApp(
-      theme: altracqLightTheme,
+      theme: hiqeoLightTheme,
       home: Builder(
         builder: (context) => Scaffold(
           body: Center(
@@ -265,7 +265,7 @@ void main() {
     expect(find.text('Geser untuk menelepon'), findsOneWidget);
     expect(
       find.text(
-        'SOS tidak menjamin pertolongan datang. Altracq tidak mengklaim '
+        'SOS tidak menjamin pertolongan datang. Hiqeo tidak mengklaim '
         'telah menghubungi Basarnas.',
       ),
       findsOneWidget,
@@ -275,7 +275,7 @@ void main() {
     final scaffold = tester.widget<Scaffold>(
       find.descendant(of: find.byType(SosPage), matching: find.byType(Scaffold)),
     );
-    expect(scaffold.backgroundColor, AltracqColors.dark.background);
+    expect(scaffold.backgroundColor, HiqeoColors.dark.background);
   });
 
   testWidgets('tekan-tahan 3 detik menyimpan SOS lokal dengan lokasi nyata',

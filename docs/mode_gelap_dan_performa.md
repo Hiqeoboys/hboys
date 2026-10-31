@@ -16,7 +16,7 @@ Tidak ada fitur baru dan tidak ada data contoh yang ditambahkan.
 
 ## Keputusan yang disengaja
 
-- Palet dan tema gelap sudah dibuat pada M1 (`AltracqColors.dark`,
+- Palet dan tema gelap sudah dibuat pada M1 (`HiqeoColors.dark`,
   `ThemeModeController`); M12 hanya memastikan semua layar memakainya dan tidak
   menambah warna baru.
 - **Gaya peta tetap `OUTDOORS` di kedua tema.** Paket unduhan offline Mapbox

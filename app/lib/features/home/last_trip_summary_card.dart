@@ -110,22 +110,22 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
   }
 
   Widget _empty(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final reason = widget.unavailableReason;
     return GlassSurface(
       key: const ValueKey<String>('ringkasan-perjalanan'),
-      borderRadius: AltracqRadius.hero,
-      padding: const EdgeInsets.all(AltracqSpacing.lg),
+      borderRadius: HiqeoRadius.hero,
+      padding: const EdgeInsets.all(HiqeoSpacing.lg),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
             'PENDAKIAN TERAKHIR',
-            style: AltracqTypography.overline(colors.textSecondary),
+            style: HiqeoTypography.overline(colors.textSecondary),
           ),
-          const SizedBox(height: AltracqSpacing.xs),
+          const SizedBox(height: HiqeoSpacing.xs),
           Text(
             reason == null
                 ? 'Belum ada riwayat pendakian'
@@ -133,7 +133,7 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
             style: theme.textTheme.titleMedium
                 ?.copyWith(color: colors.textPrimary),
           ),
-          const SizedBox(height: AltracqSpacing.xs),
+          const SizedBox(height: HiqeoSpacing.xs),
           Text(
             reason ?? 'Ringkasan pendakian terakhirmu akan muncul di sini.',
             style: theme.textTheme.bodySmall
@@ -145,14 +145,14 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
   }
 
   Widget _filled(BuildContext context, KartuData data) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final scaled = data.scaledBy(_count);
     final mountain = widget.mountain;
     return GlassSurface(
       key: const ValueKey<String>('ringkasan-perjalanan'),
-      borderRadius: AltracqRadius.hero,
-      padding: const EdgeInsets.all(AltracqSpacing.lg),
+      borderRadius: HiqeoRadius.hero,
+      padding: const EdgeInsets.all(HiqeoSpacing.lg),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -167,9 +167,9 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
                   children: <Widget>[
                     Text(
                       'PENDAKIAN TERAKHIR',
-                      style: AltracqTypography.overline(colors.textSecondary),
+                      style: HiqeoTypography.overline(colors.textSecondary),
                     ),
-                    const SizedBox(height: AltracqSpacing.xs),
+                    const SizedBox(height: HiqeoSpacing.xs),
                     Text(
                       mountain ?? 'Pendakian ${data.dateText}',
                       maxLines: 1,
@@ -188,11 +188,11 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
                   ],
                 ),
               ),
-              const SizedBox(width: AltracqSpacing.md),
+              const SizedBox(width: HiqeoSpacing.md),
               _KartuLink(onTap: widget.onViewKartu),
             ],
           ),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           Row(
             children: <Widget>[
               Expanded(
@@ -209,11 +209,11 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
               Expanded(
                 child: _metric(theme, colors, 'WAKTU', scaled.timeLabel),
               ),
-              const SizedBox(width: AltracqSpacing.md),
+              const SizedBox(width: HiqeoSpacing.md),
               _trace(colors, data),
             ],
           ),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           _sparkline(theme, colors, data),
         ],
       ),
@@ -222,7 +222,7 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
 
   Widget _metric(
     ThemeData theme,
-    AltracqColors colors,
+    HiqeoColors colors,
     String label,
     String value,
   ) {
@@ -236,7 +236,7 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
           overflow: TextOverflow.clip,
           style: theme.textTheme.labelSmall?.copyWith(
             color: colors.textSecondary,
-            fontWeight: AltracqTypography.bold,
+            fontWeight: HiqeoTypography.bold,
             fontSize: 9,
             letterSpacing: 1.4,
           ),
@@ -250,7 +250,7 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
             maxLines: 1,
             style: theme.textTheme.titleLarge?.copyWith(
               color: colors.textPrimary,
-              fontWeight: AltracqTypography.extraBold,
+              fontWeight: HiqeoTypography.extraBold,
               fontSize: 20,
               height: 1.1,
               letterSpacing: -0.8,
@@ -261,7 +261,7 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
     );
   }
 
-  Widget _trace(AltracqColors colors, KartuData data) {
+  Widget _trace(HiqeoColors colors, KartuData data) {
     final route = data.route;
     final hasRoute = route != null && route.length >= 2;
     return Semantics(
@@ -288,7 +288,7 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
     );
   }
 
-  Widget _sparkline(ThemeData theme, AltracqColors colors, KartuData data) {
+  Widget _sparkline(ThemeData theme, HiqeoColors colors, KartuData data) {
     final profile = data.profile;
     if (profile == null || profile.length < 2) {
       return SizedBox(
@@ -336,7 +336,7 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
                     maxLines: 1,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: colors.textSecondary,
-                      fontWeight: AltracqTypography.bold,
+                      fontWeight: HiqeoTypography.bold,
                       fontSize: 9,
                       letterSpacing: 1.4,
                     ),
@@ -359,7 +359,7 @@ class _KartuLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Semantics(
       button: true,
@@ -370,14 +370,14 @@ class _KartuLink extends StatelessWidget {
         onTap: onTap,
         // Target sentuh tetap 44 px meski pil yang terlihat lebih kecil.
         child: SizedBox(
-          height: AltracqMetrics.minTouchTarget,
+          height: HiqeoMetrics.minTouchTarget,
           child: Center(
             child: ExcludeSemantics(
               child: GlassSurface(
                 key: const ValueKey<String>('ringkasan-lihat-kartu'),
-                borderRadius: AltracqRadius.pill,
+                borderRadius: HiqeoRadius.pill,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: AltracqSpacing.lg,
+                  horizontal: HiqeoSpacing.lg,
                 ),
                 child: SizedBox(
                   height: 36,
@@ -387,7 +387,7 @@ class _KartuLink extends StatelessWidget {
                       maxLines: 1,
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: colors.textPrimary,
-                        fontWeight: AltracqTypography.bold,
+                        fontWeight: HiqeoTypography.bold,
                       ),
                     ),
                   ),
@@ -495,7 +495,7 @@ class _SparklinePainter extends CustomPainter {
       drawn,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = AltracqMetrics.iconStroke
+        ..strokeWidth = HiqeoMetrics.iconStroke
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
         ..color = color,

@@ -4,30 +4,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nama_app/app/router.dart';
-import 'package:nama_app/design/widgets/altracq_nav_bar.dart';
+import 'package:nama_app/design/widgets/hiqeo_nav_bar.dart';
 
-import '../support/altracq_app_harness.dart';
+import '../support/hiqeo_app_harness.dart';
 
 const List<String> tabLabels = <String>['Beranda', 'Peta', 'Lacak', 'Grup', 'Profil'];
 
 Finder navLabel(String label) => find.descendant(
-      of: find.byType(AltracqNavBar),
+      of: find.byType(HiqeoNavBar),
       matching: find.text(label),
     );
 
 void main() {
   late GoRouter router;
 
-  setUp(() => router = buildAltracqRouter());
+  setUp(() => router = buildHiqeoRouter());
 
   testWidgets('mulai di splash, lalu kerangka lima tab tersedia', (tester) async {
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     expect(find.text('Menyiapkan data lokal di HP'), findsOneWidget);
 
     router.go('/beranda');
     await tester.pumpAndSettle();
 
-    expect(find.byType(AltracqNavBar), findsOneWidget);
+    expect(find.byType(HiqeoNavBar), findsOneWidget);
     for (final label in tabLabels) {
       expect(navLabel(label), findsOneWidget, reason: 'tab $label hilang');
     }
@@ -35,7 +35,7 @@ void main() {
 
   testWidgets('menyentuh tab mengganti isi dan menandai tab terpilih',
       (tester) async {
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     router.go('/beranda');
     await tester.pumpAndSettle();
     final handle = tester.ensureSemantics();
@@ -57,14 +57,14 @@ void main() {
 
   testWidgets('layar di luar tab tidak menampilkan navigasi bawah',
       (tester) async {
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     router.go('/sos');
     await tester.pumpAndSettle();
 
     // Layar SOS nyata memuat kata "SOS" di judul dan di dalam tombol lingkaran;
     // yang diperiksa kasus ini adalah ketiadaan navigasi bawah.
     expect(find.text('SOS'), findsWidgets);
-    expect(find.byType(AltracqNavBar), findsNothing);
+    expect(find.byType(HiqeoNavBar), findsNothing);
 
     // Kartu memuat basis data lokal sungguhan; di uji widget path_provider
     // tidak tersedia sehingga indikator muatnya berputar terus dan
@@ -76,7 +76,7 @@ void main() {
       router.routerDelegate.currentConfiguration.uri.path,
       '/kartu',
     );
-    expect(find.byType(AltracqNavBar), findsNothing);
+    expect(find.byType(HiqeoNavBar), findsNothing);
 
     router.go('/beranda');
     await tester.pumpAndSettle();
@@ -84,20 +84,20 @@ void main() {
 
   testWidgets('navigasi adalah satu widget yang bertahan antar tab',
       (tester) async {
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     router.go('/beranda');
     await tester.pumpAndSettle();
-    final before = tester.state(find.byType(AltracqNavBar));
+    final before = tester.state(find.byType(HiqeoNavBar));
 
     await tester.tap(navLabel('Lacak'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(AltracqNavBar), findsOneWidget);
-    expect(tester.state(find.byType(AltracqNavBar)), same(before));
+    expect(find.byType(HiqeoNavBar), findsOneWidget);
+    expect(tester.state(find.byType(HiqeoNavBar)), same(before));
   });
 
   testWidgets('isi tab baru memudar masuk 180 ms', (tester) async {
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     router.go('/beranda');
     await tester.pumpAndSettle();
     final fade = find.byKey(const ValueKey<String>('tab-fade'));
@@ -125,7 +125,7 @@ void main() {
 
   testWidgets('mengetuk tab aktif tidak menganimasikan apa pun',
       (tester) async {
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     router.go('/beranda');
     await tester.pumpAndSettle();
     expect(tester.hasRunningAnimations, isFalse);
@@ -142,7 +142,7 @@ void main() {
 
   testWidgets('setiap tab adalah tombol berlabel untuk pembaca layar',
       (tester) async {
-    await tester.pumpWidget(buildAltracqTestApp(router: router));
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
     router.go('/beranda');
     await tester.pumpAndSettle();
     final handle = tester.ensureSemantics();

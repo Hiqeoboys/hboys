@@ -180,7 +180,7 @@ Future<_FakeChatRepository> _pump(
   final repo = repository ?? _FakeChatRepository();
   await tester.pumpWidget(
     MaterialApp(
-      theme: altracqLightTheme,
+      theme: hiqeoLightTheme,
       home: Scaffold(
         body: ChatPage(accountController: account, chatRepository: repo),
       ),

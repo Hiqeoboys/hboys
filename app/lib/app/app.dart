@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../bootstrap.dart';
+import '../core/brand/app_brand.dart';
 import '../design/app_theme.dart';
 import '../design/system_ui.dart';
 import '../design/theme_mode_controller.dart';
@@ -20,15 +21,15 @@ class NamaApp extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, child) => MaterialApp.router(
-        title: 'Altracq',
+        title: AppBrand.name,
         debugShowCheckedModeBanner: config.flavor != Flavor.prod,
-        theme: altracqLightTheme,
-        darkTheme: altracqDarkTheme,
+        theme: hiqeoLightTheme,
+        darkTheme: hiqeoDarkTheme,
         themeMode: controller.mode,
-        routerConfig: altracqRouter,
+        routerConfig: hiqeoRouter,
         // Ikon status dan navigasi mengikuti tema aktif di semua rute,
         // termasuk Peta yang peta terangnya diredam di mode malam.
-        builder: (context, child) => AltracqSystemUiRegion(
+        builder: (context, child) => HiqeoSystemUiRegion(
           brightness: Theme.of(context).brightness,
           child: child ?? const SizedBox.shrink(),
         ),

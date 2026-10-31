@@ -4,7 +4,7 @@ import '../tokens.dart';
 
 /// Varian tombol mengikuti rancangan: primer isi penuh, sekunder abu, dan
 /// invers untuk tombol terang di atas kartu gelap.
-enum AltracqButtonVariant { primary, secondary, inverse }
+enum HiqeoButtonVariant { primary, secondary, inverse }
 
 /// Tinggi tombol. 56 px berada di atas target sentuh minimum 44 px.
 const double _kButtonHeight = 56;
@@ -14,18 +14,18 @@ const double _kPressedScale = 0.97;
 const double _kPressedOpacity = 0.92;
 const double _kDisabledOpacity = 0.6;
 
-Color _fillFor(AltracqColors colors, AltracqButtonVariant variant) =>
+Color _fillFor(HiqeoColors colors, HiqeoButtonVariant variant) =>
     switch (variant) {
-      AltracqButtonVariant.primary => colors.primary,
-      AltracqButtonVariant.secondary => colors.secondary,
-      AltracqButtonVariant.inverse => colors.onPrimary,
+      HiqeoButtonVariant.primary => colors.primary,
+      HiqeoButtonVariant.secondary => colors.secondary,
+      HiqeoButtonVariant.inverse => colors.onPrimary,
     };
 
-Color _foregroundFor(AltracqColors colors, AltracqButtonVariant variant) =>
+Color _foregroundFor(HiqeoColors colors, HiqeoButtonVariant variant) =>
     switch (variant) {
-      AltracqButtonVariant.primary => colors.onPrimary,
-      AltracqButtonVariant.secondary => colors.textPrimary,
-      AltracqButtonVariant.inverse => colors.primary,
+      HiqeoButtonVariant.primary => colors.onPrimary,
+      HiqeoButtonVariant.secondary => colors.textPrimary,
+      HiqeoButtonVariant.inverse => colors.primary,
     };
 
 /// Satu pil solid: radius sama dengan separuh tinggi, satu warna, tepi bersih.
@@ -73,12 +73,12 @@ class _PressablePillState extends State<_PressablePill> {
         onTapCancel: _enabled ? () => _setPressed(false) : null,
         child: AnimatedScale(
           scale: _pressed ? _kPressedScale : 1,
-          duration: AltracqMotion.press,
-          curve: AltracqMotion.standard,
+          duration: HiqeoMotion.press,
+          curve: HiqeoMotion.standard,
           child: AnimatedOpacity(
             opacity: opacity,
-            duration: AltracqMotion.press,
-            curve: AltracqMotion.standard,
+            duration: HiqeoMotion.press,
+            curve: HiqeoMotion.standard,
             child: SizedBox(
               height: _kButtonHeight,
               width: double.infinity,
@@ -92,7 +92,7 @@ class _PressablePillState extends State<_PressablePill> {
                     fit: BoxFit.scaleDown,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: AltracqSpacing.lg,
+                        horizontal: HiqeoSpacing.lg,
                       ),
                       child: ExcludeSemantics(child: widget.child),
                     ),
@@ -108,19 +108,19 @@ class _PressablePillState extends State<_PressablePill> {
 }
 
 /// Tombol lebar penuh berbentuk pil sempurna.
-class AltracqButton extends StatelessWidget {
-  const AltracqButton({
+class HiqeoButton extends StatelessWidget {
+  const HiqeoButton({
     super.key,
     required this.label,
     this.onPressed,
-    this.variant = AltracqButtonVariant.primary,
+    this.variant = HiqeoButtonVariant.primary,
     this.semanticLabel,
     this.leading,
   });
 
   final String label;
   final VoidCallback? onPressed;
-  final AltracqButtonVariant variant;
+  final HiqeoButtonVariant variant;
   final String? semanticLabel;
 
   /// Logo atau ikon di depan label, misalnya logo Google dan Apple.
@@ -128,7 +128,7 @@ class AltracqButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final text = Text(
       label,
@@ -147,7 +147,7 @@ class AltracqButton extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 ExcludeSemantics(child: leading!),
-                const SizedBox(width: AltracqSpacing.md),
+                const SizedBox(width: HiqeoSpacing.md),
                 text,
               ],
             ),
@@ -157,15 +157,15 @@ class AltracqButton extends StatelessWidget {
 
 /// Dua pil solid berdampingan dengan celah 12 px. Keduanya tombol terpisah
 /// yang utuh; tidak ada bentuk yang menjembatani celah.
-class AltracqButtonPair extends StatelessWidget {
-  const AltracqButtonPair({
+class HiqeoButtonPair extends StatelessWidget {
+  const HiqeoButtonPair({
     super.key,
     required this.leftLabel,
     required this.rightLabel,
     required this.onLeftTap,
     required this.onRightTap,
-    this.leftVariant = AltracqButtonVariant.secondary,
-    this.rightVariant = AltracqButtonVariant.primary,
+    this.leftVariant = HiqeoButtonVariant.secondary,
+    this.rightVariant = HiqeoButtonVariant.primary,
     this.leftSemanticLabel,
     this.rightSemanticLabel,
   });
@@ -174,19 +174,19 @@ class AltracqButtonPair extends StatelessWidget {
   final String rightLabel;
   final VoidCallback? onLeftTap;
   final VoidCallback? onRightTap;
-  final AltracqButtonVariant leftVariant;
-  final AltracqButtonVariant rightVariant;
+  final HiqeoButtonVariant leftVariant;
+  final HiqeoButtonVariant rightVariant;
   final String? leftSemanticLabel;
   final String? rightSemanticLabel;
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     Widget pill(
       String label,
       String? semanticLabel,
-      AltracqButtonVariant variant,
+      HiqeoButtonVariant variant,
       VoidCallback? onTap,
     ) =>
         _PressablePill(
@@ -207,7 +207,7 @@ class AltracqButtonPair extends StatelessWidget {
         Expanded(
           child: pill(leftLabel, leftSemanticLabel, leftVariant, onLeftTap),
         ),
-        const SizedBox(width: AltracqMetrics.buttonPairGap),
+        const SizedBox(width: HiqeoMetrics.buttonPairGap),
         Expanded(
           child: pill(rightLabel, rightSemanticLabel, rightVariant, onRightTap),
         ),

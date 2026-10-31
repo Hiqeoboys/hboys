@@ -6,7 +6,7 @@ import 'package:nama_app/design/system_ui.dart';
 void main() {
   test('mode terang memakai ikon bilah sistem gelap di atas bilah transparan',
       () {
-    final style = altracqOverlayStyle(Brightness.light);
+    final style = hiqeoOverlayStyle(Brightness.light);
 
     expect(style.statusBarColor, Colors.transparent);
     expect(style.systemNavigationBarColor, Colors.transparent);
@@ -20,7 +20,7 @@ void main() {
   });
 
   test('mode gelap memakai ikon bilah sistem terang', () {
-    final style = altracqOverlayStyle(Brightness.dark);
+    final style = hiqeoOverlayStyle(Brightness.dark);
 
     expect(style.statusBarIconBrightness, Brightness.light);
     expect(style.systemNavigationBarIconBrightness, Brightness.light);
@@ -30,7 +30,7 @@ void main() {
   testWidgets('region memasang gaya untuk seluruh isi di bawahnya',
       (tester) async {
     await tester.pumpWidget(
-      const AltracqSystemUiRegion(
+      const HiqeoSystemUiRegion(
         brightness: Brightness.dark,
         child: ColoredBox(color: Colors.black),
       ),

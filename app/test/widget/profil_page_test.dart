@@ -236,8 +236,8 @@ Future<_Harness> _pump(
       ListenableBuilder(
         listenable: theme,
         builder: (context, child) => MaterialApp.router(
-          theme: altracqLightTheme,
-          darkTheme: altracqDarkTheme,
+          theme: hiqeoLightTheme,
+          darkTheme: hiqeoDarkTheme,
           themeMode: theme.mode,
           routerConfig: router,
         ),
@@ -248,8 +248,8 @@ Future<_Harness> _pump(
       ListenableBuilder(
         listenable: theme,
         builder: (context, child) => MaterialApp(
-          theme: altracqLightTheme,
-          darkTheme: altracqDarkTheme,
+          theme: hiqeoLightTheme,
+          darkTheme: hiqeoDarkTheme,
           themeMode: theme.mode,
           home: page,
         ),

@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 
 import '../../../design/tokens.dart';
-import '../../../design/widgets/altracq_button.dart';
-import '../../../design/widgets/altracq_sheet.dart';
+import '../../../design/widgets/hiqeo_button.dart';
+import '../../../design/widgets/hiqeo_sheet.dart';
 import '../domain/compass_calibration.dart';
 
 /// Membuka sheet kompas dengan sensor nyata dan koreksi arah manual.
@@ -195,7 +195,7 @@ class _CompassSheetBodyState extends State<CompassSheetBody> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final raw = _rawHeading;
     final corrected = raw == null ? null : applyHeadingOffset(raw, _offsetDegrees);
@@ -206,7 +206,7 @@ class _CompassSheetBodyState extends State<CompassSheetBody> {
         : normalizeHeading(corrected.roundToDouble());
     final accuracy = _last?.accuracy;
 
-    return AltracqSheet(
+    return HiqeoSheet(
       title: 'Kompas',
       subtitle: 'Arah perangkat dan koreksi manual',
       child: ListView(
@@ -247,7 +247,7 @@ class _CompassSheetBodyState extends State<CompassSheetBody> {
                 ),
               ),
             ),
-            const SizedBox(height: AltracqSpacing.sm),
+            const SizedBox(height: HiqeoSpacing.sm),
             Center(
               child: Text(
                 '${displayHeading.toStringAsFixed(0)}° '
@@ -267,11 +267,11 @@ class _CompassSheetBodyState extends State<CompassSheetBody> {
               ),
             ),
           ],
-          const SizedBox(height: AltracqSpacing.xl),
+          const SizedBox(height: HiqeoSpacing.xl),
           Container(height: 1, color: colors.hairline),
-          const SizedBox(height: AltracqSpacing.lg),
+          const SizedBox(height: HiqeoSpacing.lg),
           Text('Koreksi arah manual', style: theme.textTheme.titleMedium),
-          const SizedBox(height: AltracqSpacing.xs),
+          const SizedBox(height: HiqeoSpacing.xs),
           Text(
             'Pegang perangkat ke arah acuan yang Anda ketahui, lalu masukkan '
             'arah acuan itu. Koreksi hanya menggeser heading, bukan '
@@ -280,7 +280,7 @@ class _CompassSheetBodyState extends State<CompassSheetBody> {
               color: colors.textSecondary,
             ),
           ),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           TextField(
             controller: _reference,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -293,17 +293,17 @@ class _CompassSheetBodyState extends State<CompassSheetBody> {
               filled: true,
               fillColor: colors.surface.withValues(alpha: 0.6),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AltracqRadius.floating),
+                borderRadius: BorderRadius.circular(HiqeoRadius.floating),
                 borderSide: BorderSide(color: colors.hairline),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AltracqRadius.floating),
+                borderRadius: BorderRadius.circular(HiqeoRadius.floating),
                 borderSide: BorderSide(color: colors.hairline),
               ),
             ),
           ),
           if (_inputError != null) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.xs),
+            const SizedBox(height: HiqeoSpacing.xs),
             Text(
               _inputError!,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -312,7 +312,7 @@ class _CompassSheetBodyState extends State<CompassSheetBody> {
             ),
           ],
           if (_savedMessage != null) ...<Widget>[
-            const SizedBox(height: AltracqSpacing.xs),
+            const SizedBox(height: HiqeoSpacing.xs),
             Text(
               _savedMessage!,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -320,8 +320,8 @@ class _CompassSheetBodyState extends State<CompassSheetBody> {
               ),
             ),
           ],
-          const SizedBox(height: AltracqSpacing.md),
-          AltracqButton(
+          const SizedBox(height: HiqeoSpacing.md),
+          HiqeoButton(
             label: 'Simpan koreksi',
             onPressed: raw == null ? null : _saveCorrection,
           ),
@@ -343,7 +343,7 @@ class _CompassSheetBodyState extends State<CompassSheetBody> {
               ),
             ],
           ),
-          const SizedBox(height: AltracqSpacing.md),
+          const SizedBox(height: HiqeoSpacing.md),
           Text(
             'Kalibrasi sensor mengikuti panduan OS: gerakkan perangkat '
             'membentuk angka 8. Aplikasi tidak menjalankan kalibrasi sensor. '
@@ -394,13 +394,13 @@ class _CompassNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
+    final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(AltracqSpacing.md),
+      padding: const EdgeInsets.all(HiqeoSpacing.md),
       decoration: BoxDecoration(
         color: colors.surface.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(AltracqRadius.floating),
+        borderRadius: BorderRadius.circular(HiqeoRadius.floating),
         border: Border.all(
           color: isError ? colors.warning : colors.hairline,
         ),

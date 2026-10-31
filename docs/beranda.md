@@ -42,7 +42,7 @@ baru. Semua latar memakai `colors.surface` lewat `GlassSurface`, teks memakai
   dari alfa 0,18 ke 0, tanpa warna baru. Bila profil kurang dari dua titik,
   kartu menulis `Profil elevasi belum tersedia`, bukan menggambar garis palsu.
 - Tombol **Lihat kartu** berupa pil kaca kecil; pil yang terlihat 36 px tetapi
-  area sentuhnya tetap 44 px (`AltracqMetrics.minTouchTarget`). Tombol membuka
+  area sentuhnya tetap 44 px (`HiqeoMetrics.minTouchTarget`). Tombol membuka
   `/kartu?sesi=<id>` sehingga layar Kartu menampilkan sesi yang sama, bukan
   sesi terbaru yang kebetulan lain.
 - Keadaan kosong: overline `PENDAKIAN TERAKHIR`, judul
@@ -64,7 +64,7 @@ baru. Semua latar memakai `colors.surface` lewat `GlassSurface`, teks memakai
 - Tertutup: satu baris kaca setinggi 64 px berisi judul dan **satu** tombol
   bulat 44 px bergambar grid. Grid fitur tidak dibangun saat tertutup penuh,
   jadi tidak ada blur atau opacity yang bekerja diam-diam.
-- Terbuka: persegi panjang radius 28 (`AltracqRadius.hero`), tinggi
+- Terbuka: persegi panjang radius 28 (`HiqeoRadius.hero`), tinggi
   4 baris × 140 px + 3 celah × 12 px + tepi bawah 16 px = 676 px untuk 8 fitur.
 - Morph buka/tutup 550 ms. Tiap kartu mulai dengan jeda 35 ms (di dalam
   rentang 30–40 ms yang diminta), skala 0,6 → 1, isi kabur 8 → 0, opacity
@@ -79,13 +79,13 @@ baru. Semua latar memakai `colors.surface` lewat `GlassSurface`, teks memakai
   dikecualikan supaya judul dan ikon tidak dibacakan dua kali. Saat tertutup,
   kartu fitur di dalamnya juga dikecualikan dan tidak bisa disentuh.
 - Setelah terbuka, kartu digulir sampai terlihat penuh lewat
-  `Scrollable.ensureVisible` dengan durasi `AltracqMotion.spring`. Gulir
+  `Scrollable.ensureVisible` dengan durasi `HiqeoMotion.spring`. Gulir
   dijalankan satu bingkai setelah animasi selesai, karena status selesai tiba
   sebelum bingkai dengan tinggi akhir terpasang; tanpa itu gulir berhenti
   kurang dari tinggi sebenarnya.
 - Saat kurangi animasi aktif (atau perangkat lemah / profil Hemat), morph
   diganti tinggi + fade biasa selama 260 ms
-  (`AltracqMotion.screenFade`), tanpa gooey dan tanpa blur isi. Gooey hanya
+  (`HiqeoMotion.screenFade`), tanpa gooey dan tanpa blur isi. Gooey hanya
   menyala bila `VisualEffectPolicy.gooey` benar; glass blur mengikuti
   `glassBlur`.
 

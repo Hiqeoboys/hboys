@@ -37,7 +37,7 @@ perangkat apa adanya; tidak ada kontak, peta, atau angka contoh.
 - Logo Google dan Apple memakai aset resmi yang dibundel di
   `assets/brand/`. Logo Apple putih diturunkan dari aset tombol resmi.
 - Kedua pil login adalah pil solid terpisah dengan celah 14 px, memakai
-  komponen `AltracqButton` yang sama dengan layar lain. Leher kapsul gooey
+  komponen `HiqeoButton` yang sama dengan layar lain. Leher kapsul gooey
   yang dulu menyatukan keduanya dibatalkan bersama spesifikasi gooey tombol.
 - Hapus akun belum tersedia. Dialog menjelaskan bahwa tidak ada akun atau data
   yang dihapus, lalu hanya menutup.

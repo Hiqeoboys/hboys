@@ -42,7 +42,7 @@ Future<StreamController<CompassEvent>> _pump(
   final events = StreamController<CompassEvent>.broadcast();
   addTearDown(events.close);
   await tester.pumpWidget(MaterialApp(
-    theme: altracqLightTheme,
+    theme: hiqeoLightTheme,
     home: Scaffold(
       body: CompassSheetBody(events: events.stream, offsetStore: store),
     ),
@@ -143,7 +143,7 @@ void main() {
       _setPhone(tester);
       final store = _FakeCompassStore();
       await tester.pumpWidget(MaterialApp(
-        theme: altracqLightTheme,
+        theme: hiqeoLightTheme,
         home: Scaffold(
           body: CompassSheetBody(offsetStore: store),
         ),

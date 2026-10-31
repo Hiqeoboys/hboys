@@ -3,11 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nama_app/design/app_theme.dart';
 import 'package:nama_app/design/motion/visual_effect_policy.dart';
 import 'package:nama_app/design/tokens.dart';
-import 'package:nama_app/design/widgets/altracq_button.dart';
+import 'package:nama_app/design/widgets/hiqeo_button.dart';
 import 'package:nama_app/infrastructure/power/power_profile_manager.dart';
 
 Widget policyApp(VisualEffectPolicy policy, Widget child) => MaterialApp(
-      theme: altracqLightTheme,
+      theme: hiqeoLightTheme,
       home: Scaffold(
         body: Center(
           child: VisualEffectPolicyScope(policy: policy, child: child),
@@ -29,12 +29,12 @@ VisualEffectPolicy policy({
 Widget button({
   String label = 'Siapkan pendakian',
   VoidCallback? onPressed,
-  AltracqButtonVariant variant = AltracqButtonVariant.primary,
+  HiqeoButtonVariant variant = HiqeoButtonVariant.primary,
   Widget? leading,
 }) =>
     Padding(
       padding: const EdgeInsets.all(16),
-      child: AltracqButton(
+      child: HiqeoButton(
         label: label,
         onPressed: onPressed,
         variant: variant,
@@ -68,9 +68,9 @@ void main() {
     );
     final handle = tester.ensureSemantics();
 
-    final size = tester.getSize(find.byType(AltracqButton));
+    final size = tester.getSize(find.byType(HiqeoButton));
     expect(size.height, 56);
-    expect(size.height, greaterThanOrEqualTo(AltracqMetrics.minTouchTarget));
+    expect(size.height, greaterThanOrEqualTo(HiqeoMetrics.minTouchTarget));
     expect(solidPill(), findsOneWidget);
     expectNoGooey(tester);
 
@@ -157,7 +157,7 @@ void main() {
         VisualEffectPolicy.full,
         button(
           label: 'Siapkan pendakian',
-          variant: AltracqButtonVariant.inverse,
+          variant: HiqeoButtonVariant.inverse,
           onPressed: () => taps++,
         ),
       ),
@@ -208,7 +208,7 @@ void main() {
         VisualEffectPolicy.full,
         Padding(
           padding: const EdgeInsets.all(16),
-          child: AltracqButtonPair(
+          child: HiqeoButtonPair(
             leftLabel: 'Jeda',
             rightLabel: 'Selesai',
             onLeftTap: () => left++,
@@ -220,7 +220,7 @@ void main() {
 
     expect(
       tester.widgetList<SizedBox>(find.byType(SizedBox)).any(
-            (box) => box.width == AltracqMetrics.buttonPairGap,
+            (box) => box.width == HiqeoMetrics.buttonPairGap,
           ),
       isTrue,
     );
@@ -259,7 +259,7 @@ void main() {
         policy(power: PowerProfile.saver),
         Padding(
           padding: const EdgeInsets.all(16),
-          child: AltracqButtonPair(
+          child: HiqeoButtonPair(
             leftLabel: 'Jeda',
             rightLabel: 'Selesai',
             onLeftTap: () => left++,
