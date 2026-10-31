@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../design/background/page_background.dart';
 import '../../design/motion/visual_effect_policy.dart';
+import '../../design/system_ui.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/altracq_nav_bar.dart';
 import '../../design/widgets/line_icons.dart';
@@ -34,6 +35,11 @@ class AltracqShell extends StatefulWidget {
     AltracqNavBarItem(label: 'Profil', icon: AltracqIcons.user, route: '/profil'),
   ];
 
+  /// Indeks cabang Peta. Peta digambar penuh di bawah navbar (edge-to-edge),
+  /// sehingga hanya tab ini yang mematikan blob latar dan memakai kaca
+  /// bertint di atas peta.
+  static const int mapBranchIndex = 1;
+
   @override
   State<AltracqShell> createState() => _AltracqShellState();
 }
@@ -62,6 +68,8 @@ class _AltracqShellState extends State<AltracqShell> {
 
   @override
   Widget build(BuildContext context) {
+    final index = widget.navigationShell.currentIndex;
+    final systemInset = MediaQuery.paddingOf(context).bottom;
     return ListenableBuilder(
       listenable: _power,
       builder: (context, child) => VisualEffectPolicyScope(
@@ -72,28 +80,38 @@ class _AltracqShellState extends State<AltracqShell> {
         ),
         child: child!,
       ),
-      child: PageBackground(
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: _TabFade(
-            index: widget.navigationShell.currentIndex,
-            child: widget.navigationShell,
-          ),
-          bottomNavigationBar: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AltracqMetrics.navbarInset,
-              0,
-              AltracqMetrics.navbarInset,
-              AltracqMetrics.navbarInset,
+      child: AltracqSystemInset(
+        bottom: systemInset,
+        child: PageBackground(
+          // Peta digambar penuh tanpa blob latar; tab lain tetap memakai blob.
+          showBlobs: index != AltracqShell.mapBranchIndex,
+          child: Scaffold(
+            // Body memanjang sampai tepi bawah layar supaya Peta bisa
+            // edge-to-edge. Scaffold menambahkan tinggi navbar ke padding
+            // bawah MediaQuery isi, yang dipakai tab lain untuk jarak aman.
+            extendBody: true,
+            backgroundColor: Colors.transparent,
+            body: _TabFade(
+              index: index,
+              child: widget.navigationShell,
             ),
-            child: AltracqNavBar(
-              currentIndex: widget.navigationShell.currentIndex,
-              items: AltracqShell.navItems,
-              onTap: (index) {
-                // Tab yang sudah aktif tidak memicu animasi apa pun.
-                if (index == widget.navigationShell.currentIndex) return;
-                widget.navigationShell.goBranch(index);
-              },
+            bottomNavigationBar: Padding(
+              padding: EdgeInsets.fromLTRB(
+                AltracqMetrics.navbarInset,
+                0,
+                AltracqMetrics.navbarInset,
+                AltracqMetrics.navbarInset + systemInset,
+              ),
+              child: AltracqNavBar(
+                currentIndex: index,
+                items: AltracqShell.navItems,
+                overMap: index == AltracqShell.mapBranchIndex,
+                onTap: (target) {
+                  // Tab yang sudah aktif tidak memicu animasi apa pun.
+                  if (target == index) return;
+                  widget.navigationShell.goBranch(target);
+                },
+              ),
             ),
           ),
         ),

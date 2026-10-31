@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../bootstrap.dart';
 import '../design/app_theme.dart';
+import '../design/system_ui.dart';
 import '../design/theme_mode_controller.dart';
 import 'router.dart';
 
@@ -25,6 +26,12 @@ class NamaApp extends StatelessWidget {
         darkTheme: altracqDarkTheme,
         themeMode: controller.mode,
         routerConfig: altracqRouter,
+        // Ikon status dan navigasi mengikuti tema aktif di semua rute,
+        // termasuk Peta yang peta terangnya diredam di mode malam.
+        builder: (context, child) => AltracqSystemUiRegion(
+          brightness: Theme.of(context).brightness,
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
     );
   }

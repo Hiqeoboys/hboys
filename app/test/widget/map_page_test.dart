@@ -5,6 +5,9 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geo_utils/geo_utils.dart';
 import 'package:nama_app/design/app_theme.dart';
+import 'package:nama_app/design/background/page_background.dart';
+import 'package:nama_app/design/glass/glass_surface.dart';
+import 'package:nama_app/design/tokens.dart';
 import 'package:nama_app/features/compass/domain/compass_calibration.dart';
 import 'package:nama_app/features/map/application/map_track_source.dart';
 import 'package:nama_app/features/map/application/offline_map_service.dart';
@@ -171,6 +174,17 @@ void _setPhone(WidgetTester tester) {
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+void _setPhoneWithInsets(WidgetTester tester) {
+  tester.view.physicalSize = const Size(390, 844);
+  tester.view.devicePixelRatio = 1;
+  tester.view.padding = const FakeViewPadding(top: 24, bottom: 24);
+  tester.view.viewPadding = const FakeViewPadding(top: 24, bottom: 24);
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.resetPadding);
+  addTearDown(tester.view.resetViewPadding);
 }
 
 Future<void> _openOfflineSheet(WidgetTester tester) async {
@@ -425,5 +439,70 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('350° U'), findsOneWidget);
     expect(find.textContaining('±10° (tinggi)'), findsOneWidget);
+  });
+
+  test('panel dan atribusi peta dinaikkan di atas navbar mengambang', () {
+    expect(AltracqMetrics.floatingBottomInset(0), 80);
+    expect(mapOrnamentBottomMargin(0), 88);
+    expect(mapSheetBottomOffset(0), 124);
+
+    expect(mapOrnamentBottomMargin(24), 112);
+    expect(mapSheetBottomOffset(24), 148);
+    expect(
+      mapSheetBottomOffset(24),
+      mapOrnamentBottomMargin(24) + mapAttributionInset - mapOrnamentGap,
+    );
+  });
+
+  testWidgets('peta kosong memakai latar penuh tanpa pita dan menghormati inset',
+      (tester) async {
+    _setPhoneWithInsets(tester);
+    await tester.pumpWidget(_app(MapPage(
+      catalogLoader: () async => MapPackageCatalog(const <MountainMapPackage>[]),
+      offlineService: _FakeOfflineService(),
+      trackSource: _StaticTrackSource(<MapTrackSnapshot>[_snapshot(const [])]),
+    )));
+    await tester.pumpAndSettle();
+
+    // Latar rata memakai warna token, bukan blob halaman.
+    expect(find.byType(PageBackground), findsNothing);
+    final root = tester.widget<ColoredBox>(
+      find
+          .descendant(
+            of: find.byType(MapPage),
+            matching: find.byType(ColoredBox),
+          )
+          .first,
+    );
+    expect(root.color, AltracqColors.light.background);
+
+    final map = tester.getRect(find.byType(MapPage));
+    expect(map.top, 0);
+    expect(map.bottom, 844);
+
+    // Kartu jalur bergeser turun sejajar inset status bar.
+    final card = tester.getRect(
+      find
+          .ancestor(
+            of: find.text('Belum ada data jalur'),
+            matching: find.byType(GlassSurface),
+          )
+          .first,
+    );
+    expect(card.top, greaterThanOrEqualTo(24 + AltracqSpacing.lg));
+
+    // Panel panduan melayang di atas navbar, menyisakan ruang atribusi.
+    final panel = tester.getRect(
+      find
+          .ancestor(
+            of: find.text('Peta offline'),
+            matching: find.byType(GlassSurface),
+          )
+          .first,
+    );
+    expect(
+      panel.bottom,
+      moreOrLessEquals(844 - mapSheetBottomOffset(24), epsilon: 0.5),
+    );
   });
 }

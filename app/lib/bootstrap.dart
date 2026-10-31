@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
@@ -33,6 +34,9 @@ Future<void> bootstrap(Flavor flavor) async {
   }
   if (Platform.isAndroid) {
     TrackingForegroundService.initialize();
+    // Layar Peta digambar penuh sampai tepi atas dan bawah; status serta
+    // navigasi sistem transparan agar peta terlihat di belakangnya.
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
   // Tanpa kredensial Supabase, langkah ini tidak melakukan apa pun dan fitur
   // grup tetap nonaktif. Tidak ada panggilan jaringan saat inisialisasi.

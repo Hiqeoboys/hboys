@@ -25,11 +25,17 @@ class GlassSurface extends StatelessWidget {
     this.borderRadius = AltracqRadius.card,
     this.padding,
     this.child,
+    this.tint,
   });
 
   final double borderRadius;
   final EdgeInsetsGeometry? padding;
   final Widget? child;
+
+  /// Warna token transparan tambahan untuk kaca di atas isi yang tidak bisa
+  /// diprediksi, yaitu navbar yang melayang di atas peta. Warna dasar kaca
+  /// tetap sama; tint hanya menaikkan opasitas agar label tetap terbaca.
+  final Color? tint;
 
   @override
   Widget build(BuildContext context) {
@@ -37,9 +43,10 @@ class GlassSurface extends StatelessWidget {
     final blur = VisualEffectPolicyScope.of(context).glassBlur;
     final radius = BorderRadius.circular(borderRadius);
 
+    final fill = blur ? colors.glassFill : colors.glassFillFallback;
     Widget backdrop = Container(
       decoration: BoxDecoration(
-        color: blur ? colors.glassFill : colors.glassFillFallback,
+        color: tint == null ? fill : Color.alphaBlend(tint!, fill),
         borderRadius: radius,
         border: Border.all(
           color: colors.glassBorder,

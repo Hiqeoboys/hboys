@@ -278,7 +278,6 @@ class _ChatPageState extends State<ChatPage> {
     final hasGroup = _groupId != null;
 
     return SafeArea(
-      bottom: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

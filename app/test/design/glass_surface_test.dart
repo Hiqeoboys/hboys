@@ -14,8 +14,10 @@ import '../support/altracq_app_harness.dart';
 Widget glassApp({
   VisualEffectPolicy? policy,
   Widget? child,
+  Color? tint,
 }) {
   final surface = GlassSurface(
+    tint: tint,
     child: child ?? const Text('Isi kaca'),
   );
   return MaterialApp(
@@ -109,6 +111,36 @@ void main() {
     );
     expect(highlight, findsOneWidget);
     expect(tester.widget<IgnorePointer>(highlight).ignoring, isTrue);
+  });
+
+  testWidgets('tint dicampur ke isi kaca tanpa mengganti warna dasar',
+      (tester) async {
+    const tint = Color(0x99313851);
+    await tester.pumpWidget(
+      glassApp(policy: VisualEffectPolicy.full, tint: tint),
+    );
+
+    expect(
+      backdropColor(tester),
+      Color.alphaBlend(tint, AltracqColors.light.glassFill),
+    );
+    expect(find.byType(BackdropFilter), findsOneWidget);
+  });
+
+  testWidgets('tanpa blur, tint tetap dicampur ke isi pekat', (tester) async {
+    const tint = Color(0x99313851);
+    await tester.pumpWidget(
+      glassApp(
+        policy: policy(power: PowerProfile.saver),
+        tint: tint,
+      ),
+    );
+
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(
+      backdropColor(tester),
+      Color.alphaBlend(tint, AltracqColors.light.glassFillFallback),
+    );
   });
 
   testWidgets('isi kaca menentukan ukuran permukaan', (tester) async {

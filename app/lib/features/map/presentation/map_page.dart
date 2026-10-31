@@ -6,8 +6,8 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geo_utils/geo_utils.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
-import '../../../design/background/page_background.dart';
 import '../../../design/glass/glass_surface.dart';
+import '../../../design/system_ui.dart';
 import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
 import '../../../design/widgets/line_icons.dart';
@@ -35,6 +35,26 @@ typedef MapCatalogLoader = Future<MapPackageCatalog> Function();
 @visibleForTesting
 double mapDimOpacityFor(Brightness brightness) =>
     brightness == Brightness.dark ? 0.35 : 0.0;
+
+/// Jarak kecil antara navbar mengambang dan logo/atribusi Mapbox.
+@visibleForTesting
+const double mapOrnamentGap = 8;
+
+/// Ruang yang disisakan di bawah panel panduan untuk logo dan atribusi
+/// Mapbox, supaya keduanya tetap terlihat dan bisa diketuk.
+@visibleForTesting
+const double mapAttributionInset = 44;
+
+/// Margin bawah logo dan atribusi Mapbox: di atas navbar mengambang.
+@visibleForTesting
+double mapOrnamentBottomMargin(double systemInset) =>
+    AltracqMetrics.floatingBottomInset(systemInset) + mapOrnamentGap;
+
+/// Jarak panel panduan dari tepi bawah layar: di atas navbar dan baris
+/// logo/atribusi.
+@visibleForTesting
+double mapSheetBottomOffset(double systemInset) =>
+    AltracqMetrics.floatingBottomInset(systemInset) + mapAttributionInset;
 
 /// Layar Peta Offline: peta penuh, kartu status jalur, tombol kompas dan
 /// pemusatan posisi, serta sheet panduan jalur/pengelolaan unduhan.
@@ -85,9 +105,6 @@ class _MapPageState extends State<MapPage> {
   static const _positionHaloLayerId = 'nama-position-halo';
   static const _positionDotLayerId = 'nama-position-dot';
 
-  /// Ruang di bawah sheet agar logo dan atribusi Mapbox tidak tertutup.
-  static const double _attributionInset = 44;
-
   late final OfflineDownloadController _offlineController;
 
   MapPackageCatalog? _catalog;
@@ -116,6 +133,7 @@ class _MapPageState extends State<MapPage> {
   String? _mapLoadError;
   bool _sheetVisible = false;
   Brightness? _lastBrightness;
+  double _systemInset = 0;
 
   OffTrailDetector? _detector;
   TrailState _trailState = TrailState.onTrail;
@@ -149,6 +167,13 @@ class _MapPageState extends State<MapPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Inset sistem mentah dari kerangka tab; di dalam Scaffold ber-extendBody
+    // padding bawah sudah termasuk tinggi navbar dan viewPadding dibuang.
+    final bottomInset = AltracqSystemInset.bottomOf(context);
+    if (bottomInset != _systemInset) {
+      _systemInset = bottomInset;
+      _updateMapOrnaments();
+    }
     final brightness = Theme.of(context).brightness;
     if (_lastBrightness == brightness) return;
     _lastBrightness = brightness;
@@ -316,6 +341,24 @@ class _MapPageState extends State<MapPage> {
     unawaited(
       map.scaleBar
           .updateSettings(ScaleBarSettings(enabled: false))
+          .catchError((Object _) {}),
+    );
+    _updateMapOrnaments();
+  }
+
+  /// Menaikkan logo dan tombol atribusi Mapbox ke atas navbar mengambang.
+  void _updateMapOrnaments() {
+    final map = _map;
+    if (map == null) return;
+    final margin = mapOrnamentBottomMargin(_systemInset);
+    unawaited(
+      map.logo
+          .updateSettings(LogoSettings(marginBottom: margin))
+          .catchError((Object _) {}),
+    );
+    unawaited(
+      map.attribution
+          .updateSettings(AttributionSettings(marginBottom: margin))
           .catchError((Object _) {}),
     );
   }
@@ -656,7 +699,12 @@ class _MapPageState extends State<MapPage> {
   Widget build(BuildContext context) {
     final dimOpacity = mapDimOpacityFor(Theme.of(context).brightness);
     final colors = AltracqColors.of(context);
-    return PageBackground(
+    final systemInset = AltracqSystemInset.bottomOf(context);
+    // Peta penuh sampai tepi layar; status bar dan navbar mengambang di
+    // atasnya. Warna dasar token dipakai saat peta belum tersedia agar tidak
+    // ada pita warna di tepi.
+    return ColoredBox(
+      color: colors.background,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: Stack(
@@ -675,6 +723,7 @@ class _MapPageState extends State<MapPage> {
               ),
             Positioned.fill(
               child: SafeArea(
+                bottom: false,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(
                     AltracqSpacing.lg,
@@ -730,7 +779,7 @@ class _MapPageState extends State<MapPage> {
               Positioned(
                 left: AltracqSpacing.lg,
                 right: AltracqSpacing.lg,
-                bottom: _attributionInset,
+                bottom: mapSheetBottomOffset(systemInset),
                 child: ListenableBuilder(
                   listenable: _offlineController,
                   builder: (context, _) => _buildGuidanceSheet(context),
@@ -754,6 +803,9 @@ class _MapPageState extends State<MapPage> {
   Widget _buildMapUnavailable() {
     final colors = AltracqColors.of(context);
     final theme = Theme.of(context);
+    final bottomClearance = AltracqMetrics.floatingBottomInset(
+      AltracqSystemInset.bottomOf(context),
+    );
     final tokenMissing = _token.isEmpty;
     final body = tokenMissing
         ? 'Peta Mapbox membutuhkan token publik. Jalankan aplikasi dengan '
@@ -763,11 +815,11 @@ class _MapPageState extends State<MapPage> {
             'unduhan offline belum bisa digambar di platform ini.';
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
+        padding: EdgeInsets.fromLTRB(
           AltracqSpacing.lg,
           140,
           AltracqSpacing.lg,
-          230,
+          230 + bottomClearance,
         ),
         child: GlassSurface(
           borderRadius: AltracqRadius.card,

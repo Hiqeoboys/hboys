@@ -35,6 +35,37 @@ double navBarHeadProgress(double t) {
 double navBarTailProgress(double t) =>
     const Interval(0.12, 1, curve: Curves.easeOutCubic).transform(t);
 
+/// Alfa tint navbar saat melayang di atas peta pada mode gelap.
+///
+/// Peta OUTDOORS tetap terang walau diperedup 35%; tanpa tint, label terang
+/// di atas kaca 8% tidak akan mencapai kontras 4,5:1. Tint navy 60% (token
+/// `background`) menjaga kontras di atas peta paling terang dan masih
+/// menyisakan 40% peta kabur di belakang kaca.
+@visibleForTesting
+const double navBarMapTintAlpha = 0.6;
+
+/// Tint kaca navbar saat di atas peta. Mode terang tidak perlu tint karena
+/// kaca 55% krem sudah menerangkan latar; mode gelap memakai navy 60%.
+@visibleForTesting
+Color? navBarMapTint(AltracqColors colors) {
+  if (colors.brightness != Brightness.dark) return null;
+  return colors.background.withValues(alpha: navBarMapTintAlpha);
+}
+
+/// Warna label tab: teks sekunder saat tab diam, krem/navy saat tertutup blob.
+///
+/// Di atas peta, label diam memakai `textPrimary` agar kontras tetap ≥4,5:1
+/// terhadap peta terang maupun gelap.
+@visibleForTesting
+Color navBarLabelColor({
+  required AltracqColors colors,
+  required bool overMap,
+  required double coverage,
+}) {
+  final idle = overMap ? colors.textPrimary : colors.textSecondary;
+  return Color.lerp(idle, colors.onPrimary, coverage)!;
+}
+
 /// Bagian area pill tab yang tertutup blob, 0..1.
 ///
 /// Dipakai untuk memindahkan warna ikon/label saat blob benar-benar menutup
@@ -71,11 +102,16 @@ class AltracqNavBar extends StatefulWidget {
     required this.currentIndex,
     required this.items,
     required this.onTap,
+    this.overMap = false,
   });
 
   final int currentIndex;
   final List<AltracqNavBarItem> items;
   final ValueChanged<int> onTap;
+
+  /// Benar saat kaca melayang di atas peta; menyalakan tint dan label
+  /// `textPrimary` supaya kontras label tetap ≥4,5:1 di atas tile peta.
+  final bool overMap;
 
   static const Duration slideDuration = Duration(milliseconds: 500);
   static const Duration reducedSlideDuration = Duration(milliseconds: 180);
@@ -158,6 +194,7 @@ class _AltracqNavBarState extends State<AltracqNavBar>
       explicitChildNodes: true,
       child: GlassSurface(
         borderRadius: AltracqRadius.navbar,
+        tint: widget.overMap ? navBarMapTint(colors) : null,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth;
@@ -202,6 +239,7 @@ class _AltracqNavBarState extends State<AltracqNavBar>
                               child: _NavBarTab(
                                 item: widget.items[i],
                                 active: i == widget.currentIndex,
+                                overMap: widget.overMap,
                                 coverage: navBarCoverage(
                                   tabCenter: (i + 0.5) * cellWidth,
                                   headCenter: headCenter,
@@ -231,11 +269,13 @@ class _NavBarTab extends StatelessWidget {
     required this.item,
     required this.active,
     required this.coverage,
+    required this.overMap,
     required this.onTap,
   });
 
   final AltracqNavBarItem item;
   final bool active;
+  final bool overMap;
 
   /// 0 = blob jauh, 1 = blob menutup penuh area pill tab ini.
   final double coverage;
@@ -247,8 +287,11 @@ class _NavBarTab extends StatelessWidget {
     final theme = Theme.of(context);
     final iconColor =
         Color.lerp(colors.textPrimary, colors.onPrimary, coverage)!;
-    final labelColor =
-        Color.lerp(colors.textSecondary, colors.onPrimary, coverage)!;
+    final labelColor = navBarLabelColor(
+      colors: colors,
+      overMap: overMap,
+      coverage: coverage,
+    );
     return Semantics(
       button: true,
       selected: active,

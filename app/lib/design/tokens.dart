@@ -213,6 +213,13 @@ class AltracqMetrics {
   static const double navbarPillWidth = 66;
   static const double navbarPillHeight = 52;
   static const double buttonPairGap = 12;
+
+  /// Jarak dari tepi bawah layar ke atas navbar mengambang: tinggi navbar,
+  /// inset 16 px, dan inset sistem (gestur atau tombol navigasi).
+  ///
+  /// Dipakai untuk padding bawah isi tab supaya tidak tertutup navbar.
+  static double floatingBottomInset(double systemInset) =>
+      navbarHeight + navbarInset + systemInset;
 }
 
 /// Parameter liquid glass.

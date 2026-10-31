@@ -225,6 +225,7 @@ class _ProfilPageState extends State<ProfilPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
     return SafeArea(
       bottom: false,
       child: AnimatedBuilder(
@@ -237,14 +238,14 @@ class _ProfilPageState extends State<ProfilPage> {
           final signedIn = _account.user != null;
           return LayoutBuilder(
             builder: (context, constraints) {
-              final minHeight = (constraints.maxHeight - 56)
+              final minHeight = (constraints.maxHeight - 56 - bottomInset)
                   .clamp(0.0, double.infinity);
               return SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(
+                padding: EdgeInsets.fromLTRB(
                   AltracqSpacing.lg,
                   AltracqSpacing.xl,
                   AltracqSpacing.lg,
-                  AltracqSpacing.xxl,
+                  AltracqSpacing.xxl + bottomInset,
                 ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(minHeight: minHeight),

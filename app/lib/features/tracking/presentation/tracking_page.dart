@@ -225,14 +225,16 @@ class TrackingView extends StatelessWidget {
         : '—';
     final timer = formatTimer(status?.movingSeconds ?? 0);
 
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
     return SafeArea(
       bottom: false,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(
+        padding: EdgeInsets.fromLTRB(
           AltracqSpacing.lg,
           AltracqSpacing.xl,
           AltracqSpacing.lg,
-          AltracqSpacing.xl,
+          AltracqSpacing.xl + bottomInset,
         ),
         children: <Widget>[
           Row(
