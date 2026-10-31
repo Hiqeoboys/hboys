@@ -12,12 +12,9 @@ import 'package:nama_app/features/groups/domain/group.dart';
 import 'package:nama_app/features/groups/domain/group_remote_service.dart';
 import 'package:nama_app/features/home/beranda_page.dart';
 import 'package:nama_app/features/home/expandable_features_card.dart';
-import 'package:nama_app/features/tracking/application/tracking_runtime.dart';
 import 'package:nama_app/features/tracking/domain/track_point.dart';
 import 'package:nama_app/features/tracking/domain/tracking_repository.dart';
 import 'package:nama_app/features/tracking/domain/tracking_session.dart';
-import 'package:nama_app/infrastructure/power/power_profile_controller.dart';
-import 'package:nama_app/infrastructure/power/power_profile_manager.dart';
 
 import '../support/account_fakes.dart';
 import '../support/real_font.dart';
@@ -34,18 +31,6 @@ const List<String> _featureTitles = <String>[
 ];
 
 final DateTime _tripStartUtc = DateTime(2026, 10, 30, 7, 12).toUtc();
-
-class _FixedBattery implements BatteryReader {
-  const _FixedBattery(this.level);
-
-  final int level;
-
-  @override
-  Future<int> levelPercent() async => level;
-
-  @override
-  Future<bool> isCharging() async => false;
-}
 
 class _FakeTrackingRepository implements TrackingRepository {
   _FakeTrackingRepository({
@@ -207,7 +192,6 @@ Map<String, List<TrackPoint>> _tripPoints(List<TrackingSession> sessions) =>
 
 GoRouter _router({
   required AccountController account,
-  required PowerProfileController power,
   TrackingRepository? repository,
 }) {
   Widget destination(String text) => Scaffold(body: Center(child: Text(text)));
@@ -218,7 +202,6 @@ GoRouter _router({
         path: '/beranda',
         builder: (context, state) => BerandaPage(
           accountController: account,
-          powerController: power,
           repository: repository ?? _FakeTrackingRepository(),
           now: () => DateTime(2026, 10, 30, 7),
         ),
@@ -250,15 +233,6 @@ void _setTallPhone(WidgetTester tester) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-Future<PowerProfileController> _power() async {
-  final controller = PowerProfileController(
-    reader: const _FixedBattery(62),
-    manager: PowerProfileManager(),
-  );
-  await controller.refresh();
-  return controller;
-}
-
 /// Grid fitur mulai tertutup sesuai revisi, jadi tombolnya diketuk dulu.
 Future<void> _openFeatures(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey<String>('semua-fitur-toggle')));
@@ -266,14 +240,11 @@ Future<void> _openFeatures(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('tamu melihat sapaan, baterai nyata, dan keadaan kosong',
-      (tester) async {
+  testWidgets('tamu melihat sapaan dan keadaan kosong', (tester) async {
     _setTallPhone(tester);
-    final power = await _power();
-    addTearDown(power.dispose);
     final account = _guestAccount();
     addTearDown(account.dispose);
-    final router = _router(account: account, power: power);
+    final router = _router(account: account);
 
     await tester.pumpWidget(
       MaterialApp.router(theme: hiqeoLightTheme, routerConfig: router),
@@ -282,7 +253,6 @@ void main() {
 
     expect(find.text('Selamat pagi'), findsOneWidget);
     expect(find.text('Halo, Pendaki'), findsOneWidget);
-    expect(find.text('Baterai 62% · Normal'), findsOneWidget);
     expect(find.text('Belum ada pendakian'), findsOneWidget);
     expect(find.text('Semua fitur'), findsOneWidget);
     expect(find.text('Belum ada riwayat pendakian'), findsOneWidget);
@@ -301,8 +271,6 @@ void main() {
   testWidgets('akun dengan grup menampilkan pendakian dan status kunci nyata',
       (tester) async {
     _setTallPhone(tester);
-    final power = await _power();
-    addTearDown(power.dispose);
     final group = _group(
       id: 'g1',
       created: DateTime.utc(2026, 10, 20),
@@ -326,7 +294,7 @@ void main() {
       },
     );
     addTearDown(account.dispose);
-    final router = _router(account: account, power: power);
+    final router = _router(account: account);
 
     await tester.pumpWidget(
       MaterialApp.router(theme: hiqeoLightTheme, routerConfig: router),
@@ -341,11 +309,9 @@ void main() {
   testWidgets('kartu membuka rute yang benar setelah grid dibuka',
       (tester) async {
     _setTallPhone(tester);
-    final power = await _power();
-    addTearDown(power.dispose);
     final account = _guestAccount();
     addTearDown(account.dispose);
-    final router = _router(account: account, power: power);
+    final router = _router(account: account);
 
     await tester.pumpWidget(
       MaterialApp.router(theme: hiqeoLightTheme, routerConfig: router),
@@ -377,11 +343,9 @@ void main() {
   testWidgets('kartu fitur adalah tombol berlabel untuk pembaca layar',
       (tester) async {
     _setTallPhone(tester);
-    final power = await _power();
-    addTearDown(power.dispose);
     final account = _guestAccount();
     addTearDown(account.dispose);
-    final router = _router(account: account, power: power);
+    final router = _router(account: account);
     final handle = tester.ensureSemantics();
 
     await tester.pumpWidget(
@@ -404,8 +368,6 @@ void main() {
   testWidgets('ringkasan memakai sesi selesai terbaru dan membuka sesi itu',
       (tester) async {
     _setTallPhone(tester);
-    final power = await _power();
-    addTearDown(power.dispose);
     final account = _guestAccount();
     addTearDown(account.dispose);
     final sessions = <TrackingSession>[
@@ -424,7 +386,6 @@ void main() {
     ];
     final router = _router(
       account: account,
-      power: power,
       repository: _FakeTrackingRepository(
         sessions: sessions,
         points: _tripPoints(sessions),
@@ -451,8 +412,6 @@ void main() {
   testWidgets('nama gunung ringkasan diambil dari grup sesi itu',
       (tester) async {
     _setTallPhone(tester);
-    final power = await _power();
-    addTearDown(power.dispose);
     final group = _group(
       id: 'g1',
       created: DateTime.utc(2026, 10, 20),
@@ -479,7 +438,6 @@ void main() {
     final sessions = <TrackingSession>[_session(groupId: 'g1')];
     final router = _router(
       account: account,
-      power: power,
       repository: _FakeTrackingRepository(
         sessions: sessions,
         points: _tripPoints(sessions),
@@ -508,14 +466,11 @@ void main() {
     // Ukuran teks harus dari huruf asli supaya syarat "muat 844 px" bermakna.
     await loadPlusJakartaSans(tester);
 
-    final power = await _power();
-    addTearDown(power.dispose);
     final account = _guestAccount();
     addTearDown(account.dispose);
     final sessions = _completedTrip();
     final router = _router(
       account: account,
-      power: power,
       repository: _FakeTrackingRepository(
         sessions: sessions,
         points: _tripPoints(sessions),

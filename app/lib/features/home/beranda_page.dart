@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../design/glass/glass_surface.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../../design/widgets/hiqeo_button.dart';
@@ -11,8 +10,6 @@ import '../../design/widgets/line_icons.dart';
 import '../../infrastructure/database/app_database.dart';
 import '../../infrastructure/database/database_connection.dart';
 import '../../infrastructure/database/repositories/drift_tracking_repository.dart';
-import '../../infrastructure/power/power_profile_controller.dart';
-import '../../infrastructure/power/power_profile_manager.dart';
 import '../../infrastructure/supabase/supabase_services.dart';
 import '../auth/application/account_controller.dart';
 import '../groups/application/group_key_manager.dart';
@@ -52,14 +49,12 @@ class BerandaPage extends StatefulWidget {
   const BerandaPage({
     super.key,
     this.accountController,
-    this.powerController,
     this.repository,
     this.now,
   });
 
   /// Disuntikkan untuk uji; produksi memakai layanan Supabase yang tersedia.
   final AccountController? accountController;
-  final PowerProfileController? powerController;
 
   /// Disuntikkan untuk uji; produksi membuka basis data perangkat.
   final TrackingRepository? repository;
@@ -71,10 +66,7 @@ class BerandaPage extends StatefulWidget {
 
 class _BerandaPageState extends State<BerandaPage> {
   late final AccountController _account;
-  late final PowerProfileController _power;
-  late final Listenable _state;
   late final bool _ownsAccount;
-  late final bool _ownsPower;
   late final DateTime Function() _now;
 
   AppDatabase? _database;
@@ -89,11 +81,7 @@ class _BerandaPageState extends State<BerandaPage> {
     _ownsAccount = widget.accountController == null;
     _account = widget.accountController ?? SupabaseServices.createAccountController();
     _account.initialize();
-    _ownsPower = widget.powerController == null;
-    _power = widget.powerController ?? PowerProfileController();
-    if (_ownsPower) unawaited(_power.refresh());
     _now = widget.now ?? DateTime.now;
-    _state = Listenable.merge(<Listenable>[_account, _power]);
     unawaited(_watchSummary());
   }
 
@@ -103,7 +91,6 @@ class _BerandaPageState extends State<BerandaPage> {
     final database = _database;
     if (database != null) unawaited(database.close());
     if (_ownsAccount) _account.dispose();
-    if (_ownsPower) _power.dispose();
     super.dispose();
   }
 
@@ -255,7 +242,7 @@ class _BerandaPageState extends State<BerandaPage> {
     return SafeArea(
       bottom: false,
       child: ListenableBuilder(
-        listenable: _state,
+        listenable: _account,
         builder: (context, _) {
           final next = nextHikeOf(_account.groups);
           final keyStatus =
@@ -269,30 +256,21 @@ class _BerandaPageState extends State<BerandaPage> {
               HiqeoSpacing.xl + bottomInset,
             ),
             children: <Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          greetingForHour(_now().hour),
-                          style: theme.textTheme.bodyMedium
-                              ?.copyWith(color: colors.textSecondary),
-                        ),
-                        const SizedBox(height: HiqeoSpacing.xs),
-                        Text(
-                          'Halo, ${profile?.username ?? 'Pendaki'}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.displaySmall,
-                        ),
-                      ],
-                    ),
+                  Text(
+                    greetingForHour(_now().hour),
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: colors.textSecondary),
                   ),
-                  const SizedBox(width: HiqeoSpacing.md),
-                  _BatteryPill(controller: _power),
+                  const SizedBox(height: HiqeoSpacing.xs),
+                  Text(
+                    'Halo, ${profile?.username ?? 'Pendaki'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.displaySmall,
+                  ),
                 ],
               ),
               const SizedBox(height: HiqeoSpacing.xl),
@@ -322,37 +300,6 @@ class _BerandaPageState extends State<BerandaPage> {
       ),
     );
   }
-}
-
-class _BatteryPill extends StatelessWidget {
-  const _BatteryPill({required this.controller});
-
-  final PowerProfileController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final level = controller.levelPercent;
-    final label = level == null
-        ? 'Baterai tidak terbaca'
-        : 'Baterai $level% · ${_profileLabel(controller.profile)}';
-    return GlassSurface(
-      borderRadius: HiqeoRadius.pill,
-      padding: const EdgeInsets.symmetric(
-        horizontal: HiqeoSpacing.lg,
-        vertical: HiqeoSpacing.sm,
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.titleSmall,
-      ),
-    );
-  }
-
-  static String _profileLabel(PowerProfile profile) => switch (profile) {
-        PowerProfile.normal => 'Normal',
-        PowerProfile.saver => 'Hemat',
-        PowerProfile.critical => 'Kritis',
-      };
 }
 
 class _HeroCard extends StatelessWidget {
