@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../domain/leaderboard.dart';
 import '../domain/plus_remote_config.dart';
 import '../domain/plus_repositories.dart';
 
@@ -89,6 +90,41 @@ class SharedPreferencesEntitlementLocalStore implements EntitlementLocalStore {
       lastSeenKey,
       value.toUtc().toIso8601String(),
     );
+  }
+}
+
+class SharedPreferencesLeaderboardConsentStore
+    implements LeaderboardConsentStore {
+  const SharedPreferencesLeaderboardConsentStore();
+
+  static const String visibleKey = 'leaderboard_consent_visible_v1';
+
+  @override
+  Future<bool?> readVisible() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(visibleKey);
+  }
+
+  @override
+  Future<void> writeVisible(bool visible) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(visibleKey, visible);
+  }
+}
+
+class InMemoryLeaderboardConsentStore implements LeaderboardConsentStore {
+  InMemoryLeaderboardConsentStore([this.visible]);
+
+  bool? visible;
+  int writes = 0;
+
+  @override
+  Future<bool?> readVisible() async => visible;
+
+  @override
+  Future<void> writeVisible(bool value) async {
+    visible = value;
+    writes++;
   }
 }
 

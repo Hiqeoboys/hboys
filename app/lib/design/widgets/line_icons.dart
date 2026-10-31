@@ -571,6 +571,23 @@ class HiqeoIcons {
     ],
   );
 
+  static final HiqeoIconData more = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(5.6, 12), radius: 0.9),
+        ),
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(12, 12), radius: 0.9),
+        ),
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(18.4, 12), radius: 0.9),
+        ),
+    ],
+  );
+
   static final HiqeoIconData clock = HiqeoIconData(
     () => <ui.Path>[
       ui.Path()

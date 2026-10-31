@@ -9,6 +9,8 @@ import 'package:nama_app/design/theme_mode_controller.dart';
 import 'package:nama_app/features/auth/application/account_controller.dart';
 import 'package:nama_app/features/auth/domain/auth_service.dart';
 import 'package:nama_app/features/auth/domain/profile_repository.dart';
+import 'package:nama_app/features/plus/application/plus_controller.dart';
+import 'package:nama_app/features/plus/application/plus_scope.dart';
 import 'package:nama_app/features/profile/presentation/profil_page.dart';
 import 'package:nama_app/features/safety/domain/emergency_contact.dart';
 import 'package:nama_app/features/safety/domain/safety_repository.dart';
@@ -21,6 +23,7 @@ import 'package:nama_app/infrastructure/power/power_profile_controller.dart';
 import 'package:nama_app/infrastructure/power/power_profile_manager.dart';
 
 import '../support/account_fakes.dart';
+import '../support/plus_fixtures.dart';
 
 final Uint8List _identityKey =
     Uint8List.fromList(List<int>.generate(32, (i) => i + 1));
@@ -161,6 +164,9 @@ void _setTallPhone(WidgetTester tester) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
+Widget _withPlus(PlusController? plus, Widget child) =>
+    plus == null ? child : PlusScope(controller: plus, child: child);
+
 Future<_Harness> _pump(
   WidgetTester tester, {
   bool configured = true,
@@ -174,8 +180,10 @@ Future<_Harness> _pump(
   bool failContacts = false,
   int mapCount = 0,
   bool withRouter = false,
+  PlusController? plus,
 }) async {
   _setTallPhone(tester);
+  if (plus != null) addTearDown(plus.dispose);
   final auth = FakeAuthService(
     isConfigured: configured,
     currentUser: signedIn
@@ -229,29 +237,41 @@ Future<_Harness> _pump(
             body: Center(child: Text('Tujuan Peta')),
           ),
         ),
+        GoRoute(
+          path: '/plus/leaderboard',
+          builder: (context, state) => const Scaffold(
+            body: Center(child: Text('Tujuan Leaderboard')),
+          ),
+        ),
       ],
     );
     addTearDown(router.dispose);
     await tester.pumpWidget(
-      ListenableBuilder(
-        listenable: theme,
-        builder: (context, child) => MaterialApp.router(
-          theme: hiqeoLightTheme,
-          darkTheme: hiqeoDarkTheme,
-          themeMode: theme.mode,
-          routerConfig: router,
+      _withPlus(
+        plus,
+        ListenableBuilder(
+          listenable: theme,
+          builder: (context, child) => MaterialApp.router(
+            theme: hiqeoLightTheme,
+            darkTheme: hiqeoDarkTheme,
+            themeMode: theme.mode,
+            routerConfig: router,
+          ),
         ),
       ),
     );
   } else {
     await tester.pumpWidget(
-      ListenableBuilder(
-        listenable: theme,
-        builder: (context, child) => MaterialApp(
-          theme: hiqeoLightTheme,
-          darkTheme: hiqeoDarkTheme,
-          themeMode: theme.mode,
-          home: page,
+      _withPlus(
+        plus,
+        ListenableBuilder(
+          listenable: theme,
+          builder: (context, child) => MaterialApp(
+            theme: hiqeoLightTheme,
+            darkTheme: hiqeoDarkTheme,
+            themeMode: theme.mode,
+            home: page,
+          ),
         ),
       ),
     );
@@ -307,7 +327,8 @@ void main() {
     expect(find.text('SOS diteruskan ke kontak darurat'), findsOneWidget);
     expect(find.text('Cadangan jejak pendakian'), findsOneWidget);
     expect(
-      find.text('Penerusan SOS dan cadangan jejak belum tersedia di build ini.'),
+      find.text(
+          'Penerusan SOS dan cadangan jejak belum tersedia di build ini.'),
       findsOneWidget,
     );
     expect(
@@ -332,7 +353,8 @@ void main() {
     );
   });
 
-  testWidgets('login dinonaktifkan dengan catatan jujur bila belum dikonfigurasi',
+  testWidgets(
+      'login dinonaktifkan dengan catatan jujur bila belum dikonfigurasi',
       (tester) async {
     final harness = await _pump(tester, configured: false);
 
@@ -346,7 +368,8 @@ void main() {
     expect(harness.auth.signInCalls, isEmpty);
   });
 
-  testWidgets('sudah masuk menampilkan identitas, penyedia, statistik, dan baris',
+  testWidgets(
+      'sudah masuk menampilkan identitas, penyedia, statistik, dan baris',
       (tester) async {
     final harness = await _pump(
       tester,
@@ -531,8 +554,7 @@ void main() {
     );
   });
 
-  testWidgets('sheet privasi tidak menjanjikan berbagi lokasi',
-      (tester) async {
+  testWidgets('sheet privasi tidak menjanjikan berbagi lokasi', (tester) async {
     await _pump(tester, signedIn: true, profile: _profile());
 
     await _tapKey(tester, 'profil-row-privasi');
@@ -578,5 +600,34 @@ void main() {
     expect(find.text('Pendaki tamu'), findsOneWidget);
     expect(find.text('Lanjutkan dengan Google'), findsOneWidget);
     expect(harness.account.user, isNull);
+  });
+
+  testWidgets('baris leaderboard tersembunyi selama flag mati', (tester) async {
+    await _pump(tester);
+    expect(
+      find.byKey(const ValueKey<String>('profil-row-leaderboard')),
+      findsNothing,
+    );
+
+    final plus = await buildPlusController();
+    await _pump(tester, plus: plus);
+    expect(find.text('Hiqeo Plus'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('profil-row-leaderboard')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('baris leaderboard membuka papan saat flag aktif',
+      (tester) async {
+    final plus = await buildPlusController(leaderboard: true);
+    await _pump(tester, plus: plus, withRouter: true);
+
+    final row = find.byKey(const ValueKey<String>('profil-row-leaderboard'));
+    expect(row, findsOneWidget);
+    expect(find.text('Leaderboard'), findsOneWidget);
+
+    await _tapKey(tester, 'profil-row-leaderboard');
+    expect(find.text('Tujuan Leaderboard'), findsOneWidget);
   });
 }

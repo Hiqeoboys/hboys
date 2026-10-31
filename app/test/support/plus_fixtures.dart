@@ -6,11 +6,13 @@ import 'package:nama_app/features/kartu/application/kartu_exporter.dart';
 import 'package:nama_app/features/plus/application/plus_controller.dart';
 import 'package:nama_app/features/plus/domain/cloud_backup.dart';
 import 'package:nama_app/features/plus/domain/gpx_export.dart';
+import 'package:nama_app/features/plus/domain/leaderboard.dart';
 import 'package:nama_app/features/plus/domain/plus_entitlement.dart';
 import 'package:nama_app/features/plus/domain/plus_plan.dart';
 import 'package:nama_app/features/plus/domain/plus_remote_config.dart';
 import 'package:nama_app/features/plus/domain/plus_repositories.dart';
 import 'package:nama_app/features/plus/domain/route_weather.dart';
+import 'package:nama_app/features/plus/infrastructure/debug_leaderboard.dart';
 import 'package:nama_app/features/plus/infrastructure/device_sharing.dart';
 import 'package:nama_app/features/plus/infrastructure/local_plus_stores.dart';
 import 'package:nama_app/features/tracking/domain/track_point.dart';
@@ -263,6 +265,64 @@ class FakePlusBilling implements PlusBillingRepository {
   }
 }
 
+/// Papan uji yang dapat diatur per kombinasi pilihan.
+class FakeLeaderboardRepository implements LeaderboardRepository {
+  FakeLeaderboardRepository({
+    this.boardBuilder,
+    this.failLoad = false,
+    this.failMessage = 'Papan peringkat belum tersedia. Coba lagi nanti.',
+    this.reportResult = false,
+    this.blockResult = false,
+  });
+
+  LeaderboardBoard Function(
+    LeaderboardScope scope,
+    LeaderboardMetric metric,
+    LeaderboardPeriod period,
+  )? boardBuilder;
+  bool failLoad;
+  String failMessage;
+  bool reportResult;
+  bool blockResult;
+  final List<String> reports = <String>[];
+  final List<String> blocks = <String>[];
+  final List<
+      ({
+        LeaderboardScope scope,
+        LeaderboardMetric metric,
+        LeaderboardPeriod period,
+      })> loads = <({
+    LeaderboardScope scope,
+    LeaderboardMetric metric,
+    LeaderboardPeriod period,
+  })>[];
+
+  @override
+  Future<LeaderboardBoard> load({
+    required LeaderboardScope scope,
+    required LeaderboardMetric metric,
+    required LeaderboardPeriod period,
+  }) async {
+    loads.add((scope: scope, metric: metric, period: period));
+    if (failLoad) throw LeaderboardUnavailable(failMessage);
+    final builder = boardBuilder;
+    if (builder != null) return builder(scope, metric, period);
+    return buildDemoLeaderboard(scope: scope, metric: metric, period: period);
+  }
+
+  @override
+  Future<bool> report(String displayName) async {
+    reports.add(displayName);
+    return reportResult;
+  }
+
+  @override
+  Future<bool> block(String displayName) async {
+    blocks.add(displayName);
+    return blockResult;
+  }
+}
+
 Future<PlusController> buildPlusController({
   DateTime? nowUtc,
   bool withConfig = true,
@@ -447,8 +507,9 @@ List<TrackPoint> samplePoints({
       TrackPoint(
         lat: startLat + index * stepLat,
         lon: lon,
-        altitudeM:
-            startAltitudeM == null ? null : startAltitudeM + index * stepAltitudeM,
+        altitudeM: startAltitudeM == null
+            ? null
+            : startAltitudeM + index * stepAltitudeM,
         timestampUtc: start.add(Duration(seconds: index * secondsPerStep)),
         accuracyM: 5,
       ),

@@ -7,6 +7,7 @@ import '../features/map/presentation/map_page.dart';
 import '../features/plus/application/plus_navigation.dart';
 import '../features/plus/presentation/advanced_analytics_page.dart';
 import '../features/plus/presentation/annual_recap_page.dart';
+import '../features/plus/presentation/leaderboard_page.dart';
 import '../features/plus/presentation/manage_subscription_page.dart';
 import '../features/plus/presentation/paywall_page.dart';
 import '../features/plus/presentation/route_estimate_page.dart';
@@ -110,6 +111,11 @@ GoRouter buildHiqeoRouter() => GoRouter(
                 'menampilkan lokasi.',
             child: AnnualRecapPage(),
           ),
+        ),
+        GoRoute(
+          path: PlusRoutes.leaderboard,
+          name: 'plus-leaderboard',
+          builder: (context, state) => const LeaderboardPage(),
         ),
         GoRoute(
           path: PlusRoutes.manage,

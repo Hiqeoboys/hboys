@@ -1230,6 +1230,16 @@ class _PlusSection extends StatelessWidget {
           subtitle: featureHint ?? 'Kartu tahunan yang bisa dibagikan',
           onTap: () => context.push(PlusRoutes.recap),
         ),
+        if (plus?.leaderboardEnabled ?? false) ...<Widget>[
+          const SizedBox(height: HiqeoSpacing.sm),
+          _ProfilRow(
+            key: const ValueKey('profil-row-leaderboard'),
+            icon: HiqeoIcons.trophy,
+            title: 'Leaderboard',
+            subtitle: 'Papan nasional dan grup',
+            onTap: () => context.push(PlusRoutes.leaderboard),
+          ),
+        ],
       ],
     );
   }
