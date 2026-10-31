@@ -301,7 +301,7 @@ class KartuCard extends StatelessWidget {
       height: 200,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final points = _fitRoute(
+          final points = KartuData.fitRoute(
             route,
             Size(constraints.maxWidth, constraints.maxHeight),
           );
@@ -489,17 +489,6 @@ class _ProfilePainter extends CustomPainter {
   @override
   bool shouldRepaint(_ProfilePainter oldDelegate) =>
       oldDelegate.geometry != geometry;
-}
-
-List<Offset> _fitRoute(List<Offset> route, Size size) {
-  const padding = 6.0;
-  final side = math.min(size.width, size.height) - padding * 2;
-  final left = (size.width - side) / 2;
-  final top = (size.height - side) / 2;
-  return <Offset>[
-    for (final point in route)
-      Offset(left + point.dx * side, top + point.dy * side),
-  ];
 }
 
 class _RoutePainter extends CustomPainter {

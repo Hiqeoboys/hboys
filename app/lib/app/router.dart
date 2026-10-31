@@ -36,7 +36,8 @@ GoRouter buildAltracqRouter() => GoRouter(
     GoRoute(
       path: '/kartu',
       name: 'kartu',
-      builder: (context, state) => const KartuPage(),
+      builder: (context, state) =>
+          KartuPage(sessionId: state.uri.queryParameters['sesi']),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>

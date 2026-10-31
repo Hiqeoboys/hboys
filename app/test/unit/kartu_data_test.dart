@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nama_app/features/kartu/domain/kartu_data.dart';
 import 'package:nama_app/features/tracking/domain/track_point.dart';
@@ -163,6 +165,79 @@ void main() {
       const point = KartuProfilePoint(0.42, 2130);
       expect(point.fraction, 0.42);
       expect(point.altitudeM, 2130);
+    });
+  });
+
+  group('label dan salinan untuk animasi', () {
+    KartuData full() => KartuData.fromSession(
+          _session(startedAtUtc: DateTime(2026, 10, 30, 7, 12).toUtc()),
+          <TrackPoint>[
+            _point(0, -6.800, 106.800, altitudeM: 1500),
+            _point(30, -6.799, 106.800, altitudeM: 1900),
+            _point(60, -6.798, 106.800, altitudeM: 1700),
+          ],
+        )!;
+
+    test('dateText memakai nama bulan pendek untuk kalimat', () {
+      final data = full();
+      expect(data.dateText, '30 Okt 2026');
+      expect(data.dateLabel, '30 OKT 2026');
+    });
+
+    test('dateText tidak memberi nol di depan tanggal satu angka', () {
+      final data = KartuData.fromSession(
+        _session(startedAtUtc: DateTime(2026, 10, 3, 6).toUtc()),
+        <TrackPoint>[_point(0, -6.8, 106.8)],
+      )!;
+      expect(data.dateText, '3 Okt 2026');
+    });
+
+    test('scaledBy mengalikan angka dan membiarkan waktu serta geometri', () {
+      final data = full();
+      final half = data.scaledBy(0.5);
+
+      expect(half.distanceM, closeTo(6420, 0.001));
+      expect(half.movingSeconds, 12960);
+      expect(half.elevationGainM, closeTo(570, 0.001));
+      expect(half.sessionId, data.sessionId);
+      expect(half.startedAtUtc, data.startedAtUtc);
+      expect(half.profile, same(data.profile));
+      expect(half.route, same(data.route));
+    });
+
+    test('scaledBy menjepit ke rentang 0..1', () {
+      final data = full();
+      expect(data.scaledBy(-1).distanceM, 0);
+      expect(data.scaledBy(4).distanceM, data.distanceM);
+    });
+
+    test('scaledBy(1) menghasilkan label yang sama dengan data asli', () {
+      final data = full();
+      final fullCopy = data.scaledBy(1);
+      expect(fullCopy.distanceLabel, data.distanceLabel);
+      expect(fullCopy.gainLabel, data.gainLabel);
+      expect(fullCopy.timeLabel, data.timeLabel);
+    });
+
+    test('fitRoute memetakan rute ke sisi terpendek dan memusatkannya', () {
+      const route = <Offset>[Offset(0, 0), Offset(1, 1)];
+
+      final square = KartuData.fitRoute(route, const Size(44, 44), padding: 2);
+      expect(square.first, const Offset(2, 2));
+      expect(square.last, const Offset(42, 42));
+
+      final wide = KartuData.fitRoute(route, const Size(100, 44), padding: 0);
+      expect(wide.first, const Offset(28, 0));
+      expect(wide.last, const Offset(72, 44));
+    });
+
+    test('fitRoute tidak pernah memakai ukuran negatif', () {
+      final fitted = KartuData.fitRoute(
+        const <Offset>[Offset(0, 0)],
+        const Size(3, 3),
+        padding: 6,
+      );
+      expect(fitted.single, const Offset(1.5, 1.5));
     });
   });
 

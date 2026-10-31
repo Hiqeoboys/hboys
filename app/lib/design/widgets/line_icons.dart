@@ -385,6 +385,36 @@ class AltracqIcons {
     ],
   );
 
+  static final AltracqIconData grid = AltracqIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(3.6, 3.6, 10.4, 10.4),
+            const ui.Radius.circular(2.2),
+          ),
+        )
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(13.6, 3.6, 20.4, 10.4),
+            const ui.Radius.circular(2.2),
+          ),
+        )
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(3.6, 13.6, 10.4, 20.4),
+            const ui.Radius.circular(2.2),
+          ),
+        )
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(13.6, 13.6, 20.4, 20.4),
+            const ui.Radius.circular(2.2),
+          ),
+        ),
+    ],
+  );
+
   static final AltracqIconData chevronRight = AltracqIconData(
     () => <ui.Path>[
       ui.Path()

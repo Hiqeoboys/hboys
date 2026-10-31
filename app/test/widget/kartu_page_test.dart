@@ -37,7 +37,12 @@ class _FakeTrackingRepository implements TrackingRepository {
   Future<void> saveSession(TrackingSession session) async {}
 
   @override
-  Future<TrackingSession?> findSession(String id) async => null;
+  Future<TrackingSession?> findSession(String id) async {
+    for (final session in _sessions) {
+      if (session.id == id) return session;
+    }
+    return null;
+  }
 
   @override
   Future<TrackingSession?> findActiveSession() async => null;
@@ -160,6 +165,7 @@ Future<_Harness> _pump(
   List<TrackingSession>? sessions,
   Uint8List? photoBytes,
   bool failSessions = false,
+  String? sessionId,
 }) async {
   tester.view.physicalSize = const Size(390, 1000);
   tester.view.devicePixelRatio = 1.0;
@@ -183,6 +189,7 @@ Future<_Harness> _pump(
         repository: repository,
         exporter: exporter,
         photoPicker: photoPicker,
+        sessionId: sessionId,
       ),
     ),
   );
@@ -370,6 +377,48 @@ void main() {
 
     expect(harness.photoPicker.calls, 1);
     expect(find.byKey(const ValueKey('kartu-photo')), findsNothing);
+  });
+
+  testWidgets('sesi yang diminta dari Beranda dipakai, bukan yang terbaru',
+      (tester) async {
+    await _pump(
+      tester,
+      sessions: <TrackingSession>[
+        _session(
+          id: 'lama',
+          distanceM: 5000,
+          startedAtUtc: DateTime(2026, 10, 1, 7).toUtc(),
+        ),
+        _session(id: 'baru', distanceM: 12840),
+      ],
+      sessionId: 'lama',
+    );
+
+    expect(find.text('5,0 km'), findsNWidgets(2));
+    expect(find.text('12,8 km'), findsNothing);
+  });
+
+  testWidgets('sesi yang diminta tetapi tidak ada berkata jujur',
+      (tester) async {
+    await _pump(tester, sessionId: 'hilang');
+
+    expect(find.text('Sesi yang diminta tidak ada di HP ini.'), findsOneWidget);
+    expect(find.text('Belum ada pendakian selesai'), findsNothing);
+    expect(find.byType(KartuCard), findsNothing);
+  });
+
+  testWidgets('sesi yang diminta tetapi belum selesai juga ditolak',
+      (tester) async {
+    await _pump(
+      tester,
+      sessions: <TrackingSession>[
+        _session(id: 'aktif', status: TrackingSessionStatus.active),
+      ],
+      sessionId: 'aktif',
+    );
+
+    expect(find.text('Sesi yang diminta tidak ada di HP ini.'), findsOneWidget);
+    expect(find.byType(KartuCard), findsNothing);
   });
 
   testWidgets('gagal membaca basis data menampilkan coba lagi', (tester) async {

@@ -9,6 +9,11 @@ apa yang sudah dijalankan, dan apa yang belum diuji.
   masih berjalan diabaikan. Tanpa sesi selesai, kartu menampilkan keadaan kosong
   yang jujur dan tombol **Simpan PNG**, **Bagikan**, serta **Ganti foto**
   dinonaktifkan. Tidak ada data contoh.
+- Beranda dapat membuka kartu untuk sesi tertentu lewat `/kartu?sesi=<id>`,
+  misalnya dari tombol **Lihat kartu** di ringkasan perjalanan terakhir. Sesi
+  yang diminta dipakai walaupun bukan yang terbaru; bila id itu tidak ada atau
+  sesinya belum selesai, layar berkata jujur bahwa sesi yang diminta tidak ada,
+  bukan menampilkan sesi lain.
 - Tiga gaya kartu, bisa dipilih lewat pil di panel bawah:
   - **Profil** — metrik di atas, kurva elevasi dari titik tersimpan, merek di
     bawah;
@@ -76,19 +81,24 @@ apa yang sudah dijalankan, dan apa yang belum diuji.
 - `app/android/app/src/main/kotlin/id/nama/nama_app/MainActivity.kt` — kanal
   `id.nama.nama_app/media` dengan metode `saveImage` (MediaStore, API 29+).
 - `app/lib/app/router.dart` — rute `/kartu` memakai `KartuPage`.
-- `app/test/unit/kartu_data_test.dart` — 10 tes unit.
-- `app/test/widget/kartu_page_test.dart` — 12 tes widget dengan repositori,
+- `app/test/unit/kartu_data_test.dart` — 17 tes unit.
+- `app/test/widget/kartu_page_test.dart` — 15 tes widget dengan repositori,
   eksportir, dan pemilih foto palsu.
+- `app/test/widget/last_trip_summary_card_test.dart` — 13 tes widget untuk
+  ringkasan perjalanan terakhir di Beranda, yang memakai model dan pelukis
+  yang sama.
 
 ## 4. Sudah dijalankan
 
 - `flutter analyze lib test` bersih.
-- Seluruh suite aplikasi lulus: **341 tes**.
-- Tes unit (10) mencakup: penolakan sesi aktif, format label jarak/tanjakan/
+- Seluruh suite aplikasi lulus: **376 tes**.
+- Tes unit (17) mencakup: penolakan sesi aktif, format label jarak/tanjakan/
   waktu/tanggal, tanjakan nol dan negatif, fraksi profil dan puncak, profil
   kosong bila ketinggian kurang dari dua, normalisasi rute (batas dan rasio
-  aspek), satu titik tanpa rute, titik berimpit, dan tipe titik profil.
-- Tes widget (12) mencakup:
+  aspek), satu titik tanpa rute, titik berimpit, tipe titik profil, label
+  tanggal panjang/pendek, penskalaan angka untuk hitung-naik, dan
+  `fitRoute` untuk bingkai persegi, lebar, serta bingkai sangat kecil.
+- Tes widget (15) mencakup:
   - keadaan kosong menonaktifkan simpan, bagikan, dan ganti foto;
   - metrik, profil, dan tanggal dari data nyata;
   - sesi selesai terbaru dipilih dan sesi aktif diabaikan;
@@ -101,6 +111,9 @@ apa yang sudah dijalankan, dan apa yang belum diuji.
   - berbagi sukses tidak menampilkan SnackBar dan tidak pernah memuat kata
     "terkirim" atau "dibagikan";
   - pemilih foto terhubung ke tombol ganti foto;
+  - sesi yang diminta lewat `?sesi=` dipakai walau bukan yang terbaru;
+  - sesi yang diminta tetapi tidak ada atau belum selesai ditolak dengan pesan
+    jujur, bukan diganti sesi lain;
   - galat muat dan tombol coba lagi.
 - Di emulator Android, memakai sesi nyata yang sudah ada di database perangkat
   (tanpa menambah data contoh):

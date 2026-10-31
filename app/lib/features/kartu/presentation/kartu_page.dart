@@ -25,12 +25,17 @@ class KartuPage extends StatefulWidget {
     this.repository,
     this.exporter = const DeviceKartuExporter(),
     this.photoPicker = const GalleryKartuPhotoPicker(),
+    this.sessionId,
   });
 
   /// Disuntikkan untuk uji; produksi membuka basis data perangkat.
   final TrackingRepository? repository;
   final KartuExporter exporter;
   final KartuPhotoPicker photoPicker;
+
+  /// Sesi tertentu yang diminta, mis. dari "Lihat kartu" di Beranda. Null
+  /// berarti sesi selesai terbaru.
+  final String? sessionId;
 
   @override
   State<KartuPage> createState() => _KartuPageState();
@@ -78,6 +83,26 @@ class _KartuPageState extends State<KartuPage> {
     }
   }
 
+  /// Sesi yang ditampilkan: yang diminta lewat [KartuPage.sessionId], atau
+  /// sesi selesai terbaru bila tidak ada permintaan.
+  Future<TrackingSession?> _pickSession(TrackingRepository repository) async {
+    final requested = widget.sessionId;
+    if (requested != null) {
+      final session = await repository.findSession(requested);
+      if (session == null ||
+          session.status != TrackingSessionStatus.completed) {
+        return null;
+      }
+      return session;
+    }
+    final sessions = await repository.watchSessions().first;
+    final completed = sessions
+        .where((session) => session.status == TrackingSessionStatus.completed)
+        .toList()
+      ..sort((a, b) => b.startedAtUtc.compareTo(a.startedAtUtc));
+    return completed.isEmpty ? null : completed.first;
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -93,19 +118,20 @@ class _KartuPageState extends State<KartuPage> {
       return;
     }
     try {
-      final sessions = await repository.watchSessions().first;
-      final completed = sessions
-          .where((session) => session.status == TrackingSessionStatus.completed)
-          .toList()
-        ..sort((a, b) => b.startedAtUtc.compareTo(a.startedAtUtc));
-      if (completed.isEmpty) {
+      final session = await _pickSession(repository);
+      if (session == null) {
+        if (!mounted) return;
         setState(() {
           _loading = false;
           _data = null;
+          // Tanpa permintaan khusus, tidak ada sesi memang berarti kosong.
+          // Dengan permintaan, layar mengatakan sesi itu tidak ditemukan.
+          _loadError = widget.sessionId == null
+              ? null
+              : 'Sesi yang diminta tidak ada di HP ini.';
         });
         return;
       }
-      final session = completed.first;
       final points = await repository.points(session.id);
       final data = KartuData.fromSession(session, points);
       if (!mounted) return;

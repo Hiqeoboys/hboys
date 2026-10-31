@@ -149,24 +149,79 @@ class KartuData {
 
   String get rightAxisLabel => distanceLabel;
 
+  static const List<String> _monthsUpper = <String>[
+    'JAN',
+    'FEB',
+    'MAR',
+    'APR',
+    'MEI',
+    'JUN',
+    'JUL',
+    'AGU',
+    'SEP',
+    'OKT',
+    'NOV',
+    'DES',
+  ];
+
+  static const List<String> _monthsText = <String>[
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'Mei',
+    'Jun',
+    'Jul',
+    'Agu',
+    'Sep',
+    'Okt',
+    'Nov',
+    'Des',
+  ];
+
   String get dateLabel {
     final local = startedAtUtc.toLocal();
-    const months = <String>[
-      'JAN',
-      'FEB',
-      'MAR',
-      'APR',
-      'MEI',
-      'JUN',
-      'JUL',
-      'AGU',
-      'SEP',
-      'OKT',
-      'NOV',
-      'DES',
-    ];
     return '${local.day.toString().padLeft(2, '0')} '
-        '${months[local.month - 1]} ${local.year}';
+        '${_monthsUpper[local.month - 1]} ${local.year}';
+  }
+
+  /// Tanggal mulai dalam waktu lokal untuk kalimat, mis. "30 Okt 2026".
+  String get dateText {
+    final local = startedAtUtc.toLocal();
+    return '${local.day} ${_monthsText[local.month - 1]} ${local.year}';
+  }
+
+  /// Salinan dengan angka dikalikan [t] untuk animasi hitung-naik. Format label
+  /// tidak berubah, jadi tampilan akhir sama dengan data asli.
+  KartuData scaledBy(double t) {
+    final fraction = t.clamp(0.0, 1.0);
+    return KartuData(
+      sessionId: sessionId,
+      startedAtUtc: startedAtUtc,
+      distanceM: distanceM * fraction,
+      movingSeconds: (movingSeconds * fraction).round(),
+      elevationGainM: elevationGainM * fraction,
+      profile: profile,
+      peakFraction: peakFraction,
+      route: route,
+    );
+  }
+
+  /// Menempatkan rute ternormalisasi 0..1 ke dalam kotak [size] dengan satu
+  /// skala untuk kedua sumbu supaya bentuk rute tidak gepeng.
+  static List<Offset> fitRoute(
+    List<Offset> route,
+    Size size, {
+    double padding = 6,
+  }) {
+    final side =
+        math.max(0.0, math.min(size.width, size.height) - padding * 2);
+    final left = (size.width - side) / 2;
+    final top = (size.height - side) / 2;
+    return <Offset>[
+      for (final point in route)
+        Offset(left + point.dx * side, top + point.dy * side),
+    ];
   }
 
   static String _decimal(double value) =>

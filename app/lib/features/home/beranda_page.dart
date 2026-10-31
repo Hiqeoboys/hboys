@@ -8,12 +8,20 @@ import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../../design/widgets/altracq_button.dart';
 import '../../design/widgets/line_icons.dart';
+import '../../infrastructure/database/app_database.dart';
+import '../../infrastructure/database/database_connection.dart';
+import '../../infrastructure/database/repositories/drift_tracking_repository.dart';
 import '../../infrastructure/power/power_profile_controller.dart';
 import '../../infrastructure/power/power_profile_manager.dart';
 import '../../infrastructure/supabase/supabase_services.dart';
 import '../auth/application/account_controller.dart';
 import '../groups/application/group_key_manager.dart';
 import '../groups/application/group_selection.dart';
+import '../kartu/domain/kartu_data.dart';
+import '../tracking/domain/tracking_repository.dart';
+import '../tracking/domain/tracking_session.dart';
+import 'expandable_features_card.dart';
+import 'last_trip_summary_card.dart';
 
 /// Sapaan menurut jam lokal perangkat (bukan waktu domain).
 String greetingForHour(int hour) {
@@ -45,12 +53,16 @@ class BerandaPage extends StatefulWidget {
     super.key,
     this.accountController,
     this.powerController,
+    this.repository,
     this.now,
   });
 
   /// Disuntikkan untuk uji; produksi memakai layanan Supabase yang tersedia.
   final AccountController? accountController;
   final PowerProfileController? powerController;
+
+  /// Disuntikkan untuk uji; produksi membuka basis data perangkat.
+  final TrackingRepository? repository;
   final DateTime Function()? now;
 
   @override
@@ -65,6 +77,12 @@ class _BerandaPageState extends State<BerandaPage> {
   late final bool _ownsPower;
   late final DateTime Function() _now;
 
+  AppDatabase? _database;
+  StreamSubscription<List<TrackingSession>>? _sessions;
+  TrackingSession? _summarySession;
+  KartuData? _summary;
+  String? _summaryError;
+
   @override
   void initState() {
     super.initState();
@@ -76,19 +94,164 @@ class _BerandaPageState extends State<BerandaPage> {
     if (_ownsPower) unawaited(_power.refresh());
     _now = widget.now ?? DateTime.now;
     _state = Listenable.merge(<Listenable>[_account, _power]);
+    unawaited(_watchSummary());
   }
 
   @override
   void dispose() {
+    unawaited(_sessions?.cancel());
+    final database = _database;
+    if (database != null) unawaited(database.close());
     if (_ownsAccount) _account.dispose();
     if (_ownsPower) _power.dispose();
     super.dispose();
   }
 
+  Future<TrackingRepository?> _repository() async {
+    final injected = widget.repository;
+    if (injected != null) return injected;
+    try {
+      final file = await defaultAppDatabaseFile();
+      final database = openAppDatabase(file);
+      if (!mounted) {
+        await database.close();
+        return null;
+      }
+      _database = database;
+      return DriftTrackingRepository(database);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Mengikuti sesi di HP supaya ringkasan terisi setelah pendakian selesai
+  /// tanpa perlu memuat ulang layar.
+  Future<void> _watchSummary() async {
+    final repository = await _repository();
+    if (!mounted) return;
+    if (repository == null) {
+      setState(
+        () => _summaryError = 'Data pendakian lokal belum dapat dibuka.',
+      );
+      return;
+    }
+    _sessions = repository.watchSessions().listen(
+      (sessions) => unawaited(_applySessions(repository, sessions)),
+      onError: (Object _) {
+        if (!mounted) return;
+        setState(
+          () => _summaryError = 'Data pendakian gagal dibaca dari HP ini.',
+        );
+      },
+    );
+  }
+
+  Future<void> _applySessions(
+    TrackingRepository repository,
+    List<TrackingSession> sessions,
+  ) async {
+    final completed = sessions
+        .where((session) => session.status == TrackingSessionStatus.completed)
+        .toList()
+      ..sort((a, b) => b.startedAtUtc.compareTo(a.startedAtUtc));
+    if (completed.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _summarySession = null;
+        _summary = null;
+        _summaryError = null;
+      });
+      return;
+    }
+    final session = completed.first;
+    if (session.id == _summarySession?.id && _summary != null) return;
+    try {
+      final points = await repository.points(session.id);
+      final data = KartuData.fromSession(session, points);
+      if (!mounted) return;
+      setState(() {
+        _summarySession = session;
+        _summary = data;
+        _summaryError = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(
+        () => _summaryError = 'Data pendakian gagal dibaca dari HP ini.',
+      );
+    }
+  }
+
+  /// Nama gunung hanya disebut bila sesi memang tertaut grup yang dikenal.
+  String? _mountainOf(TrackingSession? session) {
+    final groupId = session?.groupId;
+    if (groupId == null) return null;
+    for (final remote in _account.groups) {
+      if (remote.group.id == groupId) {
+        return remote.group.mountain ?? remote.group.name;
+      }
+    }
+    return null;
+  }
+
+  List<FeatureEntry> _features(BuildContext context) => <FeatureEntry>[
+        FeatureEntry(
+          icon: AltracqIcons.activity,
+          title: 'Pelacakan',
+          subtitle: 'Jarak, pace, elevasi',
+          onTap: () => context.go('/lacak'),
+        ),
+        FeatureEntry(
+          icon: AltracqIcons.map,
+          title: 'Peta offline',
+          subtitle: 'Topografi per gunung',
+          onTap: () => context.go('/peta'),
+        ),
+        FeatureEntry(
+          icon: AltracqIcons.trail,
+          title: 'Jalur terverifikasi',
+          subtitle: 'Pos, air, area bahaya',
+          onTap: () => context.go('/peta'),
+        ),
+        FeatureEntry(
+          icon: AltracqIcons.compass,
+          title: 'Kompas',
+          subtitle: 'Bearing dan jarak',
+          onTap: () => context.go('/peta'),
+        ),
+        FeatureEntry(
+          icon: AltracqIcons.group,
+          title: 'Grup chat',
+          subtitle: 'Teks, suara, gambar',
+          onTap: () => context.go('/grup'),
+        ),
+        FeatureEntry(
+          icon: AltracqIcons.pin,
+          title: 'Lokasi terakhir',
+          subtitle: 'Posisi tiap anggota',
+          onTap: () => context.go('/grup'),
+        ),
+        FeatureEntry(
+          icon: AltracqIcons.image,
+          title: 'Kartu pendakian',
+          subtitle: 'Foto dan ringkasan',
+          onTap: () => context.push('/kartu'),
+        ),
+        FeatureEntry(
+          icon: AltracqIcons.warning,
+          title: 'SOS',
+          subtitle: 'Tekan-tahan 3 detik',
+          onTap: () => context.push('/sos'),
+          emphasis: true,
+        ),
+      ];
+
   @override
   Widget build(BuildContext context) {
     final colors = AltracqColors.of(context);
     final theme = Theme.of(context);
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final sessionId = _summarySession?.id;
     return SafeArea(
       bottom: false,
       child: ListenableBuilder(
@@ -99,11 +262,11 @@ class _BerandaPageState extends State<BerandaPage> {
               next == null ? null : _account.keyStatusFor(next.group.id);
           final profile = _account.profile;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(
+            padding: EdgeInsets.fromLTRB(
               AltracqSpacing.lg,
               AltracqSpacing.xl,
               AltracqSpacing.lg,
-              AltracqSpacing.xl,
+              AltracqSpacing.xl + bottomInset,
             ),
             children: <Widget>[
               Row(
@@ -141,33 +304,18 @@ class _BerandaPageState extends State<BerandaPage> {
                 onPrepare: () => context.push('/siap-naik'),
               ),
               const SizedBox(height: AltracqSpacing.xl),
-              Text('Semua fitur', style: theme.textTheme.titleLarge),
-              const SizedBox(height: AltracqSpacing.md),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _features.length,
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: AltracqSpacing.md,
-                  mainAxisSpacing: AltracqSpacing.md,
-                  mainAxisExtent: 140,
-                ),
-                itemBuilder: (context, index) {
-                  final feature = _features[index];
-                  return _FeatureCard(
-                    feature: feature,
-                    onTap: () {
-                      if (feature.push) {
-                        context.push(feature.route);
-                      } else {
-                        context.go(feature.route);
-                      }
-                    },
-                  );
-                },
+              LastTripSummaryCard(
+                data: _summary,
+                mountain: _mountainOf(_summarySession),
+                unavailableReason: _summaryError,
+                onViewKartu: sessionId == null
+                    ? null
+                    : () => context.push(
+                          '/kartu?sesi=${Uri.encodeQueryComponent(sessionId)}',
+                        ),
               ),
+              const SizedBox(height: AltracqSpacing.xl),
+              ExpandableFeaturesCard(features: _features(context)),
             ],
           );
         },
@@ -175,78 +323,6 @@ class _BerandaPageState extends State<BerandaPage> {
     );
   }
 }
-
-class _Feature {
-  const _Feature({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.route,
-    this.push = false,
-    this.emphasis = false,
-  });
-
-  final AltracqIconData icon;
-  final String title;
-  final String subtitle;
-  final String route;
-  final bool push;
-  final bool emphasis;
-}
-
-final List<_Feature> _features = <_Feature>[
-  _Feature(
-    icon: AltracqIcons.activity,
-    title: 'Pelacakan',
-    subtitle: 'Jarak, pace, elevasi',
-    route: '/lacak',
-  ),
-  _Feature(
-    icon: AltracqIcons.map,
-    title: 'Peta offline',
-    subtitle: 'Topografi per gunung',
-    route: '/peta',
-  ),
-  _Feature(
-    icon: AltracqIcons.trail,
-    title: 'Jalur terverifikasi',
-    subtitle: 'Pos, air, area bahaya',
-    route: '/peta',
-  ),
-  _Feature(
-    icon: AltracqIcons.compass,
-    title: 'Kompas',
-    subtitle: 'Bearing dan jarak',
-    route: '/peta',
-  ),
-  _Feature(
-    icon: AltracqIcons.group,
-    title: 'Grup chat',
-    subtitle: 'Teks, suara, gambar',
-    route: '/grup',
-  ),
-  _Feature(
-    icon: AltracqIcons.pin,
-    title: 'Lokasi terakhir',
-    subtitle: 'Posisi tiap anggota',
-    route: '/grup',
-  ),
-  _Feature(
-    icon: AltracqIcons.image,
-    title: 'Kartu pendakian',
-    subtitle: 'Foto dan ringkasan',
-    route: '/kartu',
-    push: true,
-  ),
-  _Feature(
-    icon: AltracqIcons.warning,
-    title: 'SOS',
-    subtitle: 'Tekan-tahan 3 detik',
-    route: '/sos',
-    push: true,
-    emphasis: true,
-  ),
-];
 
 class _BatteryPill extends StatelessWidget {
   const _BatteryPill({required this.controller});
@@ -328,88 +404,6 @@ class _HeroCard extends StatelessWidget {
             onPressed: onPrepare,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _FeatureCard extends StatelessWidget {
-  const _FeatureCard({required this.feature, required this.onTap});
-
-  final _Feature feature;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AltracqColors.of(context);
-    final theme = Theme.of(context);
-    final emphasis = feature.emphasis;
-    final titleColor = emphasis ? colors.onPrimary : colors.textPrimary;
-    final subtitleColor = emphasis
-        ? colors.onPrimary.withValues(alpha: 0.74)
-        : colors.textSecondary;
-    final content = Padding(
-      padding: const EdgeInsets.all(AltracqSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: emphasis
-                  ? colors.onPrimary.withValues(alpha: 0.14)
-                  : colors.secondary.withValues(alpha: 0.62),
-            ),
-            child: Center(
-              child: AltracqIcon(
-                feature.icon,
-                size: 22,
-                color: emphasis ? colors.onPrimary : colors.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            feature.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium?.copyWith(color: titleColor),
-          ),
-          const SizedBox(height: AltracqSpacing.xs),
-          Text(
-            feature.subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(color: subtitleColor),
-          ),
-        ],
-      ),
-    );
-
-    final surface = emphasis
-        ? Container(
-            decoration: BoxDecoration(
-              color: colors.primary,
-              borderRadius: BorderRadius.circular(AltracqRadius.card),
-            ),
-            child: content,
-          )
-        : GlassSurface(
-            borderRadius: AltracqRadius.card,
-            child: content,
-          );
-
-    return Semantics(
-      button: true,
-      label: '${feature.title}. ${feature.subtitle}',
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: surface,
-        ),
       ),
     );
   }
