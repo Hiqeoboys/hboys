@@ -1,7 +1,8 @@
 # Peta, unduhan offline, dan atribusi Mapbox
 
-Status dokumen: **sebagian diuji otomatis dan terlihat di emulator. Tile peta,
-unduhan offline nyata, kompas perangkat fisik, dan uji lapangan BELUM DIUJI.**
+Status dokumen: **sebagian diuji otomatis dan terlihat di emulator pada build
+sebelum Perubahan 5. Tile peta, unduhan offline nyata, kompas perangkat fisik,
+tampilan edge-to-edge Perubahan 5, dan uji lapangan BELUM DIUJI.**
 Lihat bagian akhir untuk pemisahan yang jelas.
 
 Dokumen ini mencatat batasan resmi Mapbox yang dibaca pada **2026-10-25**
@@ -70,10 +71,12 @@ Saat peta tampil, termasuk saat memakai data offline:
 `MapWidget` menampilkan ornamen atribusi bawaannya. Layar peta aplikasi
 menempatkan indikator memuat dan pesan galat di **atas** peta, dan tidak
 menaruh kontrol di sudut bawah tempat logo/atribusi berada. Scale bar bawaan
-dimatikan karena tidak ada di rancangan dan menabrak status bar. Logo Mapbox
-dan tombol atribusi `ⓘ` terlihat di atas navbar pada emulator (mode terang dan
-gelap), tetapi teks atribusi lengkap dan perilaku saat mode pesawat belum
-diuji di perangkat.**
+dimatikan karena tidak ada di rancangan dan menabrak status bar. Sejak
+Perubahan 5, logo dan tombol `ⓘ` dinaikkan dengan `marginBottom` agar berhenti
+di atas panel "Peta offline", yang sendiri berhenti di atas navbar mengambang.
+Logo Mapbox dan tombol atribusi `ⓘ` terlihat di atas navbar pada emulator
+(build sebelum Perubahan 5, mode terang dan gelap), tetapi posisi barunya,
+teks atribusi lengkap, dan perilaku saat mode pesawat belum diuji di perangkat.
 
 ## 2. Batas yang diterapkan aplikasi
 
@@ -239,11 +242,37 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
 - Heading dibulatkan setelah dinormalisasi supaya 359,7° tampil sebagai 0°,
   bukan 360°. Ada tes regresi untuk ini.
 
-## 8. Sudah dijalankan vs belum diuji
+## 8. Layar penuh dan navbar mengambang (Perubahan 5)
+
+- **Peta edge-to-edge.** Cabang Peta mengembalikan `ColoredBox` berlatar
+  `colors.background` berisi `Scaffold` transparan. `MapWidget` (atau keadaan
+  kosong) mengisi `Positioned.fill` dari y=0 sampai tepi bawah layar, termasuk
+  di bawah status bar dan area gestur. Latar tidak memakai `PageBackground`
+  dan tidak menyisakan pita warna; keadaan kosong memakai token latar tema
+  yang sama.
+- **Shell `extendBody: true`.** Navbar mengambang 64 + 16 px + inset sistem
+  dari tepi bawah. Peta melihat inset mentah lewat `AltracqSystemInset` karena
+  Scaffold mengosongkan `viewPadding.bottom` di dalam body saat ada
+  `bottomNavigationBar`.
+- **Jarak bawah saat peta aktif.** Panel panduan memakai
+  `floatingBottomInset + 44` dan ornamen Mapbox `floatingBottomInset + 8`.
+  Angka 44 menyisakan ruang logo/atribusi antara panel dan navbar; ornamen
+  tidak tertutup panel, navbar, atau area gestur.
+- **Konten atas.** Kartu jalur, tombol kompas, dan tombol pusatkan memakai
+  `SafeArea(bottom: false)` sehingga turun sebesar inset status bar dan tidak
+  menabrak ikon status.
+- **System bar transparan.** `SystemUiMode.edgeToEdge` di Android plus
+  `altracqOverlayStyle`/`AltracqSystemUiRegion` yang transparan; ikon status
+  bar mengikuti tema aktif.
+- **Navbar di atas peta.** Tint navy 60% (mode gelap) dan label `textPrimary`
+  menjaga kontras ≥ 4,5:1 pada peta yang diredupkan 35%; rinciannya di
+  `docs/navbar.md`.
+
+## 9. Sudah dijalankan vs belum diuji
 
 **Sudah dijalankan di mesin pengembang:**
 
-- `flutter analyze lib test` bersih; seluruh suite aplikasi **341 tes lulus**.
+- `flutter analyze lib test` bersih; seluruh suite aplikasi **401 tes lulus**.
   Tes paket terpisah: `geo_utils` 11 lulus, `mesh_protocol` 23 lulus.
 - Tes unit: domain paket, estimator tile, guardrail, parser katalog, GeoJSON
   jalur/jejak, pengatur unduhan (termasuk perlombaan status-vs-estimasi),
@@ -256,10 +285,16 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
   galat, dan "Muat ulang".
 - Tes widget `compass_sheet_test.dart` (6 tes): offset tersimpan, simpan arah
   acuan, input tidak valid, reset, pembulatan arah, dan platform tanpa sensor.
-- Tes `map_page_test.dart` (9 tes) dan tes deteksi keluar jalur memakai titik
+- Tes `map_page_test.dart` (11 tes) dan tes deteksi keluar jalur memakai titik
   GPS uji; tidak ada panggilan Mapbox di lingkungan tes. Dua tes mengunci
   opasitas peredup mode gelap dan memastikan peredup tidak dipasang saat peta
-  tidak tersedia.
+  tidak tersedia. Dua tes Perubahan 5 mengunci jarak panel/ornamen untuk inset
+  0 dan 24 px serta memastikan keadaan kosong berlatar penuh, setinggi layar,
+  tanpa `PageBackground`.
+- Tes `shell_edge_to_edge_test.dart` (3 tes) memastikan shell memakai
+  `extendBody`, navbar berhenti di atas inset sistem, padding bawah isi tab
+  setara `floatingBottomInset`, dan Peta menempati 0..844 pada viewport
+  390 × 844 dengan inset 24 px.
 - APK debug dibangun, dipasang, dan dijalankan di emulator Android. Terlihat:
   kartu status jalur, tombol kompas/pusatkan, kartu panduan, sheet offline
   (keadaan kosong + catatan atribusi) pada mode terang dan gelap, serta sheet
@@ -286,6 +321,12 @@ Pemuatan style dan perilaku token di build rilis serta iOS belum diuji.
   Peredup terlihat di emulator, tetapi `onStyleLoaded` tidak pernah selesai
   (`GFXSTREAM GL error 0x501`), jadi warna layer dan keterbacaan tile asli
   belum bisa dinilai. Rinciannya di `docs/mode_gelap_dan_performa.md`.
+- Tampilan edge-to-edge Perubahan 5 di emulator: peta di bawah status bar,
+  navbar mengambang yang memperlihatkan peta di balik kaca, kontras label di
+  atas peta sungguhan, dan posisi logo/atribusi terhadap panel serta navbar.
+  Baru diuji lewat widget test; belum ada build Perubahan 5 yang dipasang.
+- Perilaku dengan navigasi 3 tombol Android (inset bawah lebih besar) versus
+  gestur, serta pergantian warna ikon status bar mengikuti tema di perangkat.
 - Build iOS, build rilis, dan token Mapbox untuk rilis.
 - Semua skenario di `docs/field_tests/map_offline.md`.
 

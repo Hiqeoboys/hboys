@@ -55,6 +55,22 @@ yang sudah dijalankan, dan apa yang belum diuji.
   kanal 0–255, sedangkan nilai CSS `alpha' = alpha * 20 - 9` berlaku pada 0–1.
   Geseran yang benar adalah −9 × 255 = −2295; nilai lama −9 membuat ekor blur
   hampir sepenuhnya opak sehingga ambang tidak berfungsi.
+- **Navbar melayang di atas peta (Perubahan 5).** Shell memakai
+  `extendBody: true`, jadi isi tab (termasuk Peta) memanjang sampai tepi layar
+  dan navbar mengambang 16 px di atasnya. Di tab Peta, `AltracqNavBar` menerima
+  `overMap: true`: `GlassSurface` mendapat `tint` navy
+  (`colors.background` alfa 0,6, hanya mode gelap) supaya peta terang tidak
+  membuat label tidak terbaca, dan label diam memakai `textPrimary` (bukan
+  `textSecondary`). Warna tetap dari token yang ada; tidak ada warna baru.
+- **Inset sistem transparan.** `bootstrap.dart` memanggil
+  `SystemUiMode.edgeToEdge` di Android dan `AltracqSystemUiRegion` memasang
+  `SystemUiOverlayStyle` transparan dengan ikon yang mengikuti tema aktif.
+- **Jarak bawah isi tab.** `extendBody` menaikkan
+  `MediaQuery.padding.bottom` isi tab setinggi navbar + 16 px + inset sistem,
+  dan Beranda/Lacak/Grup/Profil memakai nilai itu untuk padding bawah daftar.
+  Inset sistem mentah tidak terbaca lewat `viewPadding` di dalam body (Scaffold
+  menguranginya saat ada `bottomNavigationBar`), jadi shell menyediakan
+  `AltracqSystemInset`; Peta memakainya untuk jarak panel, logo, dan atribusi.
 
 Spesifikasi gooey lama untuk tombol — tonjolan cair di tepi tombol dan leher
 penyambung antar-tombol — dibatalkan. `nav_bar_gooey_test.dart` yang menguji
@@ -93,27 +109,68 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
   tetap hidup agar navbar dan state tab tidak dibangun ulang.
 - **Label semantik diambil alih widget induk.** Teks yang terlihat dibungkus
   `ExcludeSemantics` supaya pembaca layar tidak mengumumkan label dua kali.
+- **Tint navy 60% hanya di mode gelap.** Peta aplikasi memakai style
+  `OUTDOORS` yang tetap terang; tanpa tint, kaca navbar di mode gelap akan
+  memantulkan peta terang dan label gelap kehilangan kontras. Di mode terang,
+  kaca krem sudah memberi kontras 11,3:1 di atas peta terang, jadi tint tidak
+  dipasang. Angka 0,6 dipilih agar peta masih terlihat di balik kaca (bukan
+  blok warna) sambil menurunkan luminansi latar di bawah ambang 4,5:1.
+- **Label diam menjadi `textPrimary` di atas Peta.** `textSecondary` hanya
+  mencapai sekitar 2,5:1 di atas peta terang; `textPrimary` mencapai 4,6:1 di
+  mode gelap dan 11,3:1 di mode terang. Di tab lain label tetap
+  `textSecondary`.
+- **Jarak bawah memakai `extendBody`, bukan pembungkus router.** Alternatifnya
+  adalah membungkus setiap cabang dengan padding di router. Cara itu membangun
+  padding ganda di layar penuh di luar shell dan menyulitkan Peta yang butuh
+  edge-to-edge. Dengan `extendBody`, Scaffold sendiri menaikkan padding bawah
+  isi tab; hanya Peta yang perlu jarak eksplisit untuk panel dan ornamennya.
+- **`AltracqSystemInset` disediakan shell.** `MediaQueryData.removePadding`
+  milik Scaffold mengurangi `viewPadding` saat ada `bottomNavigationBar`,
+  sehingga `viewPadding.bottom` menjadi 0 di dalam isi tab. InheritedWidget ini
+  membawa inset asli dari luar shell dan dipakai Peta; di luar shell ia jatuh
+  ke `viewPadding` biasa.
+- **Tinggi Peta tidak dikurangi untuk status bar.** Peta digambar dari y=0
+  sampai tepi bawah layar; kartu jalur, kompas, dan tombol pusatkan digeser ke
+  bawah dengan `SafeArea(bottom: false)` agar tidak menabrak ikon status.
+- **Panel "Peta offline" dan panduan memakai jarak tetap.** Panel diletakkan
+  `floatingBottomInset + 44` dari bawah (navbar 64 + 16 + inset + jarak 44),
+  ornamen Mapbox `+ 8`. Angka 44 memberi ruang logo/atribusi di antara panel
+  dan navbar tanpa menutupi keduanya, sesuai syarat atribusi Mapbox.
 
 ## 3. Berkas utama
 
 - `app/lib/design/widgets/altracq_nav_bar.dart` — navbar, kurva gerak,
-  perhitungan cakupan, dan `NavBarBlobPainter`.
+  perhitungan cakupan, tint peta, warna label, dan `NavBarBlobPainter`.
 - `app/lib/features/shell/altracq_shell.dart` — shell persisten, fade 180 ms,
-  dan pengabaian ketukan tab aktif.
+  `extendBody`, pengabaian ketukan tab aktif, dan `AltracqSystemInset`.
+- `app/lib/design/system_ui.dart` — gaya system bar transparan,
+  `AltracqSystemUiRegion`, dan `AltracqSystemInset`.
+- `app/lib/bootstrap.dart` — `SystemUiMode.edgeToEdge` di Android.
+- `app/lib/app/app.dart` — memasang `AltracqSystemUiRegion` mengikuti tema.
 - `app/lib/design/gooey/gooey_layer.dart` — blur + ambang alfa metaball.
-- `app/lib/design/tokens.dart` — `AltracqGooey` (blur 6, alfa 20, geseran
-  −2295) dan ukuran navbar.
-- `app/lib/design/glass/glass_surface.dart` — kaca dan bayangan navbar.
+- `app/lib/design/tokens.dart` — `AltracqGooey`, ukuran navbar, dan
+  `AltracqMetrics.floatingBottomInset`.
+- `app/lib/design/glass/glass_surface.dart` — kaca, tint, dan bayangan navbar.
+- `app/lib/features/map/presentation/map_page.dart` — peta edge-to-edge,
+  jarak panel/ornamen Mapbox, dan latar penuh saat peta tidak tersedia.
 - `app/lib/app/router.dart` — `StatefulShellRoute.indexedStack` dan rute
   top-level di luar tab.
 - `app/test/widget/nav_bar_blob_test.dart` — 10 tes widget navbar/blob.
+- `app/test/widget/nav_bar_map_test.dart` — 6 tes tint, warna label, dan
+  kontras di atas peta.
 - `app/test/widget/shell_router_test.dart` — 7 tes widget shell dan router.
-- `app/test/design/glass_surface_test.dart` — tes kaca, termasuk tinggi navbar.
+- `app/test/widget/shell_edge_to_edge_test.dart` — 3 tes shell edge-to-edge,
+  inset, dan jarak bawah isi tab.
+- `app/test/widget/system_ui_test.dart` — 3 tes gaya system bar.
+- `app/test/widget/map_page_test.dart` — tes peta, termasuk jarak bawah,
+  ornamen, dan latar penuh saat kosong.
+- `app/test/design/glass_surface_test.dart` — tes kaca, tint, dan tinggi
+  navbar.
 
 ## 4. Sudah dijalankan
 
 - `flutter analyze lib test` bersih.
-- Seluruh suite aplikasi lulus: **385 tes**.
+- Seluruh suite aplikasi lulus: **401 tes**.
 - Tes widget navbar/blob (10 tes) mencakup:
   - saat diam blob berupa satu pill tajam tanpa `GooeyLayer` maupun filter,
     berpusat di sel pertama, dengan warna `AltracqColors.light.primary`;
@@ -138,6 +195,29 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
   - isi tab baru memudar masuk tepat 180 ms (0 → sebagian → 1);
   - ketukan tab aktif tidak menjalankan animasi dan rute tidak berubah;
   - setiap tab adalah tombol berlabel untuk pembaca layar.
+- Tes shell edge-to-edge (3 tes) mencakup:
+  - `Scaffold.extendBody` aktif dan navbar berhenti 16 px + inset 24 px dari
+    tepi bawah layar pada viewport 390 × 844;
+  - padding bawah isi Beranda, Lacak, dan Profil sama dengan
+    `navbarHeight + navbarInset + inset sistem`, sedangkan peta menempati
+    0..844;
+  - `PageBackground.showBlobs` mati di Peta dan hidup di tab lain,
+    `AltracqNavBar.overMap` hidup di Peta, dan `AltracqSystemInset` membawa
+    inset mentah 24 px ke dalam Peta.
+- Tes tint dan kontras navbar di atas peta (6 tes) mencakup:
+  - `navBarMapTint` null di mode terang dan navy 60% di mode gelap;
+  - label diam `textPrimary` di atas peta dan `textSecondary` di tab lain,
+    serta berubah ke `onPrimary` mengikuti cakupan blob;
+  - latar kaca navbar di Peta memakai `Color.alphaBlend(tint, glassFill)`;
+  - `textPrimary` ≥ 4,5:1 di atas peta hitam maupun putih yang sudah diredupkan
+    35%, `textSecondary` < 4,5:1 di atas peta putih, dan kaca terang ≥ 4,5:1.
+- Tes system bar (3 tes) mencakup bilah transparan dengan ikon gelap di tema
+  terang, ikon terang di tema gelap, dan `SystemUiOverlayStyle` yang terpasang
+  lewat `AltracqSystemUiRegion`.
+- Tes `map_page_test.dart` bertambah 2 tes: nilai jarak panel/ornamen untuk
+  inset 0 dan 24 px beserta hubungannya, serta peta kosong tanpa
+  `PageBackground`, berlatar `colors.background`, setinggi layar penuh, dengan
+  panel berhenti `floatingBottomInset + 44` dari bawah.
 - Nomor suite di atas berasal dari `flutter test` di mesin pengembang; belum
   ada build yang dipasang ke emulator untuk gelombang revisi ini.
 
@@ -157,17 +237,30 @@ gelembung dan tetesan ikut dihapus dan diganti `nav_bar_blob_test.dart`.
 - Pembacaan TalkBack untuk lima tab, termasuk pengumuman status terpilih dan
   tidak dobelnya label.
 - Interaksi navbar yang melayang di atas peta layar penuh (Perubahan 5):
-  kontras label di atas peta terang/gelap dan posisi terhadap area gestur.
+  kontras label di atas peta sungguhan, posisi terhadap area gestur dan
+  navigasi 3 tombol, serta apakah peta benar-benar terlihat di balik kaca
+  (bukan blok warna). Semua ini baru diuji lewat widget test, belum di
+  emulator.
+- Warna ikon status bar mengikuti tema pada perangkat sungguhan; pergantian
+  saat peta yang tampak berubah terang/gelap belum diuji (ikon mengikuti tema,
+  bukan luminansi peta).
+- Latar penuh saat peta tidak tersedia di emulator, termasuk saat sistem
+  memakai navigasi 3 tombol (inset bawah lebih besar).
 
 ## 6. Cara memeriksa
 
 ```sh
 cd app
 flutter analyze lib test
-flutter test test/widget/nav_bar_blob_test.dart test/widget/shell_router_test.dart
+flutter test test/widget/nav_bar_blob_test.dart test/widget/nav_bar_map_test.dart \
+  test/widget/shell_router_test.dart test/widget/shell_edge_to_edge_test.dart \
+  test/widget/system_ui_test.dart test/widget/map_page_test.dart
 ```
 
 Untuk mencoba di perangkat, buka Beranda lalu ketuk Peta, Lacak, Grup, dan
 Profil secara bergantian; perhatikan satu blob krem memanjang dan menyusul,
-bukan dua bentuk terpisah. Ulangi dengan pengaturan Android "Hapus animasi"
-untuk memastikan geseran menjadi lurus 180 ms tanpa tarikan.
+bukan dua bentuk terpisah. Di tab Peta, pastikan peta memanjang sampai status
+bar dan tepi bawah, navbar mengambang dengan peta terlihat di baliknya, dan
+panel "Peta offline" tidak menutupi logo/atribusi Mapbox. Ulangi dengan
+pengaturan Android "Hapus animasi" untuk memastikan geseran menjadi lurus
+180 ms tanpa tarikan, serta dengan navigasi gestur dan 3 tombol.
