@@ -38,8 +38,9 @@ class HiqeoIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolved =
-        color ?? IconTheme.of(context).color ?? HiqeoColors.of(context).textPrimary;
+    final resolved = color ??
+        IconTheme.of(context).color ??
+        HiqeoColors.of(context).textPrimary;
     return Semantics(
       label: semanticLabel,
       container: semanticLabel != null,
@@ -454,6 +455,154 @@ class HiqeoIcons {
       ui.Path()
         ..moveTo(6.9, 17.1)
         ..lineTo(5.5, 18.5),
+    ],
+  );
+
+  static final HiqeoIconData chevronLeft = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(14.6, 5.8)
+        ..lineTo(8.4, 12)
+        ..lineTo(14.6, 18.2),
+    ],
+  );
+
+  static final HiqeoIconData chevronDown = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(5.8, 9.4)
+        ..lineTo(12, 15.6)
+        ..lineTo(18.2, 9.4),
+    ],
+  );
+
+  static final HiqeoIconData cloud = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(7.4, 18.6)
+        ..cubicTo(4.2, 18.6, 2.6, 16.6, 2.6, 14.4)
+        ..cubicTo(2.6, 12.1, 4.4, 10.4, 6.5, 10.2)
+        ..cubicTo(7.1, 7.4, 9.5, 5.4, 12.4, 5.4)
+        ..cubicTo(15.7, 5.4, 18.3, 7.9, 18.5, 11)
+        ..cubicTo(20.3, 11.4, 21.4, 12.8, 21.4, 14.6)
+        ..cubicTo(21.4, 16.8, 19.7, 18.6, 17.4, 18.6)
+        ..close(),
+    ],
+  );
+
+  static final HiqeoIconData calendar = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(3.4, 5.4, 20.6, 20.4),
+            const ui.Radius.circular(3),
+          ),
+        ),
+      ui.Path()
+        ..moveTo(3.4, 10)
+        ..lineTo(20.6, 10),
+      ui.Path()
+        ..moveTo(8, 3.4)
+        ..lineTo(8, 7),
+      ui.Path()
+        ..moveTo(16, 3.4)
+        ..lineTo(16, 7),
+    ],
+  );
+
+  static final HiqeoIconData download = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(12, 3.6)
+        ..lineTo(12, 15.2),
+      ui.Path()
+        ..moveTo(7.4, 10.8)
+        ..lineTo(12, 15.4)
+        ..lineTo(16.6, 10.8),
+      ui.Path()
+        ..moveTo(4.2, 18.6)
+        ..lineTo(4.2, 20.4)
+        ..lineTo(19.8, 20.4)
+        ..lineTo(19.8, 18.6),
+    ],
+  );
+
+  static final HiqeoIconData share = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(12, 15.4)
+        ..lineTo(12, 4.2),
+      ui.Path()
+        ..moveTo(7.6, 8.6)
+        ..lineTo(12, 4.2)
+        ..lineTo(16.4, 8.6),
+      ui.Path()
+        ..moveTo(5.4, 13.4)
+        ..lineTo(5.4, 20)
+        ..lineTo(18.6, 20)
+        ..lineTo(18.6, 13.4),
+    ],
+  );
+
+  static final HiqeoIconData trophy = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(8, 3.8)
+        ..lineTo(16, 3.8)
+        ..lineTo(16, 9.4)
+        ..cubicTo(16, 12.4, 14.2, 14.4, 12, 14.4)
+        ..cubicTo(9.8, 14.4, 8, 12.4, 8, 9.4)
+        ..close(),
+      ui.Path()
+        ..moveTo(8, 5.4)
+        ..cubicTo(5.4, 5.4, 3.6, 6.6, 3.6, 8.4)
+        ..cubicTo(3.6, 10.4, 5.4, 11.6, 8, 11.6),
+      ui.Path()
+        ..moveTo(16, 5.4)
+        ..cubicTo(18.6, 5.4, 20.4, 6.6, 20.4, 8.4)
+        ..cubicTo(20.4, 10.4, 18.6, 11.6, 16, 11.6),
+      ui.Path()
+        ..moveTo(12, 14.4)
+        ..lineTo(12, 18.2),
+      ui.Path()
+        ..moveTo(8, 20.2)
+        ..lineTo(16, 20.2),
+    ],
+  );
+
+  static final HiqeoIconData clock = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(12, 12), radius: 8.4),
+        ),
+      ui.Path()
+        ..moveTo(12, 7.2)
+        ..lineTo(12, 12.2)
+        ..lineTo(15.4, 14.2),
+    ],
+  );
+
+  static final HiqeoIconData devices = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(2.8, 5.2, 13.2, 14.6),
+            const ui.Radius.circular(2),
+          ),
+        ),
+      ui.Path()
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(15.2, 9.2, 21.2, 20.2),
+            const ui.Radius.circular(2.4),
+          ),
+        ),
+      ui.Path()
+        ..moveTo(17.6, 17.8)
+        ..lineTo(18.8, 17.8),
     ],
   );
 }

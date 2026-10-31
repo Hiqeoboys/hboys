@@ -15,6 +15,7 @@ import '../../../infrastructure/map/asset_map_catalog_repository.dart';
 import '../../../infrastructure/map/mapbox_offline_map_service.dart';
 import '../../compass/domain/compass_calibration.dart';
 import '../../compass/presentation/compass_sheet.dart';
+import '../../plus/application/plus_navigation.dart';
 import '../../tracking/domain/track_point.dart';
 import '../../trails/domain/off_trail_detector.dart';
 import '../application/map_track_source.dart';
@@ -152,7 +153,8 @@ class _MapPageState extends State<MapPage> {
   @override
   void initState() {
     super.initState();
-    _offlineController = OfflineDownloadController(service: widget.offlineService);
+    _offlineController =
+        OfflineDownloadController(service: widget.offlineService);
     if (_mapAvailable) {
       MapboxOptions.setAccessToken(_token);
     }
@@ -625,7 +627,8 @@ class _MapPageState extends State<MapPage> {
     }
     if (trail != null) {
       if (trail.isVerified) {
-        final verifiedAt = trail.verifiedAtUtc ?? _selectedPackage?.verifiedAtUtc;
+        final verifiedAt =
+            trail.verifiedAtUtc ?? _selectedPackage?.verifiedAtUtc;
         final stamp = verifiedAt == null
             ? 'tanggal verifikasi tidak tercatat'
             : _formatDate(verifiedAt);
@@ -752,10 +755,9 @@ class _MapPageState extends State<MapPage> {
                               _GlassCircleButton(
                                 icon: HiqeoIcons.locate,
                                 semanticLabel: 'Pusatkan ke posisi terakhir',
-                                onPressed:
-                                    _mapAvailable && _latestPoint != null
-                                        ? _locate
-                                        : null,
+                                onPressed: _mapAvailable && _latestPoint != null
+                                    ? _locate
+                                    : null,
                               ),
                             ],
                           ),
@@ -870,7 +872,8 @@ class _MapPageState extends State<MapPage> {
     final theme = Theme.of(context);
     final trail = _selectedTrail;
     final hasPoint = _latestPoint != null;
-    final downloading = _offlineController.phase == OfflineDownloadPhase.downloading;
+    final downloading =
+        _offlineController.phase == OfflineDownloadPhase.downloading;
     final progress = _offlineController.progress;
     final offlineReady = _offlineController.isReady;
     final offlineLabel = downloading && progress != null
@@ -938,6 +941,44 @@ class _MapPageState extends State<MapPage> {
               ),
             ],
           ),
+          if (_selectedPackage != null) ...<Widget>[
+            const SizedBox(height: HiqeoSpacing.sm),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _SheetSmallAction(
+                    key: const ValueKey('map-plus-cuaca'),
+                    icon: HiqeoIcons.cloud,
+                    label: 'Cuaca rute',
+                    onTap: () =>
+                        openPlusWeather(context, _selectedPackage!.name),
+                  ),
+                ),
+                const SizedBox(width: HiqeoSpacing.sm),
+                Expanded(
+                  child: _SheetSmallAction(
+                    key: const ValueKey('map-plus-estimasi'),
+                    icon: HiqeoIcons.clock,
+                    label: 'Estimasi',
+                    onTap: () {
+                      final trail = _selectedTrail;
+                      final name = trail == null
+                          ? _selectedPackage!.name
+                          : '${_selectedPackage!.name} · ${trail.name}';
+                      openPlusEstimate(
+                        context,
+                        PlusRouteContext(
+                          name: name,
+                          points: trail?.points ?? const <LatLng>[],
+                          trailId: trail?.id,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: HiqeoSpacing.md),
           _SheetAction(
             label: _sheetActionLabel,
@@ -988,7 +1029,8 @@ class _TrailStatusCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: summary.warning ? colors.warningText : colors.textSecondary,
+              color:
+                  summary.warning ? colors.warningText : colors.textSecondary,
             ),
           ),
         ],
@@ -1093,6 +1135,61 @@ class _StatusPill extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetSmallAction extends StatelessWidget {
+  const _SheetSmallAction({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final HiqeoIconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: colors.surface.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(HiqeoRadius.pill),
+            border: Border.all(color: colors.hairline),
+          ),
+          child: ExcludeSemantics(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                HiqeoIcon(icon, size: 16, color: colors.primary),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontSize: 13,
+                    color: colors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -19,6 +19,7 @@ import '../../groups/application/group_selection.dart';
 import '../../groups/domain/group_remote_service.dart';
 import '../../map/application/offline_readiness.dart';
 import '../../onboarding/permission_service.dart';
+import '../../plus/application/plus_navigation.dart';
 import '../../safety/domain/emergency_contact.dart';
 import '../../tracking/application/tracking_controller.dart';
 
@@ -283,7 +284,8 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
   }
 
   Future<void> _startHike() async {
-    final active = widget.hikeActive?.call() ?? TrackingController.instance.isRecording;
+    final active =
+        widget.hikeActive?.call() ?? TrackingController.instance.isRecording;
     if (active) {
       context.go('/lacak');
       return;
@@ -291,7 +293,8 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
     setState(() => _starting = true);
     var started = false;
     try {
-      started = await (widget.onStartHike ?? TrackingController.instance.start)();
+      started =
+          await (widget.onStartHike ?? TrackingController.instance.start)();
     } catch (_) {
       started = false;
     }
@@ -321,17 +324,16 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
     final keyStatus =
         next == null ? null : _account.keyStatusFor(next.group.id);
     final checks = readinessChecks(
-      groupKeyReady:
-          keyStatus?.availability == GroupKeyAvailability.ready,
+      groupKeyReady: keyStatus?.availability == GroupKeyAvailability.ready,
       mapReady: _mapReady,
       permissionReady: _permissionReady ?? false,
     );
     final selfReady = checks.every((check) => check.ready);
-    final totalMembers = _members.isNotEmpty
-        ? _members.length
-        : (keyStatus?.memberCount ?? 0);
+    final totalMembers =
+        _members.isNotEmpty ? _members.length : (keyStatus?.memberCount ?? 0);
     final readyMembers = selfReady && totalMembers > 0 ? 1 : 0;
     final selfId = _account.user?.id ?? _account.profile?.userId;
+    final mountainName = next?.group.mountain?.trim();
 
     final children = <Widget>[
       _Header(group: next),
@@ -395,6 +397,21 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
+                        if (mountainName == null || mountainName.isEmpty)
+                          Text(
+                            'Nama gunung belum diisi untuk rombongan ini, '
+                            'jadi cuaca dan estimasi rute belum bisa dibuka.',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: HiqeoColors.of(context).textSecondary,
+                                ),
+                          )
+                        else ...<Widget>[
+                          _PlusRouteActions(mountain: mountainName),
+                          const SizedBox(height: HiqeoSpacing.sm),
+                        ],
                         Text(
                           totalMembers <= 0
                               ? 'Kesiapan belum bisa dihitung karena daftar '
@@ -462,6 +479,52 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
         ),
       ),
     ];
+  }
+}
+
+/// Dua pintu masuk Plus di atas tombol mulai. Dari sini jalur belum tentu
+/// terunduh, jadi estimasi dibuka dengan nama gunung saja dan layar estimasi
+/// yang menjelaskan bila titik jalur belum ada.
+class _PlusRouteActions extends StatelessWidget {
+  const _PlusRouteActions({required this.mountain});
+
+  final String mountain;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: HiqeoButton(
+            key: const ValueKey('siap-naik-cuaca'),
+            label: 'Cuaca rute',
+            variant: HiqeoButtonVariant.secondary,
+            leading: HiqeoIcon(
+              HiqeoIcons.cloud,
+              size: 18,
+              color: colors.textPrimary,
+            ),
+            onPressed: () => openPlusWeather(context, mountain),
+          ),
+        ),
+        const SizedBox(width: HiqeoSpacing.sm),
+        Expanded(
+          child: HiqeoButton(
+            key: const ValueKey('siap-naik-estimasi'),
+            label: 'Estimasi',
+            variant: HiqeoButtonVariant.secondary,
+            leading: HiqeoIcon(
+              HiqeoIcons.clock,
+              size: 18,
+              color: colors.textPrimary,
+            ),
+            onPressed: () =>
+                openPlusEstimate(context, PlusRouteContext(name: mountain)),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -752,10 +815,13 @@ class _ContactCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
-    final ready = contact?.consentStatus == EmergencyContactConsentStatus.granted;
+    final ready =
+        contact?.consentStatus == EmergencyContactConsentStatus.granted;
     final subtitle = loading
         ? 'Memuat kontak…'
-        : (failed ? 'Kontak darurat belum dapat dibaca' : contactSubtitle(contact, total));
+        : (failed
+            ? 'Kontak darurat belum dapat dibaca'
+            : contactSubtitle(contact, total));
     return GlassSurface(
       borderRadius: HiqeoRadius.card,
       padding: const EdgeInsets.all(14),

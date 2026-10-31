@@ -18,6 +18,8 @@ import '../../../infrastructure/supabase/supabase_services.dart';
 import '../../auth/application/account_controller.dart';
 import '../../auth/domain/auth_service.dart';
 import '../../auth/presentation/account_page.dart';
+import '../../plus/application/plus_navigation.dart';
+import '../../plus/application/plus_scope.dart';
 import '../../safety/domain/emergency_contact.dart';
 import '../../safety/domain/safety_repository.dart';
 import '../../tracking/domain/tracking_repository.dart';
@@ -161,8 +163,7 @@ class _ProfilPageState extends State<ProfilPage> {
 
   void _syncContacts() {
     final userId = _account.user?.id;
-    if (userId == _contactsUserId &&
-        !(_contactsFailed && _safety != null)) {
+    if (userId == _contactsUserId && !(_contactsFailed && _safety != null)) {
       return;
     }
     _contactsUserId = userId;
@@ -304,6 +305,8 @@ class _ProfilPageState extends State<ProfilPage> {
         failed: _summaryFailed,
       ),
       const SizedBox(height: HiqeoSpacing.lg),
+      const _PlusSection(),
+      const SizedBox(height: HiqeoSpacing.lg),
       const _GuestBenefitsCard(),
     ];
   }
@@ -367,9 +370,8 @@ class _ProfilPageState extends State<ProfilPage> {
     final name = user.displayName?.trim().isNotEmpty == true
         ? user.displayName!.trim()
         : (profile?.username ?? 'Pendaki');
-    final handle = profile == null
-        ? 'Username belum dibuat'
-        : '@${profile.username}';
+    final handle =
+        profile == null ? 'Username belum dibuat' : '@${profile.username}';
     return <Widget>[
       _ProfileAvatar(initial: _initialOf(name)),
       const SizedBox(height: HiqeoSpacing.lg),
@@ -418,6 +420,8 @@ class _ProfilPageState extends State<ProfilPage> {
       ],
       const SizedBox(height: HiqeoSpacing.xl),
       _StatsCard(summary: _summary, failed: _summaryFailed),
+      const SizedBox(height: HiqeoSpacing.lg),
+      const _PlusSection(),
       const SizedBox(height: HiqeoSpacing.lg),
       _ProfilRow(
         key: const ValueKey('profil-row-kontak'),
@@ -701,8 +705,7 @@ class _ProfilPageState extends State<ProfilPage> {
                     height: 4,
                     decoration: BoxDecoration(
                       color: colors.textSecondary.withValues(alpha: 0.4),
-                      borderRadius:
-                          BorderRadius.circular(HiqeoRadius.pill),
+                      borderRadius: BorderRadius.circular(HiqeoRadius.pill),
                     ),
                   ),
                 ),
@@ -1164,6 +1167,70 @@ class _ProviderPill extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Pintu masuk Hiqeo Plus dari Profil. Baris fitur tetap tampil untuk pengguna
+/// gratis; gerbang di dalam rute yang menjelaskan dan menawarkan Plus.
+class _PlusSection extends StatelessWidget {
+  const _PlusSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final plus = PlusScope.maybeOf(context);
+    final hasPlus = plus?.hasPlus ?? false;
+    final access = plus?.access;
+    final lifetime = access?.lifetime ?? false;
+    final grace = access?.isGrace ?? false;
+    final everPurchased = access?.planId != null;
+    final planTitle = plus?.currentPlan?.title ?? 'Plus';
+    final String subtitle;
+    if (lifetime) {
+      subtitle = '$planTitle · berlaku selamanya';
+    } else if (hasPlus && grace) {
+      subtitle = '$planTitle · masa tenggang';
+    } else if (hasPlus) {
+      subtitle = '$planTitle · aktif';
+    } else if (everPurchased) {
+      subtitle = '$planTitle · berakhir';
+    } else {
+      subtitle = 'Cuaca rute, estimasi, analitik, dan rekap';
+    }
+    final featureHint = hasPlus ? null : 'Termasuk Hiqeo Plus';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _ProfilRow(
+          key: const ValueKey('profil-row-plus'),
+          icon: HiqeoIcons.mountain,
+          title: 'Hiqeo Plus',
+          subtitle: subtitle,
+          onTap: () {
+            if (hasPlus || everPurchased) {
+              context.push(PlusRoutes.manage);
+            } else {
+              openPlusPaywall(context);
+            }
+          },
+        ),
+        const SizedBox(height: HiqeoSpacing.sm),
+        _ProfilRow(
+          key: const ValueKey('profil-row-analitik'),
+          icon: HiqeoIcons.activity,
+          title: 'Analitik lanjutan',
+          subtitle: featureHint ?? 'Dari sesi selesai di HP ini',
+          onTap: () => context.push(PlusRoutes.analytics),
+        ),
+        const SizedBox(height: HiqeoSpacing.sm),
+        _ProfilRow(
+          key: const ValueKey('profil-row-rekap'),
+          icon: HiqeoIcons.calendar,
+          title: 'Rekap tahunan',
+          subtitle: featureHint ?? 'Kartu tahunan yang bisa dibagikan',
+          onTap: () => context.push(PlusRoutes.recap),
+        ),
+      ],
     );
   }
 }
