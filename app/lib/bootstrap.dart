@@ -8,6 +8,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
 import 'app/app.dart';
 import 'design/theme_mode_controller.dart';
+import 'features/plus/plus_dependencies.dart';
 import 'features/tracking/application/tracking_controller.dart';
 import 'infrastructure/supabase/supabase_services.dart';
 import 'infrastructure/tracking/tracking_foreground_service.dart';
@@ -43,9 +44,13 @@ Future<void> bootstrap(Flavor flavor) async {
   await SupabaseServices.initialize();
   // Dibaca sebelum runApp supaya tema tersimpan langsung dipakai tanpa kilatan.
   await ThemeModeController.instance.load();
+  // Token dan cache Plus dibaca lokal; status hak akses langsung benar tanpa
+  // menunggu jaringan. Konfigurasi jarak jauh menyusul setelah aplikasi hidup.
+  await PlusDependencies.controller.loadCached();
   // TODO(tim): inisialisasi urut -> notifikasi, pemantau konektivitas, error
   // handler.
   runApp(NamaApp(config: AppConfig(flavor: flavor)));
   // Memulihkan sesi yang masih aktif, termasuk setelah proses aplikasi mati.
   unawaited(TrackingController.instance.initialize());
+  unawaited(PlusDependencies.controller.refreshRemote());
 }
