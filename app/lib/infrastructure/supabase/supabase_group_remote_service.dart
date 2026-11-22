@@ -404,6 +404,7 @@ class SupabaseGroupRemoteService
       joinedAtUtc: _utc(row['joined_at']),
       lastSeenAtUtc:
           rawLastSeen != null ? DateTime.tryParse(rawLastSeen)?.toUtc() : null,
+      isOfficial: row['is_official'] == true,
     );
   }
 

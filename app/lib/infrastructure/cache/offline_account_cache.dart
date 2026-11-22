@@ -123,14 +123,14 @@ class SqliteOfflineAccountCache
       if (row == null) return null;
       final d = row.data;
       final rawChanged = d['username_changed_at'] as String?;
+      final rawPlusStarted = d['plus_started_at'] as String?;
       final rawPlusExp = d['plus_expires_at'] as String?;
       final localAvatarPath = d['local_avatar_path'] as String?;
-      final validLocalAvatar =
-          localAvatarPath != null &&
-                  localAvatarPath.isNotEmpty &&
-                  File(localAvatarPath).existsSync()
-              ? localAvatarPath
-              : null;
+      final validLocalAvatar = localAvatarPath != null &&
+              localAvatarPath.isNotEmpty &&
+              File(localAvatarPath).existsSync()
+          ? localAvatarPath
+          : null;
       return UserProfile(
         userId: d['user_id'] as String,
         username: d['username'] as String?,
@@ -141,11 +141,16 @@ class SqliteOfflineAccountCache
         publicKeyBase64: d['public_key'] as String?,
         usernameChangedAtUtc:
             rawChanged != null ? DateTime.tryParse(rawChanged)?.toUtc() : null,
-        isProfileComplete: ((d['is_profile_complete'] as num?)?.toInt() ?? 0) == 1,
+        isProfileComplete:
+            ((d['is_profile_complete'] as num?)?.toInt() ?? 0) == 1,
         isPlus: ((d['is_plus'] as num?)?.toInt() ?? 0) == 1,
         plusPlanId: d['plus_plan_id'] as String?,
+        plusStartedAtUtc: rawPlusStarted != null
+            ? DateTime.tryParse(rawPlusStarted)?.toUtc()
+            : null,
         plusExpiresAtUtc:
             rawPlusExp != null ? DateTime.tryParse(rawPlusExp)?.toUtc() : null,
+        isOfficial: ((d['is_official'] as num?)?.toInt() ?? 0) == 1,
       );
     } catch (_) {
       return null;
@@ -162,8 +167,8 @@ class SqliteOfflineAccountCache
         INSERT INTO cached_user_profiles (
           user_id, username, display_name, avatar_url, local_avatar_path,
           email, public_key, username_changed_at, is_profile_complete,
-          is_plus, plus_plan_id, plus_expires_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          is_plus, plus_plan_id, plus_started_at, plus_expires_at, is_official, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
           username = COALESCE(excluded.username, cached_user_profiles.username),
           display_name = COALESCE(excluded.display_name, cached_user_profiles.display_name),
@@ -178,7 +183,9 @@ class SqliteOfflineAccountCache
           END,
           is_plus = excluded.is_plus,
           plus_plan_id = excluded.plus_plan_id,
+          plus_started_at = COALESCE(excluded.plus_started_at, cached_user_profiles.plus_started_at),
           plus_expires_at = excluded.plus_expires_at,
+          is_official = excluded.is_official,
           updated_at = excluded.updated_at
         ''',
         variables: <Variable<Object>>[
@@ -189,11 +196,14 @@ class SqliteOfflineAccountCache
           _nullableText(profile.localAvatarPath),
           _nullableText(profile.email),
           _nullableText(profile.publicKeyBase64),
-          _nullableText(profile.usernameChangedAtUtc?.toUtc().toIso8601String()),
+          _nullableText(
+              profile.usernameChangedAtUtc?.toUtc().toIso8601String()),
           Variable<int>(profile.isProfileComplete ? 1 : 0),
           Variable<int>(profile.isPlus ? 1 : 0),
           _nullableText(profile.plusPlanId),
+          _nullableText(profile.plusStartedAtUtc?.toUtc().toIso8601String()),
           _nullableText(profile.plusExpiresAtUtc?.toUtc().toIso8601String()),
+          Variable<int>(profile.isOfficial ? 1 : 0),
           Variable<int>(DateTime.now().toUtc().millisecondsSinceEpoch),
         ],
       );
@@ -248,7 +258,8 @@ class SqliteOfflineAccountCache
             role: role,
             joinedAtUtc: joinedAt,
           ),
-          memberCount: ((d['member_count'] as num?)?.toInt() ?? 1).clamp(1, 9999),
+          memberCount:
+              ((d['member_count'] as num?)?.toInt() ?? 1).clamp(1, 9999),
         );
       }).toList(growable: false);
     } catch (_) {
@@ -292,7 +303,8 @@ class SqliteOfflineAccountCache
               ),
               Variable<int>(entry.memberCount < 1 ? 1 : entry.memberCount),
               Variable<String>(g.createdAtUtc.toUtc().toIso8601String()),
-              _nullableText(entry.remote.joinedAtUtc?.toUtc().toIso8601String()),
+              _nullableText(
+                  entry.remote.joinedAtUtc?.toUtc().toIso8601String()),
               Variable<int>(nowMs),
             ],
           );
@@ -456,8 +468,10 @@ class SqliteOfflineAccountCache
               : GroupRole.member,
           publicKeyBase64: (d['public_key'] as String?) ?? '',
           joinedAtUtc: DateTime.parse(d['joined_at'] as String).toUtc(),
-          lastSeenAtUtc:
-              rawLastSeen != null ? DateTime.tryParse(rawLastSeen)?.toUtc() : null,
+          lastSeenAtUtc: rawLastSeen != null
+              ? DateTime.tryParse(rawLastSeen)?.toUtc()
+              : null,
+          isOfficial: ((d['is_official'] as num?)?.toInt() ?? 0) == 1,
         );
       }).toList(growable: false);
     } catch (_) {
@@ -483,8 +497,8 @@ class SqliteOfflineAccountCache
             '''
             INSERT OR REPLACE INTO cached_group_members (
               group_id, user_id, username, display_name, avatar_url,
-              role, public_key, joined_at, last_seen_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              role, public_key, joined_at, last_seen_at, is_official
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             variables: <Variable<Object>>[
               Variable<String>(groupId),
@@ -496,6 +510,7 @@ class SqliteOfflineAccountCache
               Variable<String>(m.publicKeyBase64),
               Variable<String>(m.joinedAtUtc.toUtc().toIso8601String()),
               _nullableText(m.lastSeenAtUtc?.toUtc().toIso8601String()),
+              Variable<int>(m.isOfficial ? 1 : 0),
             ],
           );
         }
@@ -670,6 +685,8 @@ class InMemoryOfflineAccountCache
       publicKeyBase64: profile.publicKeyBase64 ?? existing?.publicKeyBase64,
       usernameChangedAtUtc:
           profile.usernameChangedAtUtc ?? existing?.usernameChangedAtUtc,
+      plusStartedAtUtc: profile.plusStartedAtUtc ?? existing?.plusStartedAtUtc,
+      isOfficial: profile.isOfficial || (existing?.isOfficial ?? false),
       isProfileComplete:
           profile.isProfileComplete || (existing?.isProfileComplete ?? false),
     );

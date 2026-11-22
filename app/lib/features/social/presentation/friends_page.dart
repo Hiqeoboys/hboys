@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../design/background/app_background.dart';
 import '../../../design/background/page_background.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/account_badges.dart';
 import '../../../design/widgets/hiqeo_back_button.dart';
 import '../../../design/widgets/hiqeo_state_view.dart';
 import '../../../design/widgets/persistent_avatar_image.dart';
@@ -376,14 +377,34 @@ class _FriendsPageState extends State<FriendsPage> {
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
                                             children: <Widget>[
-                                              Text(
-                                                resolvedName,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                  color: colors.textPrimary,
-                                                ),
+                                              Row(
+                                                children: <Widget>[
+                                                  Flexible(
+                                                    child: Text(
+                                                      resolvedName,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        color:
+                                                            colors.textPrimary,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (cache.resolveIsOfficial(
+                                                    req.userId,
+                                                    fallback: req.isOfficial,
+                                                    usernameFallback:
+                                                        resolvedUname,
+                                                  )) ...<Widget>[
+                                                    const SizedBox(width: 4),
+                                                    const OfficialVerifiedBadge(
+                                                      size: 15,
+                                                    ),
+                                                  ],
+                                                ],
                                               ),
                                               if (resolvedUname != null &&
                                                   resolvedUname
@@ -505,14 +526,28 @@ class _FriendsPageState extends State<FriendsPage> {
                                     ),
                                   ),
                                 ),
-                                title: Text(
-                                  resolvedName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    color: colors.textPrimary,
-                                  ),
+                                title: Row(
+                                  children: <Widget>[
+                                    Flexible(
+                                      child: Text(
+                                        resolvedName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: colors.textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                    if (cache.resolveIsOfficial(
+                                      friend.userId,
+                                      fallback: friend.isOfficial,
+                                      usernameFallback: resolvedUname,
+                                    )) ...<Widget>[
+                                      const SizedBox(width: 4),
+                                      const OfficialVerifiedBadge(size: 15),
+                                    ],
+                                  ],
                                 ),
                                 subtitle: (resolvedUname != null &&
                                         resolvedUname.trim().isNotEmpty)
@@ -610,14 +645,28 @@ class _FriendsPageState extends State<FriendsPage> {
               ),
             ),
           ),
-          title: Text(
-            found.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: colors.textPrimary,
-            ),
+          title: Row(
+            children: <Widget>[
+              Flexible(
+                child: Text(
+                  found.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+              ),
+              if (found.isOfficial ||
+                  PublicProfileCacheService.instance.resolveIsOfficial(
+                    found.userId,
+                    usernameFallback: found.username,
+                  )) ...<Widget>[
+                const SizedBox(width: 4),
+                const OfficialVerifiedBadge(size: 15),
+              ],
+            ],
           ),
           subtitle: Text(
             '@${found.username}',

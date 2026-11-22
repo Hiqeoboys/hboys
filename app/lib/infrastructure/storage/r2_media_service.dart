@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -7,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:video_player/video_player.dart';
 
 import '../../features/chat/domain/group_chat_models.dart';
+import '../../features/social/data/community_media_tools.dart';
 import '../supabase/supabase_services.dart';
 import 'avatar_image_processor.dart';
 import 'media_url_normalizer.dart';
@@ -20,6 +22,10 @@ typedef R2MediaPutCall = Future<int> Function(
   Uint8List bytes,
 );
 typedef VideoDurationReader = Future<Duration?> Function(File file);
+typedef VideoCompressorFn = Future<File?> Function(
+  File source,
+  VideoCompressionProfile profile,
+);
 
 /// Layanan unggahan media ke Cloudflare R2 lewat Edge Function `r2-presign`.
 ///
@@ -35,22 +41,28 @@ class R2MediaService {
     R2MediaPresignCall? presign,
     R2MediaPutCall? put,
     VideoDurationReader? videoDurationReader,
+    VideoCompressorFn? videoCompressor,
     int Function()? nowMs,
   })  : _presign = presign ?? _invokeR2Presign,
         _put = put ?? _httpPut,
+        _hasCustomDurationReader = videoDurationReader != null,
         _videoDurationReader = videoDurationReader ?? _probeVideoDuration,
+        _videoCompressor = videoCompressor ?? _defaultCompressVideo,
         _nowMs = nowMs ?? (() => DateTime.now().millisecondsSinceEpoch);
 
   static final R2MediaService instance = R2MediaService();
 
-  static const int maxAvatarBytes = 512 * 1024;
-  static const int maxCommunityImageBytes = 5 * 1024 * 1024;
-  static const int maxCommunityVideoBytes = 40 * 1024 * 1024;
+  static const int maxAvatarBytes = 2 * 1024 * 1024;
+  static const int maxCommunityImageBytes = 8 * 1024 * 1024;
+  static const int maxCommunityVideoBytes =
+      HiqeoMediaCompressionConfig.maxProxyVideoBytes;
   static const int maxVideoDurationSec = 60;
 
   final R2MediaPresignCall _presign;
   final R2MediaPutCall _put;
+  final bool _hasCustomDurationReader;
   final VideoDurationReader _videoDurationReader;
+  final VideoCompressorFn _videoCompressor;
   final int Function() _nowMs;
 
   /// Menambahkan query `?v=timestamp` (atau memperbarui bila sudah ada) agar
@@ -74,7 +86,7 @@ class R2MediaService {
     return uploadPreparedAvatarWebp(webpBytes, userId: userId);
   }
 
-  /// Mengunggah byte WebP foto profil akun yang sudah dipotong 1:1 <= 512 px
+  /// Mengunggah byte WebP foto profil akun yang sudah dipotong 1:1 <= 1080 px
   /// ke `avatars/{userId}.webp` lalu mengembalikan `publicUrl?v=timestamp`.
   Future<String> uploadPreparedAvatarWebp(
     Uint8List webpBytes, {
@@ -84,7 +96,7 @@ class R2MediaService {
       throw StateError('Pengguna belum masuk akun.');
     }
     if (webpBytes.isEmpty || webpBytes.length > maxAvatarBytes) {
-      throw StateError('Ukuran foto profil terlalu besar (maks. 512 KB).');
+      throw StateError('Ukuran foto profil terlalu besar (maks. 2 MB).');
     }
     final publicUrl = await uploadObject(
       objectKey: 'avatars/$userId.webp',
@@ -94,7 +106,7 @@ class R2MediaService {
     return withCacheBuster(publicUrl, _nowMs());
   }
 
-  /// Memotong 1:1 <= 512 px dan mengompresi foto menjadi WebP agar siap
+  /// Memotong 1:1 <= 1080 px dan mengompresi foto menjadi WebP agar siap
   /// diunggah paralel bersamaan dengan penulisan metadata di Postgres.
   Future<Uint8List> prepareAvatarWebp(File file) async {
     final raw = await file.readAsBytes();
@@ -103,9 +115,8 @@ class R2MediaService {
     } catch (_) {
       return _compressImageToWebp(
         file,
-        quality: 80,
-        minWidth: 512,
-        minHeight: 512,
+        quality: HiqeoMediaCompressionConfig.avatarQuality,
+        maxLongestSide: HiqeoMediaCompressionConfig.avatarMaxSize,
       );
     }
   }
@@ -164,20 +175,26 @@ class R2MediaService {
     );
   }
 
-  /// Mengompresi gambar ke WebP lalu mengunggahnya ke
-  /// `community-media/{communityId}/{timestamp}_{uuid}.{ext}`.
+  /// Mengompresi gambar ke WebP resolusi tinggi proporsional (maks. 1920 px,
+  /// kualitas 86%) lalu mengunggahnya ke `community-media/{communityId}/{timestamp}_{uuid}.{ext}`.
   Future<String> uploadCommunityImage(
     File file, {
     required String communityId,
   }) async {
-    final webpBytes = await _compressImageToWebp(
+    var webpBytes = await _compressImageToWebp(
       file,
-      quality: 76,
-      minWidth: 1280,
-      minHeight: 1280,
+      quality: HiqeoMediaCompressionConfig.chatPhotoQuality,
+      maxLongestSide: HiqeoMediaCompressionConfig.chatPhotoMaxLongestSide,
     );
+    if (webpBytes.length > maxCommunityImageBytes) {
+      webpBytes = await _compressImageToWebp(
+        file,
+        quality: HiqeoMediaCompressionConfig.chatPhotoFallbackQuality,
+        maxLongestSide: HiqeoMediaCompressionConfig.chatPhotoMaxLongestSide,
+      );
+    }
     if (webpBytes.isEmpty || webpBytes.length > maxCommunityImageBytes) {
-      throw StateError('Ukuran gambar terlalu besar (maks. 5 MB).');
+      throw StateError('Ukuran gambar terlalu besar (maks. 8 MB).');
     }
     final detected = MediaUrlNormalizer.detectImageFormat(webpBytes);
     final ts = _nowMs();
@@ -197,7 +214,7 @@ class R2MediaService {
     required String communityId,
   }) async {
     if (webpBytes.isEmpty || webpBytes.length > maxCommunityImageBytes) {
-      throw StateError('Ukuran gambar terlalu besar (maks. 5 MB).');
+      throw StateError('Ukuran gambar terlalu besar (maks. 8 MB).');
     }
     final ts = _nowMs();
     final key = 'community-media/$communityId/${ts}_${generateUuidV4()}.webp';
@@ -208,11 +225,8 @@ class R2MediaService {
     );
   }
 
-  /// Memvalidasi durasi video (maks. 60 detik) dan ukuran berkas sebelum
-  /// mengunggahnya ke `community-media/{communityId}/{timestamp}_{uuid}.{ext}`.
-  // shortcut: uses camera ResolutionPreset.medium MP4/WebM without adding an
-  // AGP-incompatible native video transcoder; add MediaCodec transcoding when a
-  // compatible AGP 9 / Kotlin 2.4 plugin is available.
+  /// Mengompresi video ke H.264 720p/1080p (~2.5-4 Mbps, aman di bawah 25 MB),
+  /// memvalidasi durasi maks. 60 detik, lalu mengunggah ke Cloudflare R2.
   Future<({String publicUrl, int durationSec, String contentType})>
       uploadCommunityVideo(
     File file, {
@@ -220,45 +234,90 @@ class R2MediaService {
     int? durationSec,
   }) async {
     var resolvedDuration = durationSec ?? 0;
-    if (resolvedDuration <= 0) {
-      final probed = await _videoDurationReader(file);
-      if (probed != null) {
-        resolvedDuration = probed.inSeconds;
+    int? sourceWidth;
+    int? sourceHeight;
+    if (_hasCustomDurationReader) {
+      if (resolvedDuration <= 0) {
+        final probed = await _videoDurationReader(file);
+        if (probed != null) {
+          resolvedDuration = probed.inSeconds;
+        }
       }
+    } else {
+      final meta = await _probeVideoMeta(file);
+      if (resolvedDuration <= 0 && meta.duration != null) {
+        resolvedDuration = meta.duration!.inSeconds;
+      }
+      sourceWidth = meta.width;
+      sourceHeight = meta.height;
     }
     if (resolvedDuration > maxVideoDurationSec) {
       throw StateError(
         'Durasi video maksimal $maxVideoDurationSec detik.',
       );
     }
-    final bytes = await file.readAsBytes();
-    if (bytes.isEmpty || bytes.length > maxCommunityVideoBytes) {
-      throw StateError('Ukuran video terlalu besar (maks. 40 MB).');
+
+    final profile = computeVideoCompressionProfile(
+      durationSec: resolvedDuration > 0 ? resolvedDuration : 15,
+      sourceWidth: sourceWidth,
+      sourceHeight: sourceHeight,
+    );
+
+    File? tempCompressed;
+    File uploadTarget = file;
+    try {
+      final compressed = await _videoCompressor(file, profile);
+      if (compressed != null && await compressed.exists()) {
+        final len = await compressed.length();
+        if (len > 0) {
+          uploadTarget = compressed;
+          if (compressed.path != file.path) {
+            tempCompressed = compressed;
+          }
+        }
+      }
+    } catch (_) {
+      // Tetap lanjutkan dengan file asli jika transcoding platform tidak tersedia.
     }
 
-    final lowerExt = p.extension(file.path).toLowerCase();
-    final String ext;
-    final String contentType;
-    if (lowerExt == '.webm') {
-      ext = 'webm';
-      contentType = 'video/webm';
-    } else {
-      ext = 'mp4';
-      contentType = 'video/mp4';
-    }
+    try {
+      final bytes = await uploadTarget.readAsBytes();
+      if (bytes.isEmpty || bytes.length > maxCommunityVideoBytes) {
+        throw StateError('Ukuran video terlalu besar (maks. 25 MB).');
+      }
 
-    final ts = _nowMs();
-    final key = 'community-media/$communityId/${ts}_${generateUuidV4()}.$ext';
-    final publicUrl = await uploadObject(
-      objectKey: key,
-      contentType: contentType,
-      bytes: bytes,
-    );
-    return (
-      publicUrl: publicUrl,
-      durationSec: resolvedDuration.clamp(1, maxVideoDurationSec),
-      contentType: contentType,
-    );
+      final lowerExt = p.extension(uploadTarget.path).toLowerCase();
+      final String ext;
+      final String contentType;
+      if (lowerExt == '.webm') {
+        ext = 'webm';
+        contentType = 'video/webm';
+      } else {
+        ext = 'mp4';
+        contentType = 'video/mp4';
+      }
+
+      final ts = _nowMs();
+      final key = 'community-media/$communityId/${ts}_${generateUuidV4()}.$ext';
+      final publicUrl = await uploadObject(
+        objectKey: key,
+        contentType: contentType,
+        bytes: bytes,
+      );
+      return (
+        publicUrl: publicUrl,
+        durationSec: resolvedDuration.clamp(1, maxVideoDurationSec),
+        contentType: contentType,
+      );
+    } finally {
+      if (tempCompressed != null) {
+        try {
+          if (await tempCompressed.exists()) {
+            await tempCompressed.delete();
+          }
+        } catch (_) {}
+      }
+    }
   }
 
   /// Meminta Presigned PUT URL dari Edge Function `r2-presign` lalu mengunggah
@@ -316,17 +375,38 @@ class R2MediaService {
 
   static Future<Uint8List> _compressImageToWebp(
     File source, {
-    int quality = 76,
-    int minWidth = 1280,
-    int minHeight = 1280,
+    int quality = HiqeoMediaCompressionConfig.chatPhotoQuality,
+    int maxLongestSide = HiqeoMediaCompressionConfig.chatPhotoMaxLongestSide,
   }) async {
     try {
+      var targetWidth = maxLongestSide;
+      var targetHeight = maxLongestSide;
+      ui.ImmutableBuffer? buffer;
+      ui.ImageDescriptor? descriptor;
+      try {
+        buffer = await ui.ImmutableBuffer.fromFilePath(source.absolute.path);
+        descriptor = await ui.ImageDescriptor.encoded(buffer);
+        final dims = computeProportionalMaxDimensions(
+          width: descriptor.width,
+          height: descriptor.height,
+          maxLongestSide: maxLongestSide,
+        );
+        targetWidth = dims.width;
+        targetHeight = dims.height;
+      } catch (_) {
+        // Pakai batas sisi terpanjang standar jika header tidak dapat dibaca.
+      } finally {
+        descriptor?.dispose();
+        buffer?.dispose();
+      }
+
       final result = await FlutterImageCompress.compressWithFile(
         source.absolute.path,
         format: CompressFormat.webp,
         quality: quality,
-        minWidth: minWidth,
-        minHeight: minHeight,
+        minWidth: targetWidth,
+        minHeight: targetHeight,
+        autoCorrectionAngle: true,
       );
       if (result != null && result.isNotEmpty) return result;
     } catch (_) {
@@ -335,17 +415,44 @@ class R2MediaService {
     return source.readAsBytes();
   }
 
-  static Future<Duration?> _probeVideoDuration(File file) async {
+  static Future<File?> _defaultCompressVideo(
+    File source,
+    VideoCompressionProfile profile,
+  ) async {
+    final outPath = await CommunityMediaChannel.compressVideo(
+      source.absolute.path,
+      maxHeight: profile.targetShortSidePx,
+      bitrateBps: profile.targetVideoBitrateBps,
+      maxBytes: profile.maxBytes,
+    );
+    if (outPath == null || outPath.isEmpty) return null;
+    final outFile = File(outPath);
+    return await outFile.exists() ? outFile : null;
+  }
+
+  static Future<({Duration? duration, int? width, int? height})> _probeVideoMeta(
+    File file,
+  ) async {
     VideoPlayerController? controller;
     try {
       controller = VideoPlayerController.file(file);
       await controller.initialize();
-      return controller.value.duration;
+      final size = controller.value.size;
+      return (
+        duration: controller.value.duration,
+        width: size.width > 0 ? size.width.round() : null,
+        height: size.height > 0 ? size.height.round() : null,
+      );
     } catch (_) {
-      return null;
+      return (duration: null, width: null, height: null);
     } finally {
       await controller?.dispose();
     }
+  }
+
+  static Future<Duration?> _probeVideoDuration(File file) async {
+    final meta = await _probeVideoMeta(file);
+    return meta.duration;
   }
 
   static Future<Map<String, dynamic>> _invokeR2Presign(

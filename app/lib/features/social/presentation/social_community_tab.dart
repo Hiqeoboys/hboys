@@ -31,6 +31,7 @@ class _SocialCommunityTabState extends State<SocialCommunityTab> {
     super.initState();
     _service.addListener(_onChanged);
     _unreadStore.addListener(_onChanged);
+    _unreadStore.ensureRealtimeSubscribed();
     unawaited(_service.loadCommunities());
     unawaited(_unreadStore.refresh());
   }
@@ -238,7 +239,21 @@ class _SocialCommunityTabState extends State<SocialCommunityTab> {
     final plus = PlusScope.maybeOf(context);
     final hasFullSocial = plus?.hasFullSocialAccess ?? false;
     final bottomInset = AppLayout.bottomInset(context);
-    final communities = _service.communities;
+    final communities = List<CommunitySummary>.of(_service.communities)
+      ..sort((a, b) {
+        final liveA = _unreadStore.communityPreview(a.id)?.createdAtUtc;
+        final liveB = _unreadStore.communityPreview(b.id)?.createdAtUtc;
+        final lastA = _latestUtc(a.lastMessageAt, liveA);
+        final lastB = _latestUtc(b.lastMessageAt, liveB);
+        return compareRoomsByLatestActivity(
+          aLastMessageAtUtc: lastA,
+          aCreatedAtUtc: a.createdAt,
+          bLastMessageAtUtc: lastB,
+          bCreatedAtUtc: b.createdAt,
+          aId: a.id,
+          bId: b.id,
+        );
+      });
 
     return RefreshIndicator(
       onRefresh: _service.loadCommunities,
@@ -312,14 +327,16 @@ class _SocialCommunityTabState extends State<SocialCommunityTab> {
                       : (c.description.isNotEmpty
                           ? '${c.description}\n${c.memberCount} anggota'
                           : '${c.memberCount} anggota');
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    decoration: BoxDecoration(
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Material(
                       color: colors.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: colors.hairline),
-                    ),
-                    child: ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: BorderSide(color: colors.hairline),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: ListTile(
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 6,
@@ -403,11 +420,18 @@ class _SocialCommunityTabState extends State<SocialCommunityTab> {
                         ),
                       ),
                     ),
+                    ),
                   );
                 },
               ),
         ],
       ),
     );
+  }
+
+  static DateTime? _latestUtc(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return b.isAfter(a) ? b : a;
   }
 }

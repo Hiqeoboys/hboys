@@ -11,6 +11,7 @@ import 'package:video_player/video_player.dart';
 import '../../../design/glass/glass_surface.dart';
 import '../../../design/glass/hiqeo_liquid_glass.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/account_badges.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/hiqeo_state_view.dart';
 import '../../../design/widgets/nav_bar_visibility.dart';
@@ -435,6 +436,26 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
         _hasMoreOlderMessages = hasMore && !reachedBound;
         _loading = false;
       });
+      if (nextList.isNotEmpty) {
+        final latest = nextList.last;
+        final snippet = latest.isDeleted
+            ? '${latest.senderName}: Pesan telah dihapus'
+            : latest.messageType == CommunityMessageType.image
+                ? '${latest.senderName}: Foto'
+                : latest.messageType == CommunityMessageType.video
+                    ? '${latest.senderName}: Video'
+                    : '${latest.senderName}: ${latest.content ?? ''}';
+        CommunityService.instance
+            .recordLatestActivity(_community.id, latest.createdAt);
+        SocialUnreadStore.instance.recordCommunityActivity(
+          communityId: _community.id,
+          createdAtUtc: latest.createdAt,
+          snippet: snippet,
+          senderId: latest.senderId,
+          messageId: latest.id,
+          markUnread: false,
+        );
+      }
       _applyCursorAndScrollOnMessages();
     } catch (e) {
       if (kDebugMode) {
@@ -931,18 +952,34 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                 creatorName != null && creatorUname != null
                                     ? '$creatorName ($creatorUname)'
                                     : (creatorName ?? creatorUname);
+                            final creatorOfficial = cache.resolveIsOfficial(
+                              creatorUid,
+                              fallback: cachedCreator?.isOfficial ?? false,
+                              usernameFallback: cleanUname,
+                            );
                             final createdStr =
                                 formatIndonesianFullDate(_community.createdAt);
-                            return Text(
-                              creatorLabel != null
-                                  ? 'Dibuat oleh $creatorLabel · $createdStr'
-                                  : 'Dibuat $createdStr',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                color: colors.textSecondary,
-                              ),
+                            return Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Flexible(
+                                  child: Text(
+                                    creatorLabel != null
+                                        ? 'Dibuat oleh $creatorLabel · $createdStr'
+                                        : 'Dibuat $createdStr',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: colors.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                                if (creatorOfficial && creatorLabel != null) ...<Widget>[
+                                  const SizedBox(width: 4),
+                                  const OfficialVerifiedBadge(size: 13),
+                                ],
+                              ],
                             );
                           }(),
                         ],
@@ -2012,10 +2049,12 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                 ),
                                 child: Row(
                                   children: <Widget>[
-                                    const Expanded(
+                                    Expanded(
                                       child: Text(
-                                        'Kirim pesan komunitas khusus Hiqeo Plus Mahasiswa atau Tahunan.',
-                                        style: TextStyle(
+                                        (plus?.access.isGrace ?? false)
+                                            ? 'Langganan Hiqeo Plus berakhir. Obrolan Komunitas langsung terkunci selama masa tenggang.'
+                                            : 'Kirim pesan komunitas khusus Hiqeo Plus Mahasiswa atau Tahunan.',
+                                        style: const TextStyle(
                                           fontSize: 12,
                                           color: ChatRoomPalette.textSecondary,
                                         ),
@@ -2028,9 +2067,11 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                       ),
                                       onPressed:
                                           _openPlusUpgradeFromCommunity,
-                                      child: const Text(
-                                        'Hiqeo Plus',
-                                        style: TextStyle(
+                                      child: Text(
+                                        (plus?.access.isGrace ?? false)
+                                            ? 'Berlangganan lagi'
+                                            : 'Hiqeo Plus',
+                                        style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                           color: ChatRoomPalette.textPrimary,
                                         ),
@@ -2336,6 +2377,7 @@ class _CommunityBubble extends StatelessWidget {
           message.senderId,
           fallback: message.senderAvatarUrl,
         );
+        final senderIsOfficial = cache.resolveIsOfficial(message.senderId);
         final screenWidth = MediaQuery.sizeOf(context).width;
         final textColor =
             isMe ? ChatRoomPalette.outgoingText : ChatRoomPalette.incomingText;
@@ -2384,13 +2426,25 @@ class _CommunityBubble extends StatelessWidget {
                           onTap: onTapSender,
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 3),
-                            child: Text(
-                              senderName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: senderColor,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Flexible(
+                                  child: Text(
+                                    senderName,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: senderColor,
+                                    ),
+                                  ),
+                                ),
+                                if (senderIsOfficial) ...<Widget>[
+                                  const SizedBox(width: 4),
+                                  const OfficialVerifiedBadge(size: 13),
+                                ],
+                              ],
                             ),
                           ),
                         ),
@@ -2436,13 +2490,25 @@ class _CommunityBubble extends StatelessWidget {
                         onTap: onTapSender,
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(7, 3, 7, 5),
-                          child: Text(
-                            senderName,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: senderColor,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Flexible(
+                                child: Text(
+                                  senderName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: senderColor,
+                                  ),
+                                ),
+                              ),
+                              if (senderIsOfficial) ...<Widget>[
+                                const SizedBox(width: 4),
+                                const OfficialVerifiedBadge(size: 13),
+                              ],
+                            ],
                           ),
                         ),
                       ),
@@ -2503,13 +2569,25 @@ class _CommunityBubble extends StatelessWidget {
                         onTap: onTapSender,
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(7, 3, 7, 5),
-                          child: Text(
-                            senderName,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: senderColor,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Flexible(
+                                child: Text(
+                                  senderName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: senderColor,
+                                  ),
+                                ),
+                              ),
+                              if (senderIsOfficial) ...<Widget>[
+                                const SizedBox(width: 4),
+                                const OfficialVerifiedBadge(size: 13),
+                              ],
+                            ],
                           ),
                         ),
                       ),
@@ -2590,13 +2668,25 @@ class _CommunityBubble extends StatelessWidget {
                           onTap: onTapSender,
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 3),
-                            child: Text(
-                              senderName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: senderColor,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Flexible(
+                                  child: Text(
+                                    senderName,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: senderColor,
+                                    ),
+                                  ),
+                                ),
+                                if (senderIsOfficial) ...<Widget>[
+                                  const SizedBox(width: 4),
+                                  const OfficialVerifiedBadge(size: 13),
+                                ],
+                              ],
                             ),
                           ),
                         ),

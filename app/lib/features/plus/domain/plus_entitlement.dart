@@ -61,11 +61,14 @@ enum PlusAccessState { free, active, grace, expired }
 
 /// Status akses Plus pada satu titik waktu.
 ///
-/// Selama [PlusAccessState.grace], seluruh fitur Plus masih dapat dipakai.
+/// Selama [PlusAccessState.grace] (3 hari setelah kedaluwarsa), fitur umum Plus
+/// tetap dapat dipakai, KECUALI obrolan Komunitas dan Leaderboard yang langsung
+/// terkunci begitu masa aktif berakhir.
 class PlusAccess {
   const PlusAccess({
     required this.state,
     this.planId,
+    this.issuedAtUtc,
     this.expiresAtUtc,
     this.graceEndsAtUtc,
     this.lifetime = false,
@@ -75,6 +78,7 @@ class PlusAccess {
 
   final PlusAccessState state;
   final String? planId;
+  final DateTime? issuedAtUtc;
   final DateTime? expiresAtUtc;
   final DateTime? graceEndsAtUtc;
   final bool lifetime;
@@ -84,11 +88,31 @@ class PlusAccess {
 
   bool get isGrace => state == PlusAccessState.grace;
 
-  /// Hanya Paket Mahasiswa, Paket Tahunan, dan Founding/Lifetime yang memiliki
-  /// akses penuh fitur sosial (buat komunitas, kirim pesan komunitas, tambah
-  /// teman, peringkat Leaderboard, dan lencana Plus di profil).
-  /// Pengguna Gratis dan Tiket 1x Naik (`trip_pass_3d`) tidak termasuk.
-  bool get hasFullSocialAccess => hasPlus && isFullSocialPlan(planId);
+  bool get isExpired => state == PlusAccessState.expired;
+
+  bool get isUltima =>
+      state == PlusAccessState.active &&
+      (lifetime || isLifetimePlanId(planId));
+
+  /// Hanya Paket Mahasiswa, Paket Tahunan, dan Founding/Lifetime aktif yang
+  /// memiliki akses penuh fitur sosial (buat komunitas, kirim pesan komunitas,
+  /// peringkat Leaderboard). Langsung terkunci saat masa aktif berakhir (`grace`
+  /// atau `expired`).
+  bool get hasFullSocialAccess =>
+      state == PlusAccessState.active && isFullSocialPlan(planId);
+
+  /// Fitur penuh non-sosial (Analitik lanjutan, Rekap tahunan) tetap terbuka
+  /// selama masa tenggang 3 hari, berbeda dengan Obrolan Komunitas &
+  /// Leaderboard (`hasFullSocialAccess`) yang langsung terkunci saat berakhir.
+  bool get hasFullPlanIncludingGrace => hasPlus && isFullSocialPlan(planId);
+
+  static bool isLifetimePlanId(String? planId) {
+    if (planId == null) return false;
+    final normalized = planId.trim().toLowerCase();
+    return normalized == 'lifetime' ||
+        normalized == 'founding' ||
+        normalized == 'ultima';
+  }
 
   static bool isFullSocialPlan(String? planId) {
     if (planId == null) return false;
@@ -98,7 +122,8 @@ class PlusAccess {
         normalized == 'annual' ||
         normalized == 'tahunan' ||
         normalized == 'lifetime' ||
-        normalized == 'founding';
+        normalized == 'founding' ||
+        normalized == 'ultima';
   }
 
   @override
@@ -106,13 +131,20 @@ class PlusAccess {
       other is PlusAccess &&
       other.state == state &&
       other.planId == planId &&
+      other.issuedAtUtc == issuedAtUtc &&
       other.expiresAtUtc == expiresAtUtc &&
       other.graceEndsAtUtc == graceEndsAtUtc &&
       other.lifetime == lifetime;
 
   @override
-  int get hashCode =>
-      Object.hash(state, planId, expiresAtUtc, graceEndsAtUtc, lifetime);
+  int get hashCode => Object.hash(
+        state,
+        planId,
+        issuedAtUtc,
+        expiresAtUtc,
+        graceEndsAtUtc,
+        lifetime,
+      );
 }
 
 /// Menghitung status akses murni dari token dan waktu; tidak memanggil jaringan.
@@ -124,10 +156,11 @@ PlusAccess evaluatePlusAccess({
   if (payload == null) return PlusAccess.free;
 
   final expiresAt = payload.expiresAtUtc;
-  if (expiresAt == null) {
+  if (expiresAt == null || PlusAccess.isLifetimePlanId(payload.planId)) {
     return PlusAccess(
       state: PlusAccessState.active,
       planId: payload.planId,
+      issuedAtUtc: payload.issuedAtUtc,
       lifetime: true,
     );
   }
@@ -137,6 +170,7 @@ PlusAccess evaluatePlusAccess({
     return PlusAccess(
       state: PlusAccessState.active,
       planId: payload.planId,
+      issuedAtUtc: payload.issuedAtUtc,
       expiresAtUtc: expiresAt,
       graceEndsAtUtc: graceEndsAt,
     );
@@ -145,6 +179,7 @@ PlusAccess evaluatePlusAccess({
     return PlusAccess(
       state: PlusAccessState.grace,
       planId: payload.planId,
+      issuedAtUtc: payload.issuedAtUtc,
       expiresAtUtc: expiresAt,
       graceEndsAtUtc: graceEndsAt,
     );
@@ -152,6 +187,7 @@ PlusAccess evaluatePlusAccess({
   return PlusAccess(
     state: PlusAccessState.expired,
     planId: payload.planId,
+    issuedAtUtc: payload.issuedAtUtc,
     expiresAtUtc: expiresAt,
     graceEndsAtUtc: graceEndsAt,
   );

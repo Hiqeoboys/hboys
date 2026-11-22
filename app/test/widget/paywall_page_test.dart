@@ -17,12 +17,14 @@ GooeySelectorBlobPainter _painter(WidgetTester tester) {
   return paint.painter! as GooeySelectorBlobPainter;
 }
 
-GoRouter _paywallRouter() => GoRouter(
+GoRouter _paywallRouter({bool isSignedIn = true}) => GoRouter(
       initialLocation: '/plus',
       routes: <RouteBase>[
         GoRoute(
           path: '/plus',
-          builder: (context, state) => const PaywallPage(),
+          builder: (context, state) => PaywallPage(
+            isSignedInOverride: isSignedIn,
+          ),
         ),
         GoRoute(
           path: '/plus/kelola',
@@ -108,7 +110,7 @@ void main() {
     expect(cta.onPressed, isNull);
     expect(find.text('Paket belum tersedia'), findsOneWidget);
     expect(find.text('Paket sedang dimuat'), findsOneWidget);
-    expect(find.textContaining('Harga dan paket berasal dari konfigurasi'),
+    expect(find.textContaining('Daftar paket sedang diperbarui'),
         findsOneWidget);
     expect(find.text('Berlangganan'), findsNothing);
 

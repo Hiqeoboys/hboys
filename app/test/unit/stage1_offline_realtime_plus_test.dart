@@ -242,6 +242,14 @@ class _OfflineFailingProfileRepo implements ProfileRepository {
   }
 
   @override
+  Future<UsernameAvailabilityResult> checkUsernameAvailability(
+    String username,
+  ) async {
+    if (fail) throw const AccountException('OFFLINE', 'Tidak ada koneksi');
+    return const UsernameAvailabilityResult(available: true);
+  }
+
+  @override
   Future<UserProfile> registerProfile({
     required String username,
     required String publicKeyBase64,

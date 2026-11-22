@@ -145,6 +145,11 @@ class AccountController extends ChangeNotifier {
   final Set<String> _knownInvitationIds = <String>{};
   bool _loading = false;
   bool _busy = false;
+  bool _profileResolved = false;
+  List<LinkedIdentity> _linkedIdentities = const <LinkedIdentity>[];
+  AuthProviderKind? _linkingProvider;
+  String? _linkingError;
+  String? _linkingNotice;
   String? _error;
   String? _notice;
 
@@ -154,9 +159,32 @@ class AccountController extends ChangeNotifier {
   bool get isLoading => _loading;
   bool get isBusy => _busy;
   bool get isOnline => _isOnline;
+  bool get isProfileResolved => _profileResolved;
   AuthUser? get user => _user;
   UserProfile? get profile => _profile;
   String? get localAvatarPath => _profile?.localAvatarPath;
+  List<LinkedIdentity> get linkedIdentities => _linkedIdentities;
+  AuthProviderKind? get linkingProvider => _linkingProvider;
+  String? get linkingError => _linkingError;
+  String? get linkingNotice => _linkingNotice;
+
+  bool isProviderLinked(AuthProviderKind provider) {
+    if (_linkedIdentities.any((item) => item.provider == provider)) {
+      return true;
+    }
+    return _user?.provider == provider;
+  }
+
+  /// True jika user sudah login dan profil belum lengkap (username atau nama
+  /// tampilan belum diisi). Pengguna lama yang sudah memiliki keduanya akan
+  /// langsung melewati onboarding.
+  bool get needsProfileOnboarding {
+    if (_user == null || _loading || !_profileResolved) return false;
+    final p = _profile;
+    final hasUsername = p?.username?.trim().isNotEmpty == true;
+    final hasFullName = p?.fullName?.trim().isNotEmpty == true;
+    return !hasUsername || !hasFullName;
+  }
 
   bool get needsUsername {
     if (_user == null || _loading) return false;
@@ -169,7 +197,7 @@ class AccountController extends ChangeNotifier {
   bool get hasNonCompliantUsername {
     final current = _profile?.username;
     if (current == null || current.isEmpty) return false;
-    return !UsernamePolicy.isCompliant(current);
+    return !UsernamePolicy.validate(current, userEmail: _user?.email).isValid;
   }
 
   int get usernameCooldownDaysRemaining => UsernamePolicy.cooldownDaysRemaining(
@@ -414,7 +442,7 @@ class AccountController extends ChangeNotifier {
         if (SupabaseServices.isAvailable) {
           AppPresenceService.instance.stop();
           GroupAutoLocationService.instance.stop();
-          unawaited(ChatMuteService.instance.clearLocal());
+          unawaited(ChatMuteService.instance.setActiveUser(afterUser?.id));
           UserNotificationsService.instance.clear();
           FriendsService.instance.clear();
         }
@@ -439,7 +467,10 @@ class AccountController extends ChangeNotifier {
     if (_user == null) {
       return 'Masuk ke akun terlebih dahulu.';
     }
-    final validation = UsernamePolicy.validate(input);
+    final validation = UsernamePolicy.validate(
+      input,
+      userEmail: _user?.email,
+    );
     if (!validation.isValid) {
       return validation.errorMessage ?? 'Format username tidak sesuai.';
     }
@@ -465,7 +496,7 @@ class AccountController extends ChangeNotifier {
           publicKeyBase64: base64Encode(publicKey),
         );
         if (_user?.id != userId) return null;
-        _profile = _mergeWithLocalProfile(registered);
+        _profile = _mergeWithLocalProfile(registered, authUser: _user);
         await _persistProfileAndPlus(_profile!);
         _deviceKeyMismatch = false;
         _notice = 'Username @${registered.username} berhasil disimpan.';
@@ -475,7 +506,7 @@ class AccountController extends ChangeNotifier {
 
       final updated = await _profiles.setUsername(validation.normalized);
       if (_user?.id != userId) return null;
-      _profile = _mergeWithLocalProfile(updated);
+      _profile = _mergeWithLocalProfile(updated, authUser: _user);
       await _persistProfileAndPlus(_profile!);
       _notice = 'Username berhasil diganti menjadi @${updated.username}.';
       return null;
@@ -493,6 +524,187 @@ class AccountController extends ChangeNotifier {
       _busy = false;
       _notify();
     }
+  }
+
+  /// Mengecek ketersediaan username untuk formulir onboarding / ganti username.
+  Future<UsernameAvailabilityResult> checkUsernameAvailability(
+    String rawInput,
+  ) async {
+    final validation = UsernamePolicy.validate(
+      rawInput,
+      userEmail: _user?.email,
+    );
+    if (!validation.isValid) {
+      return UsernameAvailabilityResult(
+        available: false,
+        reason: validation.isReserved ? 'blocked' : 'invalid_format',
+      );
+    }
+    try {
+      return await _profiles.checkUsernameAvailability(validation.normalized);
+    } catch (_) {
+      return const UsernameAvailabilityResult(
+        available: false,
+        reason: 'network_error',
+      );
+    }
+  }
+
+  /// Menyelesaikan onboarding profil pengguna baru (nama tampilan + username +
+  /// foto profil opsional).
+  Future<String?> completeOnboardingProfile({
+    required String fullName,
+    required String username,
+    Uint8List? avatarWebpBytes,
+    R2Uploader? avatarUploader,
+  }) async {
+    final user = _user;
+    if (user == null) return 'Masuk ke akun terlebih dahulu.';
+    final nameErr = UsernamePolicy.validateDisplayName(
+      fullName,
+      userEmail: user.email,
+    );
+    if (nameErr != null) return nameErr;
+    final usernameVal = UsernamePolicy.validate(
+      username,
+      userEmail: user.email,
+    );
+    if (!usernameVal.isValid) {
+      return usernameVal.errorMessage ?? 'Format username tidak sesuai.';
+    }
+    if (_busy) return 'Sedang memproses permintaan lain.';
+
+    _busy = true;
+    _error = null;
+    _notice = null;
+    _notify();
+    try {
+      final publicKey = await _identity.publicKey();
+      var savedProfile = await _profiles.registerProfile(
+        username: usernameVal.normalized,
+        publicKeyBase64: base64Encode(publicKey),
+      );
+      if (_user?.id != user.id) return null;
+
+      savedProfile = await _profiles.updateFullName(fullName.trim());
+      if (_user?.id != user.id) return null;
+
+      String? uploadedUrl = savedProfile.avatarUrl;
+      String? localAvatarPath = savedProfile.localAvatarPath;
+      if (avatarWebpBytes != null && avatarWebpBytes.isNotEmpty) {
+        final publicUrl = avatarUploader != null
+            ? await avatarUploader.upload(
+                kind: R2Kind.avatar,
+                bytes: avatarWebpBytes,
+                contentType: 'image/webp',
+              )
+            : await R2MediaService.instance.uploadPreparedAvatarWebp(
+                avatarWebpBytes,
+                userId: user.id,
+              );
+        savedProfile = await _profiles.updateAvatarUrl(publicUrl);
+        uploadedUrl = publicUrl;
+        localAvatarPath = await _cache?.saveAvatarBytes(
+          userId: user.id,
+          avatarUrl: publicUrl,
+          bytes: avatarWebpBytes,
+        );
+        if (localAvatarPath != null) {
+          evictLocalAvatarFileCache(localAvatarPath);
+        }
+      }
+
+      if (_user?.id != user.id) return null;
+      _profile = _mergeWithLocalProfile(savedProfile, authUser: user).copyWith(
+        username: usernameVal.normalized,
+        fullName: fullName.trim(),
+        avatarUrl: uploadedUrl,
+        localAvatarPath: localAvatarPath,
+        isProfileComplete: true,
+        isOfficial: savedProfile.isOfficial ||
+            (UsernamePolicy.isOfficialEmail(user.email) &&
+                usernameVal.normalized == UsernamePolicy.officialUsername),
+      );
+      _profileResolved = true;
+      await _persistProfileAndPlus(_profile!);
+      await _refreshGroupsInternal(_generation);
+      return null;
+    } catch (error) {
+      final String msg;
+      if (error is AccountException) {
+        final mapped = UsernamePolicy.mapServerError(error.code);
+        msg = mapped.code != 'server_error' ? mapped.message : error.message;
+      } else {
+        msg = _friendly(error);
+      }
+      _error = msg;
+      return msg;
+    } finally {
+      _busy = false;
+      _notify();
+    }
+  }
+
+  /// Memperbarui daftar penyedia login (Google/Apple) yang tertaut ke akun ini.
+  Future<void> refreshLinkedIdentities() async {
+    if (_user == null) {
+      if (_linkedIdentities.isNotEmpty) {
+        _linkedIdentities = const <LinkedIdentity>[];
+        _notify();
+      }
+      return;
+    }
+    try {
+      final identities = await _auth.linkedIdentities();
+      if (_disposed) return;
+      if (!listEquals(identities, _linkedIdentities)) {
+        _linkedIdentities = identities;
+        _notify();
+      }
+    } catch (_) {}
+  }
+
+  /// Menautkan akun Google atau Apple tambahan ke akun yang sedang masuk tanpa
+  /// menghapus data atau mengeluarkan sesi saat ini.
+  Future<bool> linkProvider(AuthProviderKind provider) async {
+    if (!isConfigured || _user == null || _linkingProvider != null) {
+      return false;
+    }
+    _linkingProvider = provider;
+    _linkingError = null;
+    _linkingNotice = null;
+    _notify();
+    try {
+      await _auth.linkProvider(provider);
+      await refreshLinkedIdentities();
+      if (!_disposed) {
+        final label = provider == AuthProviderKind.apple ? 'Apple' : 'Google';
+        _linkingNotice = isProviderLinked(provider)
+            ? 'Akun $label berhasil ditautkan.'
+            : 'Selesaikan penautan akun $label di browser. Aplikasi akan terbuka kembali otomatis.';
+      }
+      return true;
+    } on AuthFailure catch (failure) {
+      if (failure.code != AuthFailureCode.cancelled && !_disposed) {
+        _linkingError = failure.message;
+      }
+      return false;
+    } catch (error) {
+      if (!_disposed) {
+        _linkingError = _friendly(error);
+      }
+      return false;
+    } finally {
+      _linkingProvider = null;
+      _notify();
+    }
+  }
+
+  void clearLinkingMessages() {
+    if (_linkingError == null && _linkingNotice == null) return;
+    _linkingError = null;
+    _linkingNotice = null;
+    _notify();
   }
 
   /// Mengunggah foto profil WebP 1:1 (maks 512px) ke R2 (`avatars/{uid}.webp`)
@@ -554,11 +766,12 @@ class AccountController extends ChangeNotifier {
     final user = _user;
     if (user == null) return 'Masuk ke akun terlebih dahulu.';
     final trimmed = input.trim();
-    if (trimmed.isEmpty) {
-      return 'Nama akun tidak boleh kosong.';
-    }
-    if (trimmed.length > maxAccountNameLength) {
-      return 'Nama akun maksimal $maxAccountNameLength karakter.';
+    final nameErr = UsernamePolicy.validateDisplayName(
+      trimmed,
+      userEmail: user.email,
+    );
+    if (nameErr != null) {
+      return nameErr;
     }
     if (_busy) return 'Sedang memproses permintaan lain.';
 
@@ -595,7 +808,7 @@ class AccountController extends ChangeNotifier {
       if (SupabaseServices.isAvailable) {
         AppPresenceService.instance.stop();
         GroupAutoLocationService.instance.stop();
-        unawaited(ChatMuteService.instance.clearLocal());
+        unawaited(ChatMuteService.instance.clearLocal(userId: prevUserId));
         UserNotificationsService.instance.clear();
         FriendsService.instance.clear();
       }
@@ -611,6 +824,11 @@ class AccountController extends ChangeNotifier {
       _generation++;
       _user = null;
       _profile = null;
+      _profileResolved = false;
+      _linkedIdentities = const <LinkedIdentity>[];
+      _linkingProvider = null;
+      _linkingError = null;
+      _linkingNotice = null;
       _deviceKeyMismatch = false;
       _invitations = const <IncomingInvitation>[];
       _groups = const <RemoteGroup>[];
@@ -644,7 +862,7 @@ class AccountController extends ChangeNotifier {
       if (SupabaseServices.isAvailable) {
         AppPresenceService.instance.stop();
         GroupAutoLocationService.instance.stop();
-        unawaited(ChatMuteService.instance.clearLocal());
+        unawaited(ChatMuteService.instance.clearLocal(userId: prevUserId));
         UserNotificationsService.instance.clear();
         FriendsService.instance.clear();
       }
@@ -660,6 +878,11 @@ class AccountController extends ChangeNotifier {
       _generation++;
       _user = null;
       _profile = null;
+      _profileResolved = false;
+      _linkedIdentities = const <LinkedIdentity>[];
+      _linkingProvider = null;
+      _linkingError = null;
+      _linkingNotice = null;
       _deviceKeyMismatch = false;
       _invitations = const <IncomingInvitation>[];
       _groups = const <RemoteGroup>[];
@@ -1168,6 +1391,11 @@ class AccountController extends ChangeNotifier {
       }
       await _stopRealtime();
       _profile = null;
+      _profileResolved = false;
+      _linkedIdentities = const <LinkedIdentity>[];
+      _linkingProvider = null;
+      _linkingError = null;
+      _linkingNotice = null;
       _deviceKeyMismatch = false;
       _invitations = const <IncomingInvitation>[];
       _groups = const <RemoteGroup>[];
@@ -1189,12 +1417,17 @@ class AccountController extends ChangeNotifier {
       if (SupabaseServices.isAvailable) {
         AppPresenceService.instance.stop();
         GroupAutoLocationService.instance.stop();
-        unawaited(ChatMuteService.instance.clearLocal());
+        unawaited(ChatMuteService.instance.setActiveUser(user.id));
         UserNotificationsService.instance.clear();
         FriendsService.instance.clear();
       }
       _cloudBackupSyncedUserId = null;
       _profile = null;
+      _profileResolved = false;
+      _linkedIdentities = const <LinkedIdentity>[];
+      _linkingProvider = null;
+      _linkingError = null;
+      _linkingNotice = null;
       _deviceKeyMismatch = false;
       _invitations = const <IncomingInvitation>[];
       _groups = const <RemoteGroup>[];
@@ -1210,6 +1443,11 @@ class AccountController extends ChangeNotifier {
     } else {
       if (switchingUser) {
         _profile = null;
+        _profileResolved = false;
+        _linkedIdentities = const <LinkedIdentity>[];
+        _linkingProvider = null;
+        _linkingError = null;
+        _linkingNotice = null;
         _deviceKeyMismatch = false;
         _invitations = const <IncomingInvitation>[];
         _groups = const <RemoteGroup>[];
@@ -1228,7 +1466,7 @@ class AccountController extends ChangeNotifier {
     unawaited(PushNotificationService.instance.registerForCurrentUser());
     if (SupabaseServices.isAvailable) {
       AppPresenceService.instance.start();
-      unawaited(ChatMuteService.instance.loadAll());
+      unawaited(ChatMuteService.instance.setActiveUser(user.id).then((_) => ChatMuteService.instance.loadAll(forceRemote: true)));
       unawaited(UserNotificationsService.instance.loadNotifications());
       UserNotificationsService.instance.ensureRealtimeSubscribed();
     }
@@ -1245,14 +1483,20 @@ class AccountController extends ChangeNotifier {
     try {
       final fetched = await _fetchProfileFromServer(user, generation);
       if (generation != _generation) return;
+      _profileResolved = true;
+      unawaited(refreshLinkedIdentities());
       if (fetched != null || _profile != null) {
         await _refreshGroupsInternal(generation);
       }
       _ensureRealtimeSubscribed();
     } catch (error) {
       // Jangan pernah mengosongkan profil / grup / undangan lokal saat offline.
-      if (generation == _generation && !hydratedFromCache) {
-        _error = _friendly(error);
+      if (generation == _generation) {
+        if (hydratedFromCache) {
+          _profileResolved = true;
+        } else {
+          _error = _friendly(error);
+        }
       }
     } finally {
       if (generation == _generation) {
@@ -1275,12 +1519,17 @@ class AccountController extends ChangeNotifier {
       var hasAny = false;
       if (cachedProfile != null) {
         _profile = cachedProfile;
+        if (cachedProfile.isProfileComplete &&
+            (cachedProfile.fullName?.trim().isNotEmpty == true)) {
+          _profileResolved = true;
+        }
         hasAny = true;
         try {
           await _plusController?.syncAccountPlus(
             userId: cachedProfile.userId,
             isPlus: cachedProfile.isPlus,
             planId: cachedProfile.plusPlanId,
+            startedAtUtc: cachedProfile.plusStartedAtUtc,
             expiresAtUtc: cachedProfile.plusExpiresAtUtc,
           );
         } catch (_) {}
@@ -1471,6 +1720,8 @@ class AccountController extends ChangeNotifier {
           username: profile.username,
           fullName: profile.fullName,
           avatarUrl: MediaUrlNormalizer.normalize(profile.avatarUrl),
+          isOfficial: profile.isOfficial ||
+              UsernamePolicy.isOfficialUsername(profile.username),
         ),
       ]),
     );
@@ -1479,7 +1730,11 @@ class AccountController extends ChangeNotifier {
       userId: profile.userId,
       isPlus: profile.isPlus,
       planId: profile.plusPlanId,
+      startedAtUtc: profile.plusStartedAtUtc,
       expiresAtUtc: profile.plusExpiresAtUtc,
+    );
+    unawaited(
+      _plusController?.refreshSubscriptionHistory(userId: profile.userId),
     );
     unawaited(PushNotificationService.instance.registerForCurrentUser());
     if (profile.isPlus &&
@@ -1846,6 +2101,7 @@ class AccountController extends ChangeNotifier {
             fullName: m.displayName,
             avatarUrl: MediaUrlNormalizer.normalize(m.avatarUrl),
             lastSeenAtUtc: m.lastSeenAtUtc,
+            isOfficial: m.isOfficial,
           ),
         ),
       ),

@@ -12,6 +12,7 @@ import '../../../infrastructure/storage/media_url_normalizer.dart';
 import '../../../infrastructure/storage/r2_media_service.dart';
 import '../../../infrastructure/supabase/supabase_services.dart';
 import 'community_media_tools.dart';
+import 'social_unread_store.dart';
 
 /// Urutan fallback `sender_name` wajib untuk `community_messages`:
 /// `displayName` -> `username` -> awalan email -> `'Pendaki'`.
@@ -50,6 +51,7 @@ class CommunitySummary {
     required this.memberCount,
     required this.isJoined,
     required this.createdAt,
+    this.lastMessageAt,
   });
 
   final String id;
@@ -64,6 +66,7 @@ class CommunitySummary {
   final int memberCount;
   final bool isJoined;
   final DateTime createdAt;
+  final DateTime? lastMessageAt;
 
   bool isOwner(String? userId) => userId != null && userId == ownerId;
 
@@ -76,6 +79,7 @@ class CommunitySummary {
     String? creatorAvatarUrl,
     int? memberCount,
     bool? isJoined,
+    DateTime? lastMessageAt,
   }) =>
       CommunitySummary(
         id: id,
@@ -90,6 +94,7 @@ class CommunitySummary {
         memberCount: memberCount ?? this.memberCount,
         isJoined: isJoined ?? this.isJoined,
         createdAt: createdAt,
+        lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       );
 }
 
@@ -154,6 +159,7 @@ class CommunityMemberEntry {
     required this.role,
     required this.joinedAt,
     this.lastSeenAt,
+    this.isOfficial = false,
   });
 
   final String userId;
@@ -163,6 +169,7 @@ class CommunityMemberEntry {
   final String role;
   final DateTime joinedAt;
   final DateTime? lastSeenAt;
+  final bool isOfficial;
 }
 
 /// Layanan komunitas online-only (Supabase Postgres + Cloudflare R2 Presigned
@@ -183,6 +190,57 @@ class CommunityService extends ChangeNotifier {
   List<CommunitySummary> get communities => _communities;
   bool get isLoading => _loading;
   String? get error => _error;
+
+  @visibleForTesting
+  void setCommunitiesForTesting(List<CommunitySummary> value) {
+    _communities = List<CommunitySummary>.of(value)..sort(_compareCommunities);
+    _loading = false;
+    _error = null;
+    notifyListeners();
+  }
+
+  static int _compareCommunities(CommunitySummary a, CommunitySummary b) {
+    final liveA =
+        SocialUnreadStore.instance.communityPreview(a.id)?.createdAtUtc;
+    final liveB =
+        SocialUnreadStore.instance.communityPreview(b.id)?.createdAtUtc;
+    final lastA = _latestUtc(a.lastMessageAt, liveA);
+    final lastB = _latestUtc(b.lastMessageAt, liveB);
+    return compareRoomsByLatestActivity(
+      aLastMessageAtUtc: lastA,
+      aCreatedAtUtc: a.createdAt,
+      bLastMessageAtUtc: lastB,
+      bCreatedAtUtc: b.createdAt,
+      aId: a.id,
+      bId: b.id,
+    );
+  }
+
+  static DateTime? _latestUtc(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return b.isAfter(a) ? b : a;
+  }
+
+  /// Memajukan stempel pesan terbaru komunitas [communityId] dan langsung
+  /// mengurutkan ulang daftar komunitas sehingga berada di posisi teratas.
+  void recordLatestActivity(String communityId, DateTime atUtc) {
+    if (communityId.isEmpty || _communities.isEmpty) return;
+    final utc = atUtc.toUtc();
+    var changed = false;
+    final updated = _communities.map((c) {
+      if (c.id != communityId) return c;
+      if (c.lastMessageAt != null && !utc.isAfter(c.lastMessageAt!)) {
+        return c;
+      }
+      changed = true;
+      return c.copyWith(lastMessageAt: utc);
+    }).toList();
+    if (!changed) return;
+    updated.sort(_compareCommunities);
+    _communities = updated;
+    notifyListeners();
+  }
 
   /// Mengosongkan daftar komunitas dan stempel kunjungan saat berganti akun.
   void clearForAccountChange() {
@@ -263,8 +321,12 @@ class CommunityService extends ChangeNotifier {
             isJoined: r['is_joined'] == true,
             createdAt: DateTime.tryParse(r['created_at']?.toString() ?? '') ??
                 DateTime.now().toUtc(),
+            lastMessageAt:
+                DateTime.tryParse(r['last_message_at']?.toString() ?? '')
+                    ?.toUtc(),
           );
-        }).toList();
+        }).toList()
+          ..sort(_compareCommunities);
         if (creatorProfiles.isNotEmpty) {
           unawaited(PublicProfileCacheService.instance.putAll(creatorProfiles));
         }
@@ -432,7 +494,8 @@ class CommunityService extends ChangeNotifier {
     final nowIso = nowUtc.toIso8601String();
     _firstEnteredCache[communityId] = nowUtc;
 
-    final memberFuture = client.from('community_members').upsert(<String, dynamic>{
+    final memberFuture =
+        client.from('community_members').upsert(<String, dynamic>{
       'community_id': communityId,
       'user_id': user.id,
       'role': 'owner',
@@ -470,8 +533,8 @@ class CommunityService extends ChangeNotifier {
       createdBy: row['owner_id'].toString(),
       memberCount: 1,
       isJoined: true,
-      createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
-          nowUtc,
+      createdAt:
+          DateTime.tryParse(row['created_at']?.toString() ?? '') ?? nowUtc,
     );
     _communities = <CommunitySummary>[
       created,
@@ -661,7 +724,8 @@ class CommunityService extends ChangeNotifier {
     }
     final effectiveLimit = limit.clamp(1, 200);
     final probeLimit = effectiveLimit + 1;
-    final effectiveSince = (sinceUtc ?? await recordFirstEntry(communityId))?.toUtc();
+    final effectiveSince =
+        (sinceUtc ?? await recordFirstEntry(communityId))?.toUtc();
 
     try {
       final raw = await client.rpc(
@@ -669,7 +733,8 @@ class CommunityService extends ChangeNotifier {
         params: <String, dynamic>{
           'p_community_id': communityId,
           'p_limit': probeLimit,
-          if (beforeUtc != null) 'p_before': beforeUtc.toUtc().toIso8601String(),
+          if (beforeUtc != null)
+            'p_before': beforeUtc.toUtc().toIso8601String(),
           if (effectiveSince != null)
             'p_since': effectiveSince.toIso8601String(),
         },
@@ -858,9 +923,8 @@ class CommunityService extends ChangeNotifier {
     }).toList();
 
     final hasMore = parsed.length > effectiveLimit;
-    final trimmed = hasMore
-        ? parsed.sublist(parsed.length - effectiveLimit)
-        : parsed;
+    final trimmed =
+        hasMore ? parsed.sublist(parsed.length - effectiveLimit) : parsed;
     return (messages: trimmed, hasMore: hasMore);
   }
 
@@ -897,6 +961,7 @@ class CommunityService extends ChangeNotifier {
           final lastSeen = r['last_seen_at'] != null
               ? DateTime.tryParse(r['last_seen_at'].toString())?.toUtc()
               : null;
+          final isOfficial = r['is_official'] == true;
           profiles.add(
             PublicProfile(
               userId: uid,
@@ -904,6 +969,7 @@ class CommunityService extends ChangeNotifier {
               fullName: fullName,
               avatarUrl: avatarUrl,
               lastSeenAtUtc: lastSeen,
+              isOfficial: isOfficial,
             ),
           );
           members.add(
@@ -917,6 +983,7 @@ class CommunityService extends ChangeNotifier {
                       ?.toUtc() ??
                   DateTime.now().toUtc(),
               lastSeenAt: lastSeen,
+              isOfficial: isOfficial,
             ),
           );
         }
@@ -1025,6 +1092,15 @@ class CommunityService extends ChangeNotifier {
         'reply_to_message_id': replyToMessageId,
       if (mentionedUserIds.isNotEmpty) 'mentioned_user_ids': mentionedUserIds,
     });
+    final nowUtc = DateTime.now().toUtc();
+    recordLatestActivity(communityId, nowUtc);
+    SocialUnreadStore.instance.recordCommunityActivity(
+      communityId: communityId,
+      createdAtUtc: nowUtc,
+      snippet: '${sender.senderName}: $trimmed',
+      senderId: user.id,
+      markUnread: false,
+    );
   }
 
   Future<void> sendImageMessage({
@@ -1058,6 +1134,15 @@ class CommunityService extends ChangeNotifier {
         'reply_to_message_id': replyToMessageId,
       if (mentionedUserIds.isNotEmpty) 'mentioned_user_ids': mentionedUserIds,
     });
+    final nowUtc = DateTime.now().toUtc();
+    recordLatestActivity(communityId, nowUtc);
+    SocialUnreadStore.instance.recordCommunityActivity(
+      communityId: communityId,
+      createdAtUtc: nowUtc,
+      snippet: '${sender.senderName}: Foto',
+      senderId: user.id,
+      markUnread: false,
+    );
   }
 
   /// Mengunggah video maks. 60 detik dan thumbnail WebP frame pertama ke Cloudflare R2.
@@ -1132,6 +1217,15 @@ class CommunityService extends ChangeNotifier {
         ..remove('media_thumbnail_url');
       await client.from('community_messages').insert(fallback);
     }
+    final nowUtc = DateTime.now().toUtc();
+    recordLatestActivity(communityId, nowUtc);
+    SocialUnreadStore.instance.recordCommunityActivity(
+      communityId: communityId,
+      createdAtUtc: nowUtc,
+      snippet: '${sender.senderName}: Video',
+      senderId: user.id,
+      markUnread: false,
+    );
   }
 
   RealtimeChannel? subscribeMessages({

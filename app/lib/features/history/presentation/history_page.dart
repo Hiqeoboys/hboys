@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../design/background/app_background.dart';
 import '../../../design/background/page_background.dart';
+import '../../../design/gooey/gooey_selector.dart';
 import '../../../design/tokens.dart';
 import '../../../design/widgets/hiqeo_back_button.dart';
 import '../../../design/widgets/hiqeo_button.dart';
@@ -28,6 +29,15 @@ import '../../tracking/domain/tracking_session.dart';
 import '../../tracking/presentation/tracking_view_data.dart';
 import '../../tracking/presentation/widgets/live_route_polyline_view.dart';
 
+/// Tab jenis aktivitas pada halaman Riwayat.
+enum _HistoryTab {
+  hiking('Pendakian'),
+  jogging('Jogging');
+
+  const _HistoryTab(this.label);
+  final String label;
+}
+
 /// Halaman Riwayat (Pendakian & Riwayat Jogging, 100% bekerja offline dari SQLite lokal).
 class HistoryPage extends StatefulWidget {
   const HistoryPage({
@@ -48,7 +58,7 @@ class _HistoryPageState extends State<HistoryPage> {
   List<TrackingSession> _sessions = const <TrackingSession>[];
   final Map<String, List<Offset>> _joggingRoutes = <String, List<Offset>>{};
   final Set<String> _loadingRoutes = <String>{};
-  int _selectedTab = 0; // 0 = Pendakian, 1 = Riwayat Jogging
+  _HistoryTab _selectedTab = _HistoryTab.hiking;
   bool _loading = true;
   String? _error;
 
@@ -186,7 +196,7 @@ class _HistoryPageState extends State<HistoryPage> {
   @override
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
-    final isJoggingTab = _selectedTab == 1;
+    final isJoggingTab = _selectedTab == _HistoryTab.jogging;
     final visibleSessions = _sessions
         .where((s) => isJoggingTab ? s.isJogging : !s.isJogging)
         .toList(growable: false);
@@ -226,34 +236,51 @@ class _HistoryPageState extends State<HistoryPage> {
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             color: colors.surface,
-                            borderRadius:
-                                BorderRadius.circular(HiqeoRadius.pill),
+                            borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: colors.hairline),
                           ),
-                          child: Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: _HistoryTabPill(
-                                  key: const ValueKey<String>(
-                                    'history-tab-hiking',
+                          child: GooeySelector<_HistoryTab>(
+                            key: const ValueKey<String>('history-tab-selector'),
+                            axis: Axis.horizontal,
+                            expandItems: true,
+                            gap: 4,
+                            borderRadius: 16,
+                            indicatorColor: colors.primary,
+                            itemPadding: const EdgeInsets.symmetric(
+                              vertical: 11,
+                              horizontal: 8,
+                            ),
+                            selected: _selectedTab,
+                            onChanged: (tab) {
+                              if (_selectedTab == tab) return;
+                              setState(() => _selectedTab = tab);
+                            },
+                            items: <GooeySelectorItem<_HistoryTab>>[
+                              for (final tab in _HistoryTab.values)
+                                GooeySelectorItem<_HistoryTab>(
+                                  value: tab,
+                                  semanticsLabel: tab.label,
+                                  builder: (context, state) => Center(
+                                    key: ValueKey<String>(
+                                      'history-tab-${tab.name}',
+                                    ),
+                                    child: Text(
+                                      tab.label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color.lerp(
+                                          colors.textSecondary,
+                                          colors.onPrimary,
+                                          state.coverage,
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                  label: 'Pendakian',
-                                  selected: !isJoggingTab,
-                                  onTap: () =>
-                                      setState(() => _selectedTab = 0),
                                 ),
-                              ),
-                              Expanded(
-                                child: _HistoryTabPill(
-                                  key: const ValueKey<String>(
-                                    'history-tab-jogging',
-                                  ),
-                                  label: 'Jogging',
-                                  selected: isJoggingTab,
-                                  onTap: () =>
-                                      setState(() => _selectedTab = 1),
-                                ),
-                              ),
                             ],
                           ),
                         ),
@@ -821,46 +848,6 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HistoryTabPill extends StatelessWidget {
-  const _HistoryTabPill({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = HiqeoColors.of(context);
-    return Material(
-      color: selected ? colors.primary : Colors.transparent,
-      borderRadius: BorderRadius.circular(HiqeoRadius.pill),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(HiqeoRadius.pill),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: selected ? colors.onPrimary : colors.textSecondary,
-            ),
           ),
         ),
       ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,11 +10,17 @@ import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/line_icons.dart';
+import '../../../infrastructure/supabase/supabase_services.dart';
+import '../../auth/application/account_controller.dart';
+import '../../auth/presentation/account_page.dart';
 import '../application/plus_controller.dart';
 import '../application/plus_navigation.dart';
 import '../application/plus_scope.dart';
 import '../domain/plus_entitlement.dart';
 import '../domain/plus_plan.dart';
+import '../domain/plus_remote_config.dart';
+import 'widgets/plus_grace_warning_card.dart';
+import 'widgets/plus_subscription_history_card.dart';
 import 'widgets/plus_widgets.dart';
 
 /// D1 Paywall.
@@ -26,10 +34,14 @@ class PaywallPage extends StatefulWidget {
     super.key,
     this.notice,
     this.requireFullSocialPlan = false,
+    this.accountController,
+    this.isSignedInOverride,
   });
 
   final String? notice;
   final bool requireFullSocialPlan;
+  final AccountController? accountController;
+  final bool? isSignedInOverride;
 
   @override
   State<PaywallPage> createState() => _PaywallPageState();
@@ -37,6 +49,74 @@ class PaywallPage extends StatefulWidget {
 
 class _PaywallPageState extends State<PaywallPage> {
   String? _selectedPlanId;
+  bool _historyRequested = false;
+
+  AccountController? get _account =>
+      widget.accountController ?? SupabaseServices.sharedAccountController;
+
+  bool get _isSignedIn {
+    final override = widget.isSignedInOverride;
+    if (override != null) return override;
+    if (_account?.user != null) return true;
+    return SupabaseServices.clientOrNull?.auth.currentUser != null;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_historyRequested) {
+      _historyRequested = true;
+      unawaited(PlusScope.maybeOf(context)?.refreshSubscriptionHistory());
+    }
+  }
+
+  Future<bool> _ensureSignedInBeforePurchase() async {
+    if (_isSignedIn) return true;
+    final goLogin = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) {
+        final colors = HiqeoColors.of(dialogCtx);
+        return AlertDialog(
+          key: const ValueKey<String>('paywall-login-guard-dialog'),
+          backgroundColor: colors.surface,
+          title: const Text('Masuk akun dulu'),
+          content: const Text(
+            'Silakan masuk dengan Google atau Apple terlebih dahulu supaya langganan Hiqeo Plus terhubung aman ke akunmu.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(false),
+              child: const Text('Nanti saja'),
+            ),
+            FilledButton(
+              key: const ValueKey<String>('paywall-login-confirm'),
+              onPressed: () => Navigator.of(dialogCtx).pop(true),
+              child: const Text('Masuk sekarang'),
+            ),
+          ],
+        );
+      },
+    );
+    if (goLogin != true || !mounted) return false;
+
+    final router = GoRouter.maybeOf(context);
+    if (router != null) {
+      await router.push('/akun?returnTo=%2Fplus');
+    } else {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => AccountPage(
+            controller: widget.accountController,
+            returnToRoute: '/plus',
+          ),
+        ),
+      );
+    }
+    if (!mounted) return false;
+    setState(() {});
+    unawaited(PlusScope.maybeOf(context)?.refreshSubscriptionHistory());
+    return false;
+  }
 
   PlusPlan? _selectedPlan(List<PlusPlan> plans) {
     if (plans.isEmpty) return null;
@@ -53,6 +133,8 @@ class _PaywallPageState extends State<PaywallPage> {
   }
 
   Future<void> _purchase(PlusController controller, PlusPlan plan) async {
+    final signedIn = await _ensureSignedInBeforePurchase();
+    if (!signedIn || !mounted) return;
     final result = await controller.purchase(plan.id);
     if (!mounted) return;
     _showMessage(
@@ -63,6 +145,8 @@ class _PaywallPageState extends State<PaywallPage> {
   }
 
   Future<void> _restore(PlusController controller) async {
+    final signedIn = await _ensureSignedInBeforePurchase();
+    if (!signedIn || !mounted) return;
     final result = await controller.restore();
     if (!mounted) return;
     _showMessage(
@@ -149,10 +233,21 @@ class _PaywallPageState extends State<PaywallPage> {
             .toList(growable: false)
         : allPlans;
     final selected = _selectedPlan(plans);
-    final active = hasPlus && !showSocialUpgrade;
+    final access = plus?.access;
+    final isGrace = access?.isGrace ?? false;
+    final isExpired = access?.isExpired ?? false;
+    final showGraceOrExpiredCard =
+        (isGrace || isExpired) && !showSocialUpgrade;
+    // Saat masa tenggang berakhir / dalam masa tenggang, biarkan tombol utama
+    // menawarkan pembelian ulang ketika paket tersedia.
+    final active = hasPlus && !showSocialUpgrade && !isGrace;
     final busy = plus?.isWorking ?? false;
     final canBuy = !active && !busy && selected != null;
     final noticeText = widget.notice?.trim();
+    final graceDays =
+        plus?.config?.effectiveGraceDays ?? PlusRemoteConfig.fallbackGraceDays;
+    final showHistory = (plus?.hasEverSubscribed ?? false) &&
+        (plus?.subscriptionHistory.isNotEmpty ?? false);
 
     return PlusScrollPage(
       topBar: PlusTopBar(
@@ -166,7 +261,9 @@ class _PaywallPageState extends State<PaywallPage> {
             ? 'Kelola langganan'
             : (plans.isEmpty
                 ? 'Paket belum tersedia'
-                : (busy ? 'Memproses…' : 'Berlangganan')),
+                : (busy
+                    ? 'Memproses…'
+                    : (isGrace || isExpired ? 'Berlangganan lagi' : 'Berlangganan'))),
         onPressed: active
             ? () => context.push(PlusRoutes.manage)
             : (canBuy
@@ -185,6 +282,18 @@ class _PaywallPageState extends State<PaywallPage> {
             key: const ValueKey<String>('paywall-custom-notice'),
             icon: HiqeoIcons.lock,
             text: noticeText,
+          ),
+          const SizedBox(height: HiqeoSpacing.lg),
+        ],
+        if (showGraceOrExpiredCard && access != null) ...<Widget>[
+          PlusGraceWarningCard(
+            access: access,
+            graceDays: graceDays,
+            onSubscribeAgain: () {
+              if (plus != null && selected != null) {
+                unawaited(_purchase(plus, selected));
+              }
+            },
           ),
           const SizedBox(height: HiqeoSpacing.lg),
         ],
@@ -274,6 +383,10 @@ class _PaywallPageState extends State<PaywallPage> {
           ),
         ),
         const SizedBox(height: HiqeoSpacing.lg),
+        if (showHistory) ...<Widget>[
+          PlusSubscriptionHistoryCard(entries: plus!.subscriptionHistory),
+          const SizedBox(height: HiqeoSpacing.lg),
+        ],
         PlusNotice(
           icon: HiqeoIcons.lock,
           text:
@@ -527,7 +640,7 @@ class _ActivePlanCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: HiqeoSpacing.md),
-          if (plus?.hasFullSocialAccess ?? false) ...<Widget>[
+          if (plus?.hasFullPlanIncludingGrace ?? false) ...<Widget>[
             HiqeoButton(
               label: 'Analitik lanjutan',
               variant: HiqeoButtonVariant.secondary,

@@ -273,7 +273,9 @@ class PackingListStore extends ChangeNotifier {
     _selectedIds.clear();
     _packedIds.clear();
     _stage1Done = false;
-    await _persist();
+    try {
+      await _persist();
+    } catch (_) {}
     notifyListeners();
   }
 }
@@ -575,18 +577,34 @@ class SoloHikePlan {
     required this.mountainName,
     this.trailId,
     this.trailName,
+    this.isStarted = false,
   });
 
   final String mountainId;
   final String mountainName;
   final String? trailId;
   final String? trailName;
+  final bool isStarted;
+
+  SoloHikePlan copyWith({
+    String? trailId,
+    String? trailName,
+    bool? isStarted,
+  }) =>
+      SoloHikePlan(
+        mountainId: mountainId,
+        mountainName: mountainName,
+        trailId: trailId ?? this.trailId,
+        trailName: trailName ?? this.trailName,
+        isStarted: isStarted ?? this.isStarted,
+      );
 
   Map<String, Object?> toJson() => <String, Object?>{
         'mountain_id': mountainId,
         'mountain_name': mountainName,
         'trail_id': trailId,
         'trail_name': trailName,
+        'is_started': isStarted,
       };
 
   static SoloHikePlan? fromJson(Object? raw) {
@@ -599,6 +617,7 @@ class SoloHikePlan {
       mountainName: mountainName,
       trailId: raw['trail_id']?.toString(),
       trailName: raw['trail_name']?.toString(),
+      isStarted: raw['is_started'] == true,
     );
   }
 }
@@ -618,6 +637,7 @@ class GroupHikePlanStore extends ChangeNotifier {
 
   static const String _keyPlan = 'hiqeo_active_group_hike_plan_v1';
   static const String _keySoloPlan = 'hiqeo_active_solo_hike_plan_v1';
+  static const String _keyCompletedInvites = 'hiqeo_completed_hike_invites_v1';
 
   SharedPreferences? _prefs;
   bool _loaded = false;
@@ -628,6 +648,7 @@ class GroupHikePlanStore extends ChangeNotifier {
       <String, GroupHikePlan>{};
   final Map<String, String> _groupNamesById = <String, String>{};
   final Set<String> _cancelledInviteIds = <String>{};
+  final Set<String> _completedInviteIds = <String>{};
   final Set<String> _handledStartedKeys = <String>{};
   final StreamController<GroupHikePlan> _hikeStartedCtrl =
       StreamController<GroupHikePlan>.broadcast();
@@ -769,15 +790,20 @@ class GroupHikePlanStore extends ChangeNotifier {
     final parsed = GroupHikePlan.fromPrepRow(row, groupName: knownName);
     if (parsed == null) return;
 
-    if (parsed.isCancelled) {
-      _cancelledInviteIds.add(parsed.inviteId);
+    if (parsed.isCancelled ||
+        parsed.isCompleted ||
+        _completedInviteIds.contains(parsed.inviteId)) {
+      if (parsed.isCancelled) {
+        _cancelledInviteIds.add(parsed.inviteId);
+      }
       _activePlansByGroupId.remove(parsed.groupId);
       if (_activePlan?.groupId == parsed.groupId) {
         await setPlan(null);
       } else {
         notifyListeners();
       }
-      if (parsed.inviteMessageClientId != null &&
+      if (parsed.isCancelled &&
+          parsed.inviteMessageClientId != null &&
           parsed.inviteMessageClientId!.isNotEmpty) {
         await _markLocalInviteMessageCancelled(
           groupId: parsed.groupId,
@@ -910,10 +936,21 @@ class GroupHikePlanStore extends ChangeNotifier {
     _activePlan = null;
     _soloPlan = null;
     final prefs = await _getPrefs();
+    _completedInviteIds
+      ..clear()
+      ..addAll(
+        prefs.getStringList(_scopedPlanKey(_keyCompletedInvites)) ??
+            const <String>[],
+      );
     final raw = prefs.getString(_scopedPlanKey(_keyPlan));
     if (raw != null && raw.isNotEmpty) {
       try {
-        _activePlan = GroupHikePlan.fromJson(jsonDecode(raw));
+        final decoded = GroupHikePlan.fromJson(jsonDecode(raw));
+        if (decoded != null &&
+            decoded.isOngoing &&
+            !_completedInviteIds.contains(decoded.inviteId)) {
+          _activePlan = decoded;
+        }
       } catch (_) {
         _activePlan = null;
       }
@@ -1002,30 +1039,47 @@ class GroupHikePlanStore extends ChangeNotifier {
   /// puncak maupun dihentikan manual) untuk mereset status persiapan Beranda.
   Future<void> completeAndResetAfterHike() async {
     final current = _activePlan;
+    final affectedGroupIds = <String>{};
     if (current != null) {
-      _activePlansByGroupId.remove(current.groupId);
+      _completedInviteIds.add(current.inviteId);
+      affectedGroupIds.add(current.groupId);
     }
+    for (final entry in _activePlansByGroupId.entries) {
+      if (entry.value.isStarted || entry.key == current?.groupId) {
+        _completedInviteIds.add(entry.value.inviteId);
+        affectedGroupIds.add(entry.key);
+      }
+    }
+    _activePlansByGroupId.clear();
     _activePlan = null;
     _soloPlan = null;
     try {
       final prefs = await _getPrefs();
       await prefs.remove(_scopedPlanKey(_keyPlan));
       await prefs.remove(_scopedPlanKey(_keySoloPlan));
+      final capped = _completedInviteIds.length > 50
+          ? _completedInviteIds
+              .skip(_completedInviteIds.length - 50)
+              .toList(growable: false)
+          : _completedInviteIds.toList(growable: false);
+      await prefs.setStringList(_scopedPlanKey(_keyCompletedInvites), capped);
     } catch (_) {}
     notifyListeners();
-    if (current == null || !isValidUuid(current.groupId)) return;
     final client = SupabaseServices.clientOrNull;
     if (client == null || client.auth.currentUser == null) return;
-    try {
-      await client
-          .from('group_hike_prep')
-          .update(<String, dynamic>{
-            'status': 'completed',
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('group_id', current.groupId)
-          .timeout(const Duration(seconds: 9));
-    } catch (_) {}
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    for (final gid in affectedGroupIds.where(isValidUuid)) {
+      try {
+        await client
+            .from('group_hike_prep')
+            .update(<String, dynamic>{
+              'status': 'completed',
+              'updated_at': nowIso,
+            })
+            .eq('group_id', gid)
+            .timeout(const Duration(seconds: 9));
+      } catch (_) {}
+    }
   }
 
   Future<void> markUserReady(String inviteId, String userId) async {
@@ -1058,6 +1112,7 @@ class GroupHikePlanStore extends ChangeNotifier {
   /// Menyimpan 1 baris status persiapan aktif per `group_id` di tabel
   /// `group_hike_prep` (mencegah duplikasi ajakan "Siap").
   Future<GroupHikePlan> upsertRemotePlan(GroupHikePlan plan) async {
+    _completedInviteIds.remove(plan.inviteId);
     await setPlan(plan);
     final client = SupabaseServices.clientOrNull;
     if (client == null ||
@@ -1336,7 +1391,7 @@ class GroupHikePlanStore extends ChangeNotifier {
         }
         return null;
       }
-      if (!parsed.isOngoing) {
+      if (!parsed.isOngoing || _completedInviteIds.contains(parsed.inviteId)) {
         _activePlansByGroupId.remove(groupId);
         if (_activePlan?.groupId == groupId) {
           await setPlan(null);
@@ -1390,7 +1445,10 @@ class GroupHikePlanStore extends ChangeNotifier {
           row,
           groupName: groupNamesById[gid] ?? _groupNamesById[gid] ?? _activePlan?.groupName,
         );
-        if (parsed != null && parsed.isOngoing && !parsed.isCancelled) {
+        if (parsed != null &&
+            parsed.isOngoing &&
+            !parsed.isCancelled &&
+            !_completedInviteIds.contains(parsed.inviteId)) {
           nextByGroup[gid] = parsed;
           newest ??= parsed;
         }

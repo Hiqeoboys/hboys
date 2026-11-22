@@ -22,6 +22,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.ContactsContract
 import android.provider.MediaStore
+import id.nama.nama_app.media.HiqeoVideoCompressor
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -168,7 +169,7 @@ class MainActivity : FlutterActivity() {
                     }
                     "extractVideoThumbnail" -> {
                         val source = call.argument<String>("source")
-                        val maxWidth = call.argument<Int>("maxWidth") ?: 720
+                        val maxWidth = call.argument<Int>("maxWidth") ?: 960
                         if (source.isNullOrEmpty()) {
                             result.success(null)
                             return@setMethodCallHandler
@@ -176,6 +177,26 @@ class MainActivity : FlutterActivity() {
                         mediaExecutor.execute {
                             val thumb = extractVideoThumbnail(source, maxWidth)
                             mainHandler.post { result.success(thumb) }
+                        }
+                    }
+                    "compressVideo" -> {
+                        val sourcePath = call.argument<String>("sourcePath")
+                        val maxHeight = call.argument<Int>("maxHeight") ?: 720
+                        val bitrateBps = call.argument<Int>("bitrateBps") ?: 3000000
+                        val maxBytes = call.argument<Int>("maxBytes") ?: (25 * 1024 * 1024)
+                        if (sourcePath.isNullOrEmpty()) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        mediaExecutor.execute {
+                            val compressedPath = HiqeoVideoCompressor.compressVideo(
+                                cacheDir = cacheDir,
+                                sourcePath = sourcePath,
+                                maxHeight = maxHeight,
+                                bitrateBps = bitrateBps,
+                                maxBytes = maxBytes,
+                            )
+                            mainHandler.post { result.success(compressedPath) }
                         }
                     }
                     "getAppVersion" -> {
@@ -479,7 +500,7 @@ class MainActivity : FlutterActivity() {
                 Bitmap.CompressFormat.WEBP
             }
             val out = ByteArrayOutputStream()
-            scaled.compress(format, 80, out)
+            scaled.compress(format, 85, out)
             if (!scaled.isRecycled) scaled.recycle()
             out.toByteArray()
         } catch (_: Throwable) {

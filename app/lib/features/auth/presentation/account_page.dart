@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -16,7 +15,10 @@ import '../../../design/background/app_background.dart';
 import '../../../design/glass/glass_surface.dart';
 import '../../../design/glass/hiqeo_liquid_glass.dart';
 import '../../../design/layout.dart';
+import '../../../design/system_ui.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/account_badges.dart';
+import '../../../design/widgets/fullscreen_avatar_viewer_page.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../../../design/widgets/persistent_media_image.dart';
@@ -26,30 +28,41 @@ import '../../../infrastructure/storage/r2_uploader.dart';
 import '../../../infrastructure/supabase/supabase_services.dart';
 import '../application/account_controller.dart';
 import '../domain/auth_service.dart';
+import '../domain/username_policy.dart';
 import 'change_username_sheet.dart';
 
 /// Halaman Akun: mengelola username (dengan jeda 7 hari & moderasi server),
-/// akun penyedia masuk (Google/Apple), ganti akun, keluar, dan hapus akun.
+/// penautan akun Google/Apple, ganti akun, keluar, dan hapus akun.
 ///
 /// Seluruh tampilan grup dan undangan telah dipindahkan ke tab Grup.
 class AccountPage extends StatefulWidget {
   AccountPage({
     super.key,
     AccountController? controller,
+    this.returnToRoute,
     this.onClearAllLocalData,
     this.pickAvatarBytes,
     this.avatarUploader,
     this.bannerDismissDuration = const Duration(milliseconds: 4500),
   })  : _controller =
-            controller ?? SupabaseServices.createAccountController(),
-        _ownsController = controller == null;
+            controller ??
+                SupabaseServices.sharedAccountController ??
+                SupabaseServices.createAccountController(),
+        _ownsController =
+            controller == null &&
+                SupabaseServices.sharedAccountController == null;
 
   final AccountController _controller;
   final bool _ownsController;
+  final String? returnToRoute;
   final Future<void> Function()? onClearAllLocalData;
   final Future<Uint8List?> Function(ImageSource source)? pickAvatarBytes;
   final R2Uploader? avatarUploader;
   final Duration bannerDismissDuration;
+
+  /// Jarak vertikal konsisten di atas dan di bawah tombol "Hapus akun"
+  /// agar simetris antara tombol "Keluar" dan tepi atas navbar mengambang.
+  static const double deleteActionGap = 28.0;
 
   @override
   State<AccountPage> createState() => _AccountPageState();
@@ -57,6 +70,8 @@ class AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<AccountPage> {
   bool _deletingAccount = false;
+  late bool _wasSignedIn;
+  bool _returnedAfterLogin = false;
   Timer? _bannerAutoDismissTimer;
   Timer? _bannerClearTimer;
   String? _activeBannerKey;
@@ -67,6 +82,7 @@ class _AccountPageState extends State<AccountPage> {
   @override
   void initState() {
     super.initState();
+    _wasSignedIn = widget._controller.user != null;
     widget._controller.addListener(_handleControllerChanged);
     widget._controller.initialize();
     _syncStatusBanner(scheduleSetState: false);
@@ -77,6 +93,8 @@ class _AccountPageState extends State<AccountPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget._controller != widget._controller) {
       oldWidget._controller.removeListener(_handleControllerChanged);
+      _wasSignedIn = widget._controller.user != null;
+      _returnedAfterLogin = false;
       widget._controller.addListener(_handleControllerChanged);
       _syncStatusBanner(scheduleSetState: false);
     }
@@ -94,6 +112,37 @@ class _AccountPageState extends State<AccountPage> {
   void _handleControllerChanged() {
     if (!mounted) return;
     _syncStatusBanner(scheduleSetState: true);
+    _checkReturnAfterLogin();
+  }
+
+  void _checkReturnAfterLogin() {
+    final returnTo = widget.returnToRoute;
+    if (returnTo == null || returnTo.isEmpty || _returnedAfterLogin) return;
+    final signedInNow = widget._controller.user != null;
+    if (_wasSignedIn || !signedInNow) {
+      _wasSignedIn = signedInNow;
+      return;
+    }
+    if (widget._controller.isLoading || !widget._controller.isProfileResolved) {
+      return;
+    }
+    _wasSignedIn = true;
+    _returnedAfterLogin = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final router = GoRouter.maybeOf(context);
+      if (widget._controller.needsProfileOnboarding) {
+        if (router != null) {
+          router.go('/lengkapi-profil?next=${Uri.encodeQueryComponent(returnTo)}');
+        }
+        return;
+      }
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(true);
+      } else if (router != null) {
+        router.go(returnTo);
+      }
+    });
   }
 
   void _syncStatusBanner({required bool scheduleSetState}) {
@@ -242,8 +291,8 @@ class _AccountPageState extends State<AccountPage> {
     } else {
       final picked = await ImagePicker().pickImage(
         source: source,
-        maxWidth: 1600,
-        maxHeight: 1600,
+        maxWidth: 2160,
+        maxHeight: 2160,
       );
       if (picked != null) {
         rawBytes = await picked.readAsBytes();
@@ -429,13 +478,17 @@ class _AccountPageState extends State<AccountPage> {
               if (!controller.isConfigured) {
                 return _buildNotConfiguredView(context, colors, theme);
               }
-              final bottomSafePadding = math.max(
-                    AppLayout.bottomInset(context),
-                    MediaQuery.paddingOf(context).bottom +
-                        HiqeoMetrics.navbarHeight +
-                        24,
-                  ) +
-                  28;
+              final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+              final inShell = HiqeoSystemInset.isPresent(context);
+              final bottomOccupied = keyboardOpen
+                  ? 0.0
+                  : (inShell
+                      ? HiqeoMetrics.floatingBottomInset(
+                          HiqeoSystemInset.bottomOf(context),
+                        )
+                      : MediaQuery.paddingOf(context).bottom);
+              final bottomSafePadding =
+                  bottomOccupied + AccountPage.deleteActionGap;
               return RepaintBoundary(
                 key: const ValueKey<String>('account-scroll-boundary'),
                 child: ListView(
@@ -483,6 +536,8 @@ class _AccountPageState extends State<AccountPage> {
                       const SizedBox(height: 12),
                     ],
                     _buildProviderCard(context, controller, colors, theme),
+                    const SizedBox(height: 12),
+                    _buildLinkedAccountsCard(context, controller, colors, theme),
                     const SizedBox(height: 16),
                     HiqeoButton(
                       key: const ValueKey<String>('account-switch-button'),
@@ -506,7 +561,7 @@ class _AccountPageState extends State<AccountPage> {
                           ? null
                           : () => unawaited(_confirmSignOut(controller)),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: AccountPage.deleteActionGap),
                     Center(
                       child: TextButton(
                         key: const ValueKey<String>('account-delete-button'),
@@ -591,21 +646,53 @@ class _AccountPageState extends State<AccountPage> {
       );
     }
 
+    final hasPhoto =
+        localFile != null || (avatarUrl != null && avatarUrl.isNotEmpty);
+    final avatarHeroTag = profileAvatarHeroTag('account_${user.id}');
+    final isOfficial = (profile?.isOfficial == true) ||
+        UsernamePolicy.isOfficialUsername(profile?.username);
+
+    Widget avatarCircle = Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: colors.primary,
+      ),
+      child: avatarChild,
+    );
+    if (hasPhoto) {
+      avatarCircle = Semantics(
+        button: true,
+        label: 'Lihat foto profil $name',
+        child: GestureDetector(
+          key: const ValueKey<String>('account-avatar-tap'),
+          onTap: () => unawaited(
+            openFullscreenAvatarViewer(
+              context,
+              heroTag: avatarHeroTag,
+              displayName: name,
+              avatarUrl: avatarUrl,
+              localFile: localFile,
+              cacheKey: user.id,
+              isOfficial: isOfficial,
+            ),
+          ),
+          child: Hero(
+            tag: avatarHeroTag,
+            child: avatarCircle,
+          ),
+        ),
+      );
+    }
+
     return HiqeoGlassCard(
       key: const ValueKey<String>('account-avatar-card'),
       borderRadius: 24,
       padding: const EdgeInsets.all(16),
       child: Row(
         children: <Widget>[
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: colors.primary,
-            ),
-            child: avatarChild,
-          ),
+          avatarCircle,
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -685,14 +772,27 @@ class _AccountPageState extends State<AccountPage> {
           Row(
             children: <Widget>[
               Expanded(
-                child: Text(
-                  resolved ?? 'Belum diatur',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: colors.textPrimary,
-                  ),
+                child: Row(
+                  children: <Widget>[
+                    Flexible(
+                      child: Text(
+                        resolved ?? 'Belum diatur',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if ((profile?.isOfficial == true) ||
+                        UsernamePolicy.isOfficialUsername(
+                          profile?.username,
+                        )) ...<Widget>[
+                      const SizedBox(width: 6),
+                      const OfficialVerifiedBadge(size: 20),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(width: 12),
@@ -891,6 +991,105 @@ class _AccountPageState extends State<AccountPage> {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLinkedAccountsCard(
+    BuildContext context,
+    AccountController controller,
+    HiqeoColors colors,
+    ThemeData theme,
+  ) {
+    final linkingProvider = controller.linkingProvider;
+    final isGoogleLinked = controller.isProviderLinked(AuthProviderKind.google);
+    final isAppleLinked = controller.isProviderLinked(AuthProviderKind.apple);
+    final linkErr = controller.linkingError;
+    final linkNotice = controller.linkingNotice;
+
+    return HiqeoGlassCard(
+      key: const ValueKey<String>('account-linked-accounts-card'),
+      borderRadius: 24,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Akun tertaut',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tautkan Google dan Apple ke akun ini agar data tetap aman saat login dari Android maupun iOS.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _LinkedProviderRow(
+            rowKey: const ValueKey<String>('account-link-row-google'),
+            buttonKey: const ValueKey<String>('account-link-button-google'),
+            label: 'Google',
+            icon: Image.asset(
+              'assets/brand/google_g.png',
+              width: 20,
+              height: 20,
+              cacheWidth: 96,
+              fit: BoxFit.contain,
+              excludeFromSemantics: true,
+            ),
+            isLinked: isGoogleLinked,
+            isLinking: linkingProvider == AuthProviderKind.google,
+            disabled: controller.isBusy || linkingProvider != null,
+            onLink: () => unawaited(
+              controller.linkProvider(AuthProviderKind.google),
+            ),
+          ),
+          Divider(color: colors.hairline, height: 20),
+          _LinkedProviderRow(
+            rowKey: const ValueKey<String>('account-link-row-apple'),
+            buttonKey: const ValueKey<String>('account-link-button-apple'),
+            label: 'Apple',
+            icon: Image.asset(
+              'assets/brand/apple_logo.png',
+              height: 20,
+              cacheWidth: 96,
+              color: colors.textPrimary,
+              colorBlendMode: BlendMode.srcIn,
+              excludeFromSemantics: true,
+            ),
+            isLinked: isAppleLinked,
+            isLinking: linkingProvider == AuthProviderKind.apple,
+            disabled: controller.isBusy || linkingProvider != null,
+            onLink: () => unawaited(
+              controller.linkProvider(AuthProviderKind.apple),
+            ),
+          ),
+          if (linkErr != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Text(
+              linkErr,
+              key: const ValueKey<String>('account-link-error'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.warningText,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ] else if (linkNotice != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Text(
+              linkNotice,
+              key: const ValueKey<String>('account-link-notice'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1341,6 +1540,116 @@ class _ChangeAccountNameSheetState extends State<_ChangeAccountNameSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _LinkedProviderRow extends StatelessWidget {
+  const _LinkedProviderRow({
+    required this.rowKey,
+    required this.buttonKey,
+    required this.label,
+    required this.icon,
+    required this.isLinked,
+    required this.isLinking,
+    required this.disabled,
+    required this.onLink,
+  });
+
+  final Key rowKey;
+  final Key buttonKey;
+  final String label;
+  final Widget icon;
+  final bool isLinked;
+  final bool isLinking;
+  final bool disabled;
+  final VoidCallback onLink;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+
+    return Row(
+      key: rowKey,
+      children: <Widget>[
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: colors.secondary,
+          ),
+          child: Center(child: icon),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colors.textPrimary,
+                ),
+              ),
+              Text(
+                isLinked ? 'Terhubung ke akun ini' : 'Belum ditautkan',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: isLinked ? colors.primary : colors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (isLinked)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: colors.secondary.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(HiqeoRadius.pill),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(Icons.check_rounded, size: 15, color: colors.primary),
+                const SizedBox(width: 4),
+                Text(
+                  'Terhubung',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          FilledButton.tonal(
+            key: buttonKey,
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.secondary,
+              foregroundColor: colors.textPrimary,
+              minimumSize: const Size(84, 44),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(HiqeoRadius.pill),
+              ),
+            ),
+            onPressed: disabled ? null : onLink,
+            child: isLinking
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text(
+                    'Tautkan',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+          ),
+      ],
     );
   }
 }

@@ -52,7 +52,10 @@ class _ChangeUsernameSheetState extends State<_ChangeUsernameSheet> {
   }
 
   Future<void> _submit() async {
-    final validation = UsernamePolicy.validate(_input.text);
+    final validation = UsernamePolicy.validate(
+      _input.text,
+      userEmail: widget.controller.user?.email,
+    );
     if (!validation.isValid) {
       setState(() => _serverError = validation.errorMessage);
       return;
@@ -81,7 +84,10 @@ class _ChangeUsernameSheetState extends State<_ChangeUsernameSheet> {
     final cooldownDays = widget.controller.usernameCooldownDaysRemaining;
     final isLocked = cooldownDays > 0;
     final currentUsername = widget.controller.profile?.username;
-    final validation = UsernamePolicy.validate(_input.text);
+    final validation = UsernamePolicy.validate(
+      _input.text,
+      userEmail: widget.controller.user?.email,
+    );
     final isUnchanged = currentUsername != null &&
         currentUsername.toLowerCase() == validation.normalized;
     final canSave =

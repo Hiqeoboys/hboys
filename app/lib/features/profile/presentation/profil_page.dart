@@ -10,6 +10,8 @@ import '../../../design/glass/hiqeo_liquid_glass.dart';
 import '../../../design/layout.dart';
 import '../../../design/theme_mode_controller.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/account_badges.dart';
+import '../../../design/widgets/fullscreen_avatar_viewer_page.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../../../design/widgets/persistent_media_image.dart';
@@ -21,6 +23,7 @@ import '../../../infrastructure/power/power_profile_controller.dart';
 import '../../../infrastructure/supabase/supabase_services.dart';
 import '../../auth/application/account_controller.dart';
 import '../../auth/domain/auth_service.dart';
+import '../../auth/domain/username_policy.dart';
 import '../../auth/presentation/account_page.dart';
 import '../../history/presentation/history_page.dart';
 import '../../plus/application/plus_navigation.dart';
@@ -364,16 +367,60 @@ class _ProfilPageState extends State<ProfilPage> {
             ? ''
             : 'Username belum dibuat');
 
+    final plus = PlusScope.maybeOf(context);
+    final isUltima = (plus?.isUltima ?? false) || (profile?.isUltima ?? false);
+    final isOfficial = (profile?.isOfficial == true) ||
+        UsernamePolicy.isOfficialUsername(profile?.username);
+
+    final avatarHeroTag = profileAvatarHeroTag('self_${user.id}');
+    final localAvatarFile =
+        AccountController.cachedLocalAvatarFile(localAvatarPath);
+    final hasAvatar = localAvatarFile != null ||
+        (avatarUrl != null && avatarUrl.trim().isNotEmpty);
+
     return <Widget>[
       // 1. Identitas (avatar 84 dp, nama, @username)
       _ProfileAvatar(
         initial: _initialOf(name),
         avatarUrl: avatarUrl,
         localAvatarPath: localAvatarPath,
+        heroTag: hasAvatar ? avatarHeroTag : null,
+        onTap: hasAvatar
+            ? () => unawaited(
+                  openFullscreenAvatarViewer(
+                    context,
+                    heroTag: avatarHeroTag,
+                    displayName: name,
+                    avatarUrl: avatarUrl,
+                    localFile: localAvatarFile,
+                    cacheKey: user.id,
+                    isOfficial: isOfficial,
+                  ),
+                )
+            : null,
       ),
       const SizedBox(height: 14),
       Center(
-        child: Text(name, style: theme.textTheme.headlineSmall),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Flexible(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall,
+                ),
+              ),
+              if (isOfficial) ...<Widget>[
+                const SizedBox(width: 6),
+                const OfficialVerifiedBadge(size: 20),
+              ],
+            ],
+          ),
+        ),
       ),
       if (handle.isNotEmpty) ...<Widget>[
         const SizedBox(height: 4),
@@ -383,6 +430,14 @@ class _ProfilPageState extends State<ProfilPage> {
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colors.textSecondary,
             ),
+          ),
+        ),
+      ],
+      if (isUltima) ...<Widget>[
+        const SizedBox(height: 8),
+        const Center(
+          child: UltimaBadge(
+            key: ValueKey<String>('profil-ultima-badge'),
           ),
         ),
       ],
@@ -435,11 +490,15 @@ class _ProfileAvatar extends StatelessWidget {
     this.initial,
     this.avatarUrl,
     this.localAvatarPath,
+    this.heroTag,
+    this.onTap,
   });
 
   final String? initial;
   final String? avatarUrl;
   final String? localAvatarPath;
+  final String? heroTag;
+  final VoidCallback? onTap;
 
   static const double _size = 84;
 
@@ -510,21 +569,38 @@ class _ProfileAvatar extends StatelessWidget {
       imageOrFallback = fallbackChild;
     }
 
-    return Center(
-      child: Container(
-        width: _size,
-        height: _size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: signedIn ? colors.primary : colors.surface,
-          border: Border.all(
-            color: colors.glassBorder,
-            width: 1.5,
-          ),
+    Widget avatarBox = Container(
+      width: _size,
+      height: _size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: signedIn ? colors.primary : colors.surface,
+        border: Border.all(
+          color: colors.glassBorder,
+          width: 1.5,
         ),
-        child: imageOrFallback,
       ),
+      child: imageOrFallback,
     );
+    if (heroTag != null) {
+      avatarBox = Hero(
+        tag: heroTag!,
+        child: avatarBox,
+      );
+    }
+    if (onTap != null) {
+      avatarBox = Semantics(
+        button: true,
+        label: 'Lihat foto profil',
+        child: GestureDetector(
+          key: const ValueKey<String>('profil-avatar-tap'),
+          onTap: onTap,
+          child: avatarBox,
+        ),
+      );
+    }
+
+    return Center(child: avatarBox);
   }
 }
 

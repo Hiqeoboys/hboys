@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/utils/clock.dart';
@@ -10,7 +11,8 @@ typedef PresencePingFn = Future<void> Function();
 
 /// Mengelola kehadiran "Terakhir aktif" (`profiles.last_seen_at`) berdasarkan
 /// pembukaan aplikasi (lifecycle `resumed` & heartbeat berkala setiap 2,5 menit),
-/// terpisah sepenuhnya dari fitur berbagi lokasi grup.
+/// serta sinkronisasi pasif lokasi terakhir perangkat (tanpa prompt izin)
+/// agar siaran SOS darurat radius 5 km dapat menjangkau pendaki sekitar.
 class AppPresenceService with WidgetsBindingObserver {
   AppPresenceService({
     PresencePingFn? pingFn,
@@ -23,6 +25,7 @@ class AppPresenceService with WidgetsBindingObserver {
         _minGap = minGap;
 
   static final AppPresenceService instance = AppPresenceService();
+  static DateTime? _lastLocationSyncUtc;
 
   final PresencePingFn _pingFn;
   final Clock _clock;
@@ -132,6 +135,40 @@ class AppPresenceService with WidgetsBindingObserver {
             })
             .eq('id', user.id);
       }
+    } catch (_) {}
+    unawaited(_syncPassiveDeviceLocation(client));
+  }
+
+  static Future<void> _syncPassiveDeviceLocation(SupabaseClient client) async {
+    final now = DateTime.now().toUtc();
+    if (_lastLocationSyncUtc != null &&
+        now.difference(_lastLocationSyncUtc!) < const Duration(minutes: 3)) {
+      return;
+    }
+    try {
+      final serviceOn = await Geolocator.isLocationServiceEnabled();
+      if (!serviceOn) return;
+      final perm = await Geolocator.checkPermission();
+      if (perm != LocationPermission.whileInUse &&
+          perm != LocationPermission.always) {
+        return;
+      }
+      Position? pos = await Geolocator.getLastKnownPosition();
+      pos ??= await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          timeLimit: Duration(seconds: 4),
+        ),
+      );
+      _lastLocationSyncUtc = now;
+      await client.rpc(
+        'upsert_my_device_location',
+        params: <String, dynamic>{
+          'p_lat': pos.latitude,
+          'p_lon': pos.longitude,
+          'p_accuracy_m': pos.accuracy.isFinite ? pos.accuracy.round() : null,
+        },
+      );
     } catch (_) {}
   }
 

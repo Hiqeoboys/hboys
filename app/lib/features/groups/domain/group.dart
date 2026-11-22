@@ -44,6 +44,7 @@ class GroupMember {
     required this.username,
     required this.joinedAtUtc,
     this.role = GroupRole.member,
+    this.isOfficial = false,
   });
 
   final String groupId;
@@ -51,4 +52,5 @@ class GroupMember {
   final String username;
   final GroupRole role;
   final DateTime joinedAtUtc;
+  final bool isOfficial;
 }

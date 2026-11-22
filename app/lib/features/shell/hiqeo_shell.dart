@@ -63,6 +63,9 @@ class HiqeoShell extends StatefulWidget {
   /// bertint rapat di atas peta.
   static const int mapBranchIndex = 1;
 
+  /// Indeks cabang Track untuk memicu penyegaran status izin & kesiapan rekaman.
+  static const int trackBranchIndex = 2;
+
   /// Indeks cabang Grup (untuk lencana undangan & navigasi cepat banner in-app).
   static const int groupBranchIndex = 3;
 
@@ -90,6 +93,7 @@ class _HiqeoShellState extends State<HiqeoShell> {
 
   AccountController? _account;
   StreamSubscription<InAppPushNotification>? _fcmTapSub;
+  bool _redirectingToOnboarding = false;
 
   @override
   void initState() {
@@ -99,9 +103,11 @@ class _HiqeoShellState extends State<HiqeoShell> {
     }
     _account =
         widget.accountController ?? SupabaseServices.sharedAccountController;
+    _account?.addListener(_checkProfileOnboardingRedirect);
     FriendsService.instance.ensureRealtimeSubscribed();
     EmergencyContactSyncService.instance.ensureRealtimeSubscribed();
     UserNotificationsService.instance.ensureRealtimeSubscribed();
+    SocialUnreadStore.instance.ensureRealtimeSubscribed();
     GlobalOffGridOutboxService.instance.start();
     unawaited(UserNotificationsService.instance.loadNotifications());
     GroupHikePlanStore.instance.ensureRealtimeSubscribed(
@@ -117,11 +123,39 @@ class _HiqeoShellState extends State<HiqeoShell> {
       _navigateFromPush(notif);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkProfileOnboardingRedirect();
       if (!mounted || PushNotificationOverlayHost.isActiveIn(context)) return;
       final initialPush =
           FcmNotificationService.instance.takePendingInitialTap();
       if (initialPush != null) _navigateFromPush(initialPush);
     });
+  }
+
+  void _checkProfileOnboardingRedirect() {
+    if (!mounted || _redirectingToOnboarding) return;
+    final account = _account;
+    if (account == null || !account.needsProfileOnboarding) return;
+    final router = GoRouter.maybeOf(context);
+    if (router == null) return;
+    final currentUri = router.routeInformationProvider.value.uri.path;
+    if (currentUri == '/lengkapi-profil' || currentUri == '/akun') return;
+    _redirectingToOnboarding = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _redirectingToOnboarding = false;
+      if (!mounted) return;
+      if (_account?.needsProfileOnboarding == true) {
+        context.go('/lengkapi-profil');
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant HiqeoShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.navigationShell.currentIndex == HiqeoShell.trackBranchIndex &&
+        oldWidget.navigationShell.currentIndex != HiqeoShell.trackBranchIndex) {
+      unawaited(TrackingController.instance.refreshPermissionsAndResume());
+    }
   }
 
   void _navigateFromPush(InAppPushNotification notif) {
@@ -151,6 +185,7 @@ class _HiqeoShellState extends State<HiqeoShell> {
 
   @override
   void dispose() {
+    _account?.removeListener(_checkProfileOnboardingRedirect);
     unawaited(_fcmTapSub?.cancel());
     if (widget.powerController == null) {
       _power.dispose();
@@ -236,6 +271,11 @@ class _HiqeoShellState extends State<HiqeoShell> {
                         onTap: (target) {
                           if (target == HiqeoShell.groupBranchIndex) {
                             unawaited(SocialUnreadStore.instance.refresh());
+                          } else if (target == HiqeoShell.trackBranchIndex) {
+                            unawaited(
+                              TrackingController.instance
+                                  .refreshPermissionsAndResume(),
+                            );
                           }
                           if (target == index) return;
                           widget.navigationShell.goBranch(target);

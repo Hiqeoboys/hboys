@@ -2,8 +2,11 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import '../design/tokens.dart';
+import '../features/auth/presentation/account_page.dart';
+import '../features/auth/presentation/profile_onboarding_page.dart';
 import '../features/chat/presentation/chat_page.dart';
 import '../features/debug/glass_diagnostics_page.dart';
+import '../features/guides/presentation/beginner_guide_page.dart';
 import '../features/history/presentation/history_page.dart';
 import '../features/home/beranda_page.dart';
 import '../features/kartu/presentation/kartu_page.dart';
@@ -63,6 +66,13 @@ GoRouter buildHiqeoRouter() => GoRouter(
           builder: (context, state) => const FirstAidGuidePage(),
         ),
         GoRoute(
+          path: '/panduan-pemula',
+          name: 'panduan-pemula',
+          builder: (context, state) => BeginnerGuidePage(
+            initialTopicId: state.uri.queryParameters['topik'],
+          ),
+        ),
+        GoRoute(
           path: '/riwayat',
           name: 'riwayat',
           builder: (context, state) => const HistoryPage(),
@@ -87,6 +97,20 @@ GoRouter buildHiqeoRouter() => GoRouter(
           path: '/pengaturan',
           name: 'pengaturan',
           builder: (context, state) => const SettingsPage(),
+        ),
+        GoRoute(
+          path: '/akun',
+          name: 'akun',
+          builder: (context, state) => AccountPage(
+            returnToRoute: state.uri.queryParameters['returnTo'],
+          ),
+        ),
+        GoRoute(
+          path: '/lengkapi-profil',
+          name: 'lengkapi-profil',
+          builder: (context, state) => ProfileOnboardingPage(
+            nextRoute: state.uri.queryParameters['next'] ?? '/beranda',
+          ),
         ),
         if (kEnableGlassDiagnostics)
           GoRoute(

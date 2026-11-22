@@ -12,6 +12,7 @@ import '../../../design/widgets/hiqeo_state_view.dart';
 import '../../../design/widgets/nav_bar_visibility.dart';
 import '../../../infrastructure/notifications/push_notification_overlay.dart';
 import '../../../infrastructure/notifications/push_notification_service.dart';
+import '../../safety/presentation/widgets/nearby_sos_modal_overlay.dart';
 import '../../social/data/community_service.dart';
 import '../../social/data/social_unread_store.dart';
 import '../data/user_notifications_service.dart';
@@ -23,8 +24,6 @@ void navigateFromUserNotification(
   UserNotificationItem item,
 ) {
   NavBarVisibilityController.instance.reset();
-  final router = GoRouter.maybeOf(context);
-  if (router == null) return;
 
   final data = <String, dynamic>{
     ...item.data,
@@ -54,6 +53,20 @@ void navigateFromUserNotification(
     data: data,
   );
 
+  final sosMode = notif.rawData['sos_mode']?.trim().toLowerCase();
+  final isNearbyOrUnscopedSos = notif.type == 'sos_nearby' ||
+      ((notif.type == 'sos' || notif.type == 'sos_alert') &&
+          (sosMode == 'nearby' ||
+              notif.groupId == null ||
+              notif.groupId!.trim().isEmpty));
+  if (isNearbyOrUnscopedSos) {
+    unawaited(showNearbySosModalOverlay(context, notif));
+    return;
+  }
+
+  final router = GoRouter.maybeOf(context);
+  if (router == null) return;
+
   switch (notif.type) {
     case 'friend_request':
       router.pushReplacement('/teman');
@@ -68,11 +81,6 @@ void navigateFromUserNotification(
       return;
     case 'sos':
     case 'sos_alert':
-      final gid = notif.groupId;
-      if (gid == null || gid.isEmpty) {
-        router.pushReplacement('/sos');
-        return;
-      }
       dispatchPushNavigation(router, notif, dialogContext: context);
       return;
     case 'community_mention':
@@ -321,6 +329,11 @@ class _NotificationCard extends StatelessWidget {
   final VoidCallback onTap;
 
   _NotificationMeta _meta(HiqeoColors colors) => switch (item.type) {
+        'sos_nearby' => _NotificationMeta(
+            icon: Icons.warning_amber_rounded,
+            accent: colors.warning,
+            categoryLabel: 'SOS Terdekat',
+          ),
         'sos' || 'sos_alert' => _NotificationMeta(
             icon: Icons.warning_amber_rounded,
             accent: colors.warning,

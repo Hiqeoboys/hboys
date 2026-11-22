@@ -77,6 +77,7 @@ class MemberDirectoryEntry {
     this.displayName,
     this.avatarUrl,
     this.lastSeenAtUtc,
+    this.isOfficial = false,
   });
 
   final String userId;
@@ -87,6 +88,7 @@ class MemberDirectoryEntry {
   final String? displayName;
   final String? avatarUrl;
   final DateTime? lastSeenAtUtc;
+  final bool isOfficial;
 
   String get effectiveDisplayName {
     final trimmed = displayName?.trim();

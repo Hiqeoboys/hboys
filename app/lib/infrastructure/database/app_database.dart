@@ -316,9 +316,20 @@ class AppDatabase extends _$AppDatabase {
               full_name TEXT,
               avatar_url TEXT,
               last_seen_at TEXT,
+              is_official INTEGER NOT NULL DEFAULT 0,
               updated_at INTEGER NOT NULL
             )
           ''');
+          final cachedPubCols =
+              await customSelect('PRAGMA table_info(cached_public_profiles)')
+                  .get();
+          final existingPubColNames =
+              cachedPubCols.map((row) => row.read<String>('name')).toSet();
+          if (!existingPubColNames.contains('is_official')) {
+            await customStatement(
+              'ALTER TABLE cached_public_profiles ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0',
+            );
+          }
           await customStatement('''
             CREATE TABLE IF NOT EXISTS local_member_locations (
               group_id TEXT NOT NULL,
@@ -349,10 +360,27 @@ class AppDatabase extends _$AppDatabase {
               is_profile_complete INTEGER NOT NULL DEFAULT 0,
               is_plus INTEGER NOT NULL DEFAULT 0,
               plus_plan_id TEXT,
+              plus_started_at TEXT,
               plus_expires_at TEXT,
+              is_official INTEGER NOT NULL DEFAULT 0,
               updated_at INTEGER NOT NULL
             )
           ''');
+          final cachedUserCols =
+              await customSelect('PRAGMA table_info(cached_user_profiles)')
+                  .get();
+          final existingUserColNames =
+              cachedUserCols.map((row) => row.read<String>('name')).toSet();
+          if (!existingUserColNames.contains('plus_started_at')) {
+            await customStatement(
+              'ALTER TABLE cached_user_profiles ADD COLUMN plus_started_at TEXT',
+            );
+          }
+          if (!existingUserColNames.contains('is_official')) {
+            await customStatement(
+              'ALTER TABLE cached_user_profiles ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0',
+            );
+          }
           await customStatement('''
             CREATE TABLE IF NOT EXISTS cached_remote_groups (
               owner_user_id TEXT NOT NULL,
@@ -396,9 +424,21 @@ class AppDatabase extends _$AppDatabase {
               public_key TEXT NOT NULL,
               joined_at TEXT NOT NULL,
               last_seen_at TEXT,
+              is_official INTEGER NOT NULL DEFAULT 0,
               PRIMARY KEY (group_id, user_id)
             )
           ''');
+          final cachedGroupMemberCols =
+              await customSelect('PRAGMA table_info(cached_group_members)')
+                  .get();
+          final existingMemberColNames = cachedGroupMemberCols
+              .map((row) => row.read<String>('name'))
+              .toSet();
+          if (!existingMemberColNames.contains('is_official')) {
+            await customStatement(
+              'ALTER TABLE cached_group_members ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0',
+            );
+          }
           await customStatement('''
             CREATE TABLE IF NOT EXISTS cached_invitations (
               owner_user_id TEXT NOT NULL,

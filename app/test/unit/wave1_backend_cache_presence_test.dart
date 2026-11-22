@@ -194,7 +194,7 @@ void main() {
       PushNotificationService.instance.activeRoomKey = null;
     });
 
-    test('supports temp mutes, forever 9999-12-31, mention breakthrough & SOS',
+    test('supports temp mutes, forever 9999-12-31, full mute blocking & SOS safety bypass',
         () async {
       const gid = 'g-111';
       const cid = 'c-222';
@@ -255,7 +255,7 @@ void main() {
         isTrue,
       );
 
-      // Mute community for 1 week -> regular chat muted, mention breaks through
+      // Mute community for 1 week -> regular chat AND mention blocked 100%
       await ChatMuteService.instance.muteFor(
         'community',
         cid,
@@ -272,10 +272,10 @@ void main() {
       );
       expect(
         PushNotificationService.instance.shouldShowForegroundBanner(mentionMsg),
-        isTrue,
+        isFalse,
       );
 
-      // Mute forever (9999-12-31) -> even mention suppressed, SOS still urgent
+      // Mute forever (9999-12-31) -> all chat & mentions suppressed, SOS still urgent
       await ChatMuteService.instance.muteForever('community', cid);
       expect(
         ChatMuteService.instance.isMuted('community', cid, nowUtc: now),
@@ -285,6 +285,10 @@ void main() {
       expect(
         PushNotificationService.instance.shouldShowForegroundBanner(mentionMsg),
         isFalse,
+      );
+      expect(
+        PushNotificationService.instance.shouldShowForegroundBanner(sosMsg),
+        isTrue,
       );
     });
   });

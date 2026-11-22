@@ -1,6 +1,50 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 enum AuthProviderKind { google, apple }
+
+enum AuthFailureCode {
+  cancelled,
+  notConfigured,
+  identityAlreadyLinked,
+  manualLinkingDisabled,
+  network,
+  server,
+}
+
+class AuthFailure implements Exception {
+  const AuthFailure(this.code, this.message);
+
+  final AuthFailureCode code;
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+@immutable
+class LinkedIdentity {
+  const LinkedIdentity({
+    required this.provider,
+    this.email,
+    this.identityId,
+  });
+
+  final AuthProviderKind provider;
+  final String? email;
+  final String? identityId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LinkedIdentity &&
+      other.provider == provider &&
+      other.email == email &&
+      other.identityId == identityId;
+
+  @override
+  int get hashCode => Object.hash(provider, email, identityId);
+}
 
 class AuthUser {
   const AuthUser({
@@ -51,6 +95,13 @@ abstract interface class AuthService {
   /// Memutus sesi penyedia identitas saat ini agar pemilih akun tampil kembali,
   /// lalu masuk dengan akun yang baru dipilih.
   Future<void> switchAccount(AuthProviderKind provider);
+
+  /// Mengambil daftar penyedia login (Google/Apple) yang tertaut ke akun aktif.
+  Future<List<LinkedIdentity>> linkedIdentities();
+
+  /// Menautkan penyedia login tambahan (Google/Apple) ke akun yang sedang aktif
+  /// menggunakan UID yang sama tanpa mengganti akun atau menghapus data lokal.
+  Future<void> linkProvider(AuthProviderKind provider);
 
   Future<void> signOut();
 

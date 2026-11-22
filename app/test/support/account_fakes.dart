@@ -18,6 +18,9 @@ class FakeAuthService implements AuthService {
       StreamController<AuthUser?>.broadcast();
   final List<AuthProviderKind> signInCalls = [];
   final List<AuthProviderKind> switchAccountCalls = [];
+  final List<AuthProviderKind> linkCalls = [];
+  List<LinkedIdentity> identities = const <LinkedIdentity>[];
+  Object? linkError;
   int signOutCalls = 0;
   int deleteAccountCalls = 0;
   Object? signInError;
@@ -51,6 +54,28 @@ class FakeAuthService implements AuthService {
   }
 
   @override
+  Future<List<LinkedIdentity>> linkedIdentities() async =>
+      List<LinkedIdentity>.unmodifiable(identities);
+
+  @override
+  Future<void> linkProvider(AuthProviderKind provider) async {
+    linkCalls.add(provider);
+    if (linkError != null) {
+      throw linkError!;
+    }
+    if (!identities.any((i) => i.provider == provider)) {
+      identities = <LinkedIdentity>[
+        ...identities,
+        LinkedIdentity(
+          provider: provider,
+          email: currentUser?.email ?? 'linked@example.com',
+          identityId: 'id-${provider.name}',
+        ),
+      ];
+    }
+  }
+
+  @override
   Future<void> signOut() async {
     signOutCalls++;
     currentUser = null;
@@ -70,15 +95,29 @@ class FakeAuthService implements AuthService {
 class FakeProfileRepository implements ProfileRepository {
   UserProfile? current;
   Object? setUsernameError;
+  final Set<String> takenUsernames = <String>{};
 
   final List<({String username, String publicKeyBase64})> registrations = [];
   final List<String> setUsernameCalls = [];
   final List<String> avatarUrlCalls = [];
   final List<String> updateFullNameCalls = [];
+  final List<String> availabilityChecks = [];
   Object? updateFullNameError;
 
   @override
   Future<UserProfile?> currentProfile() async => current;
+
+  @override
+  Future<UsernameAvailabilityResult> checkUsernameAvailability(
+    String username,
+  ) async {
+    final clean = username.trim().replaceFirst('@', '').toLowerCase();
+    availabilityChecks.add(clean);
+    if (takenUsernames.contains(clean)) {
+      return const UsernameAvailabilityResult(available: false, reason: 'taken');
+    }
+    return const UsernameAvailabilityResult(available: true);
+  }
 
   @override
   Future<UserProfile> registerProfile({

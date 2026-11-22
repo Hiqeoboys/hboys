@@ -34,11 +34,26 @@ class PermissionService {
   const PermissionService();
 
   Future<PermissionReport> check() async {
-    final notification =
-        !Platform.isAndroid || await Permission.notification.isGranted;
-    final whileInUse = await Permission.locationWhenInUse.isGranted;
-    final always = await Permission.locationAlways.isGranted;
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    var notification = !Platform.isAndroid;
+    if (Platform.isAndroid) {
+      try {
+        notification = await Permission.notification.isGranted;
+      } catch (_) {
+        notification = false;
+      }
+    }
+    var whileInUse = false;
+    try {
+      whileInUse = await Permission.locationWhenInUse.isGranted;
+    } catch (_) {}
+    var always = false;
+    try {
+      always = await Permission.locationAlways.isGranted;
+    } catch (_) {}
+    var serviceEnabled = false;
+    try {
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    } catch (_) {}
     var precise = false;
     try {
       precise = await Geolocator.getLocationAccuracy() ==

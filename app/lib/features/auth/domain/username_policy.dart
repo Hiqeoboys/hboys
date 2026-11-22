@@ -11,6 +11,17 @@ abstract final class UsernamePolicy {
   static const int maxLength = 20;
   static const int cooldownDays = 7;
 
+  /// Akun resmi Hiqeo yang di-whitelist memakai `@hiqeo` dan `Hiqeo Official`.
+  static const String officialAccountEmail = 'hiqeoofficial@gmail.com';
+  static const String officialUsername = 'hiqeo';
+  static const String officialDisplayName = 'Hiqeo Official';
+
+  static bool isOfficialEmail(String? email) =>
+      email != null && email.trim().toLowerCase() == officialAccountEmail;
+
+  static bool isOfficialUsername(String? username) =>
+      username != null && normalizeInput(username) == officialUsername;
+
   static final RegExp _allowedChars = RegExp(r'^[a-z0-9_.]+$');
   static final RegExp _edgePunctuation = RegExp(r'^[._]|[._]$');
   static final RegExp _doubleDot = RegExp(r'\.\.');
@@ -112,16 +123,27 @@ abstract final class UsernamePolicy {
   }
 
   /// Memvalidasi format dan kata cadangan di klien untuk umpan balik langsung.
-  static UsernameValidationResult validate(String rawInput) {
+  ///
+  /// Jika [userEmail] adalah akun resmi terverifikasi (`hiqeoofficial@gmail.com`),
+  /// username `@hiqeo` diizinkan tanpa peringatan penolakan.
+  static UsernameValidationResult validate(
+    String rawInput, {
+    String? userEmail,
+  }) {
     final value = normalizeInput(rawInput);
     final lengthOk = value.length >= minLength && value.length <= maxLength;
     final charsOk = value.isNotEmpty && _allowedChars.hasMatch(value);
     final edgesOk = value.isNotEmpty && !_edgePunctuation.hasMatch(value);
     final noDoubleDot = !_doubleDot.hasMatch(value);
 
-    final isReserved =
-        reservedWords.contains(value) ||
-        reservedWords.contains(normalizeForModeration(value));
+    final isWhitelistedOfficial =
+        isOfficialEmail(userEmail) && value == officialUsername;
+    final normalizedMod = normalizeForModeration(value);
+    final isReserved = !isWhitelistedOfficial &&
+        (reservedWords.contains(value) ||
+            reservedWords.contains(normalizedMod) ||
+            (!isOfficialEmail(userEmail) &&
+                (value.contains('hiqeo') || normalizedMod.contains('hiqeo'))));
 
     String? error;
     if (value.isEmpty) {
@@ -147,6 +169,27 @@ abstract final class UsernamePolicy {
       isReserved: isReserved,
       errorMessage: error,
     );
+  }
+
+  /// Validasi nama tampilan agar hanya akun resmi terverifikasi
+  /// (`hiqeoofficial@gmail.com`) yang boleh memakai nama "Hiqeo Official".
+  static String? validateDisplayName(
+    String rawInput, {
+    String? userEmail,
+  }) {
+    final trimmed = rawInput.trim();
+    if (trimmed.isEmpty) return 'Nama akun tidak boleh kosong.';
+    if (trimmed.length > 40) return 'Nama akun maksimal 40 karakter.';
+    if (!isOfficialEmail(userEmail)) {
+      final lower = trimmed.toLowerCase();
+      final mod = normalizeForModeration(trimmed);
+      if (lower.contains('hiqeo official') ||
+          mod.contains('hiqeofficial') ||
+          mod == officialUsername) {
+        return 'Nama tampilan "Hiqeo Official" khusus untuk akun resmi Hiqeo.';
+      }
+    }
+    return null;
   }
 
   /// Memeriksa apakah username lama yang tersimpan masih sesuai aturan saat ini.

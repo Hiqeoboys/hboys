@@ -2080,8 +2080,9 @@ class _MapPageState extends State<MapPage>
         trailName: _selectedTrail?.name,
       );
     } else {
-      unawaited(PackingListStore.instance.clearAll());
-      unawaited(GroupHikePlanStore.instance.completeAndResetAfterHike());
+      TrackingController.instance.clearActiveRoute();
+      await PackingListStore.instance.clearAll();
+      await GroupHikePlanStore.instance.completeAndResetAfterHike();
     }
     if (mounted) {
       if (_panelTrackingController.value < 1.0) {
@@ -2581,11 +2582,30 @@ class _MapPageState extends State<MapPage>
       }
       _summitHandled = false;
       _straightLineAcknowledged = false;
+      final activeGroupId =
+          (_activeGroupPlan?.groupId ?? widget.activeGroupId)?.trim();
       TrackingController.instance.setActiveRoute(
         mountainName: _selectedPackage?.name,
         trailName: _selectedTrail?.name,
         trailId: _selectedTrail?.id,
+        groupId: (activeGroupId != null && activeGroupId.isNotEmpty)
+            ? activeGroupId
+            : null,
       );
+      if ((activeGroupId == null || activeGroupId.isEmpty) &&
+          _selectedPackage != null) {
+        unawaited(
+          _groupPlanStore.setSoloPlan(
+            SoloHikePlan(
+              mountainId: _selectedPackage!.id,
+              mountainName: _selectedPackage!.name,
+              trailId: _selectedTrail?.id,
+              trailName: _selectedTrail?.name,
+              isStarted: true,
+            ),
+          ),
+        );
+      }
       final started = await TrackingController.instance.start(
         activityType: TrackingSession.activityHiking,
         allowForegroundOnly: true,

@@ -135,6 +135,8 @@ class _PersistentMediaImageState extends State<PersistentMediaImage> {
         fit: widget.fit,
         cacheWidth: effectiveCacheWidth,
         cacheHeight: effectiveCacheHeight,
+        filterQuality:
+            effectiveCacheWidth == null ? FilterQuality.high : FilterQuality.low,
         gaplessPlayback: true,
         errorBuilder: (_, __, ___) {
           WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -25,6 +25,7 @@ import '../../../design/glass/hiqeo_liquid_glass.dart';
 import '../../../design/gooey/gooey_selector.dart';
 import '../../../design/layout.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/account_badges.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/hiqeo_state_view.dart';
 import '../../../design/widgets/line_icons.dart';
@@ -344,6 +345,7 @@ class _ChatPageState extends State<ChatPage> {
     if (_isOnline) {
       unawaited(SocialUnreadStore.instance.refresh());
     }
+    SocialUnreadStore.instance.ensureRealtimeSubscribed();
 
     if (widget.initialLocalGroups != null) {
       _localCreatedGroups.addAll(widget.initialLocalGroups!);
@@ -446,6 +448,16 @@ class _ChatPageState extends State<ChatPage> {
     unawaited(_meshIncomingMsgSub?.cancel());
     _meshIncomingMsgSub = _meshRouter!.onIncomingMessage.listen((record) {
       final meta = _findGroupMeta(record.groupId);
+      final isOpenRoom = _viewMode != _GroupViewMode.list &&
+          _activeGroup?.group.id == record.groupId;
+      SocialUnreadStore.instance.recordGroupActivity(
+        groupId: record.groupId,
+        createdAtUtc: record.clientCreatedAtUtc,
+        snippet: formatGroupPreviewSnippetFromRecord(record),
+        senderId: record.senderId,
+        messageId: record.clientMsgId,
+        markUnread: !isOpenRoom && record.senderId != _effectiveUserId,
+      );
       unawaited(
         PushNotificationService.instance.showOfflineMeshMessageNotification(
           record: record,
@@ -608,10 +620,31 @@ class _ChatPageState extends State<ChatPage> {
       _initOffGridStack(database: database);
       unawaited(_localStore?.cleanupDuplicateMessages());
       await _loadPersistedGroups();
+      await _seedLocalGroupActivityFromStore();
     } catch (_) {
       // Pada widget test tanpa path_provider, tetap lanjut dengan state in-memory.
       if (mounted) setState(() {});
     }
+  }
+
+  Future<void> _seedLocalGroupActivityFromStore() async {
+    final store = _localStore;
+    if (store == null) return;
+    try {
+      final latestByGroup = await store.latestMessagePerGroup();
+      if (!mounted || latestByGroup.isEmpty) return;
+      for (final entry in latestByGroup.entries) {
+        final rec = entry.value;
+        SocialUnreadStore.instance.recordGroupActivity(
+          groupId: entry.key,
+          createdAtUtc: rec.clientCreatedAtUtc,
+          snippet: formatGroupPreviewSnippetFromRecord(rec),
+          senderId: rec.senderId,
+          messageId: rec.clientMsgId,
+          markUnread: false,
+        );
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadPersistedGroups() async {
@@ -731,6 +764,7 @@ class _ChatPageState extends State<ChatPage> {
 
   void _onAccountChanged() {
     if (!mounted) return;
+    SocialUnreadStore.instance.ensureRealtimeSubscribed();
     if (_account.groups.isNotEmpty) {
       GroupHikePlanStore.instance.ensureRealtimeSubscribed(
         groupNamesById: <String, String>{
@@ -778,6 +812,12 @@ class _ChatPageState extends State<ChatPage> {
     return merged;
   }
 
+  static DateTime? _newerUtc(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return b.isAfter(a) ? b : a;
+  }
+
   List<GroupCardData> get _visibleGroups {
     final list = <GroupCardData>[];
     final seenIds = <String>{};
@@ -795,6 +835,11 @@ class _ChatPageState extends State<ChatPage> {
           (msgs?.any((m) => m.type == PacketType.location) ?? false) ||
               (_groupMemberLocations[id]?.any((m) => m.hasSignal) ?? false);
       final preview = SocialUnreadStore.instance.groupPreview(id);
+      final storeRecs = _storeMessagesByGroup[id];
+      final storeLastAt = (storeRecs != null && storeRecs.isNotEmpty)
+          ? storeRecs.last.clientCreatedAtUtc
+          : null;
+      final lastMessageAtUtc = _newerUtc(preview?.createdAtUtc, storeLastAt);
       final activePlan = GroupHikePlanStore.instance.activePlanForGroup(id);
       final hasActiveInvite = activePlan != null && !activePlan.isCancelled;
       final readyCount = hasActiveInvite ? activePlan.readyUserIds.length : 0;
@@ -807,7 +852,7 @@ class _ChatPageState extends State<ChatPage> {
           hasActiveHikeInvite: hasActiveInvite,
           locationShared: hasLocationMsg,
           lastMessageSnippet: preview?.snippet,
-          lastMessageAtUtc: preview?.createdAtUtc,
+          lastMessageAtUtc: lastMessageAtUtc,
           hasUnread: preview?.hasUnread ?? false,
         ),
       );
@@ -827,6 +872,11 @@ class _ChatPageState extends State<ChatPage> {
       );
       final extraMembers = _localExtraMembers[g.id]?.length ?? 0;
       final preview = SocialUnreadStore.instance.groupPreview(g.id);
+      final storeRecs = _storeMessagesByGroup[g.id];
+      final storeLastAt = (storeRecs != null && storeRecs.isNotEmpty)
+          ? storeRecs.last.clientCreatedAtUtc
+          : null;
+      final lastMessageAtUtc = _newerUtc(preview?.createdAtUtc, storeLastAt);
       final activePlan = GroupHikePlanStore.instance.activePlanForGroup(g.id);
       final hasActiveInvite = activePlan != null && !activePlan.isCancelled;
       final readyCount = hasActiveInvite ? activePlan.readyUserIds.length : 0;
@@ -839,7 +889,7 @@ class _ChatPageState extends State<ChatPage> {
           hasActiveHikeInvite: hasActiveInvite,
           pendingSync: !_isOnline,
           lastMessageSnippet: preview?.snippet,
-          lastMessageAtUtc: preview?.createdAtUtc,
+          lastMessageAtUtc: lastMessageAtUtc,
           hasUnread: preview?.hasUnread ?? false,
         ),
       );
@@ -851,6 +901,14 @@ class _ChatPageState extends State<ChatPage> {
       final extraMembers = _localExtraMembers[id]?.length ?? 0;
       final locShared = local.locationShared || _locationConsent.isEnabled(id);
       final preview = SocialUnreadStore.instance.groupPreview(id);
+      final storeRecs = _storeMessagesByGroup[id];
+      final storeLastAt = (storeRecs != null && storeRecs.isNotEmpty)
+          ? storeRecs.last.clientCreatedAtUtc
+          : null;
+      final lastMessageAtUtc = _newerUtc(
+        _newerUtc(preview?.createdAtUtc, local.lastMessageAtUtc),
+        storeLastAt,
+      );
       final activePlan = GroupHikePlanStore.instance.activePlanForGroup(id);
       final hasActiveInvite = activePlan != null
           ? !activePlan.isCancelled
@@ -866,12 +924,22 @@ class _ChatPageState extends State<ChatPage> {
           readyCount: readyCount,
           locationShared: locShared,
           lastMessageSnippet: preview?.snippet ?? local.lastMessageSnippet,
-          lastMessageAtUtc: preview?.createdAtUtc ?? local.lastMessageAtUtc,
+          lastMessageAtUtc: lastMessageAtUtc,
           hasUnread: preview?.hasUnread ?? local.hasUnread,
         ),
       );
     }
 
+    list.sort(
+      (a, b) => compareRoomsByLatestActivity(
+        aLastMessageAtUtc: a.lastMessageAtUtc,
+        aCreatedAtUtc: a.group.createdAtUtc,
+        bLastMessageAtUtc: b.lastMessageAtUtc,
+        bCreatedAtUtc: b.group.createdAtUtc,
+        aId: a.group.id,
+        bId: b.group.id,
+      ),
+    );
     return list;
   }
 
@@ -1090,22 +1158,20 @@ class _ChatPageState extends State<ChatPage> {
             break;
           }
         }
-        matched ??= GroupCardData(
-          remote: RemoteGroup(
-            group: Group(
-              id: intent.targetId,
-              name: 'Grup Pendakian',
-              ownerId: _effectiveUserId,
-              createdAtUtc: DateTime.now().toUtc(),
-            ),
-            role: GroupRole.member,
-          ),
-          memberCount: 1,
-        );
         setState(() => _socialTab = _SocialTab.grup);
-        _openRoomChat(matched);
-        if (intent.kind == SocialNavigationTargetKind.groupLastLocation) {
-          _openLastLocation();
+        if (matched != null) {
+          _openRoomChat(matched);
+          if (intent.kind == SocialNavigationTargetKind.groupLastLocation) {
+            _openLastLocation();
+          }
+        } else {
+          unawaited(
+            _openGroupRoomFromIntent(
+              intent.targetId,
+              openLastLocation:
+                  intent.kind == SocialNavigationTargetKind.groupLastLocation,
+            ),
+          );
         }
       case SocialNavigationTargetKind.communityRoom:
         if (_viewMode != _GroupViewMode.list) {
@@ -1118,6 +1184,31 @@ class _ChatPageState extends State<ChatPage> {
             targetMessageId: intent.messageId,
           ),
         );
+    }
+  }
+
+  Future<void> _openGroupRoomFromIntent(
+    String groupId, {
+    required bool openLastLocation,
+  }) async {
+    if (!_account.hasSyncedGroupsFromServer) {
+      await _account.refresh();
+    }
+    if (!mounted) return;
+    GroupCardData? matched;
+    for (final card in _visibleGroups) {
+      if (card.group.id == groupId) {
+        matched = card;
+        break;
+      }
+    }
+    if (matched == null) {
+      _showNotice('Grup untuk notifikasi ini sudah tidak tersedia.');
+      return;
+    }
+    _openRoomChat(matched);
+    if (openLastLocation) {
+      _openLastLocation();
     }
   }
 
@@ -2193,6 +2284,14 @@ class _ChatPageState extends State<ChatPage> {
       // Pastikan masuk ke single source of truth lokal terlebih dahulu agar
       // input composer langsung bersih tanpa menunggu enkripsi/radio/network.
       await _localStore?.insertMessageIfAbsent(record);
+      SocialUnreadStore.instance.recordGroupActivity(
+        groupId: groupId,
+        createdAtUtc: record.clientCreatedAtUtc,
+        snippet: formatGroupPreviewSnippetFromRecord(record),
+        senderId: record.senderId,
+        messageId: record.clientMsgId,
+        markUnread: false,
+      );
 
       // Kirim via BLE Mesh secara asinkron saat offline agar tombol kirim tidak
       // pernah terkunci walaupun layanan latar depan / izin radio tertunda.
@@ -3752,6 +3851,11 @@ class _ChatPageState extends State<ChatPage> {
     final timeStr = _formatTimeHm(message.sentAtUtc);
     final sender = _senderNameFor(message);
     final memberEntry = _memberEntryFor(message.authorId);
+    final senderIsOfficial = PublicProfileCacheService.instance.resolveIsOfficial(
+      message.authorId,
+      fallback: memberEntry?.isOfficial ?? false,
+      usernameFallback: memberEntry?.username,
+    );
     final canInspectSender =
         !outgoing && message.authorId != _effectiveUserId;
     final showSenderName = !outgoing && cluster.isFirstInGroup;
@@ -3767,6 +3871,7 @@ class _ChatPageState extends State<ChatPage> {
         bubbleKey: ValueKey<String>('group-bubble-${message.messageId}'),
         sender: showSenderName ? sender : null,
         senderColor: senderColor,
+        senderIsOfficial: senderIsOfficial,
         senderKey: canInspectSender && showSenderName
             ? ValueKey<String>('group-msg-sender-${message.messageId}')
             : null,
@@ -3814,6 +3919,7 @@ class _ChatPageState extends State<ChatPage> {
             bubbleKey: ValueKey<String>('group-bubble-${message.messageId}'),
             sender: showSenderName ? sender : null,
             senderColor: senderColor,
+            senderIsOfficial: senderIsOfficial,
             senderKey: canInspectSender && showSenderName
                 ? ValueKey<String>('group-msg-sender-${message.messageId}')
                 : null,
@@ -3833,6 +3939,7 @@ class _ChatPageState extends State<ChatPage> {
             bubbleKey: ValueKey<String>('group-bubble-${message.messageId}'),
             sender: showSenderName ? sender : null,
             senderColor: senderColor,
+            senderIsOfficial: senderIsOfficial,
             senderKey: canInspectSender && showSenderName
                 ? ValueKey<String>('group-msg-sender-${message.messageId}')
                 : null,
@@ -3851,6 +3958,7 @@ class _ChatPageState extends State<ChatPage> {
             bubbleKey: ValueKey<String>('group-bubble-${message.messageId}'),
             sender: showSenderName ? sender : null,
             senderColor: senderColor,
+            senderIsOfficial: senderIsOfficial,
             senderKey: canInspectSender && showSenderName
                 ? ValueKey<String>('group-msg-sender-${message.messageId}')
                 : null,
@@ -3873,6 +3981,7 @@ class _ChatPageState extends State<ChatPage> {
           buttonKey: ValueKey<String>('voice-play-${message.messageId}'),
           sender: showSenderName ? sender : null,
           senderColor: senderColor,
+          senderIsOfficial: senderIsOfficial,
           senderKey: canInspectSender && showSenderName
               ? ValueKey<String>('group-msg-sender-${message.messageId}')
               : null,
@@ -3918,6 +4027,7 @@ class _ChatPageState extends State<ChatPage> {
           bubbleKey: ValueKey<String>('group-bubble-${message.messageId}'),
           sender: showSenderName ? sender : null,
           senderColor: senderColor,
+          senderIsOfficial: senderIsOfficial,
           senderKey: canInspectSender && showSenderName
               ? ValueKey<String>('group-msg-sender-${message.messageId}')
               : null,
@@ -5233,6 +5343,7 @@ class _TextChatBubble extends StatelessWidget {
     this.bubbleKey,
     this.sender,
     this.senderColor,
+    this.senderIsOfficial = false,
     this.senderKey,
     this.onTapSender,
     required this.text,
@@ -5247,6 +5358,7 @@ class _TextChatBubble extends StatelessWidget {
   final Key? bubbleKey;
   final String? sender;
   final Color? senderColor;
+  final bool senderIsOfficial;
   final Key? senderKey;
   final VoidCallback? onTapSender;
   final String text;
@@ -5283,13 +5395,26 @@ class _TextChatBubble extends StatelessWidget {
                     key: senderKey,
                     behavior: HitTestBehavior.opaque,
                     onTap: onTapSender,
-                    child: Text(
-                      sender!,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: senderColor ?? ChatRoomPalette.badgeE2eeText,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Flexible(
+                          child: Text(
+                            sender!,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color:
+                                  senderColor ?? ChatRoomPalette.badgeE2eeText,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (senderIsOfficial) ...<Widget>[
+                          const SizedBox(width: 4),
+                          const OfficialVerifiedBadge(size: 13),
+                        ],
+                      ],
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -5329,6 +5454,7 @@ class _VoiceNoteBubble extends StatelessWidget {
     required this.buttonKey,
     this.sender,
     this.senderColor,
+    this.senderIsOfficial = false,
     this.senderKey,
     this.onTapSender,
     required this.voice,
@@ -5344,6 +5470,7 @@ class _VoiceNoteBubble extends StatelessWidget {
   final Key buttonKey;
   final String? sender;
   final Color? senderColor;
+  final bool senderIsOfficial;
   final Key? senderKey;
   final VoidCallback? onTapSender;
   final VoiceNoteData voice;
@@ -5375,13 +5502,25 @@ class _VoiceNoteBubble extends StatelessWidget {
               key: senderKey,
               behavior: HitTestBehavior.opaque,
               onTap: onTapSender,
-              child: Text(
-                sender!,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: senderColor ?? ChatRoomPalette.badgeE2eeText,
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Flexible(
+                    child: Text(
+                      sender!,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: senderColor ?? ChatRoomPalette.badgeE2eeText,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (senderIsOfficial) ...<Widget>[
+                    const SizedBox(width: 4),
+                    const OfficialVerifiedBadge(size: 13),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: 6),

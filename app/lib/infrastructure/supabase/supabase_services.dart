@@ -181,6 +181,18 @@ class _DisabledAuthService implements AuthService {
   }
 
   @override
+  Future<List<LinkedIdentity>> linkedIdentities() async =>
+      const <LinkedIdentity>[];
+
+  @override
+  Future<void> linkProvider(AuthProviderKind provider) async {
+    throw const AccountException(
+      'AUTH_DISABLED',
+      'Supabase belum dikonfigurasi.',
+    );
+  }
+
+  @override
   Future<void> signOut() async {}
 
   @override
@@ -190,6 +202,15 @@ class _DisabledAuthService implements AuthService {
 class _DisabledProfileRepository implements ProfileRepository {
   @override
   Future<UserProfile?> currentProfile() async => null;
+
+  @override
+  Future<UsernameAvailabilityResult> checkUsernameAvailability(
+    String username,
+  ) async =>
+      const UsernameAvailabilityResult(
+        available: false,
+        reason: 'AUTH_DISABLED',
+      );
 
   @override
   Future<UserProfile> registerProfile({

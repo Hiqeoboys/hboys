@@ -57,7 +57,7 @@ void main() {
       expect(config.flags.leaderboard, isTrue);
       expect(config.flags.peakBadges, isTrue);
       expect(config.fetchedAtUtc, fetchedAt);
-      expect(config.effectiveGraceDays, 10);
+      expect(config.effectiveGraceDays, 3);
     });
 
     test('saklar yang tidak dikirim dianggap mati', () {
@@ -71,9 +71,9 @@ void main() {
       expect(config.plans, isEmpty);
     });
 
-    test('tenggang dijepit ke rentang 7 sampai 14 hari', () {
+    test('tenggang dikunci ke tepat 3 hari', () {
       final tooShort = PlusRemoteConfig.fromJson(
-        <String, Object?>{'graceDays': 2},
+        <String, Object?>{'graceDays': 1},
         fetchedAtUtc: fetchedAt,
       );
       final tooLong = PlusRemoteConfig.fromJson(
@@ -81,18 +81,18 @@ void main() {
         fetchedAtUtc: fetchedAt,
       );
 
-      expect(tooShort.effectiveGraceDays, PlusRemoteConfig.minGraceDays);
-      expect(tooLong.effectiveGraceDays, PlusRemoteConfig.maxGraceDays);
+      expect(tooShort.effectiveGraceDays, 3);
+      expect(tooLong.effectiveGraceDays, 3);
     });
 
-    test('tenggang hilang memakai batas bawah, bukan nilai acak', () {
+    test('tenggang hilang memakai batas 3 hari, bukan nilai acak', () {
       final config = PlusRemoteConfig.fromJson(
         <String, Object?>{},
         fetchedAtUtc: fetchedAt,
       );
 
       expect(config.effectiveGraceDays, PlusRemoteConfig.fallbackGraceDays);
-      expect(PlusRemoteConfig.fallbackGraceDays, 7);
+      expect(PlusRemoteConfig.fallbackGraceDays, 3);
     });
 
     test('paket tidak lengkap atau duplikat dilewati', () {

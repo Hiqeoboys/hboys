@@ -33,8 +33,8 @@ class PlusFeatureFlags {
 ///
 /// Harga, kuota, dan tenggang tidak pernah ditulis di UI. Bila server belum
 /// bisa dihubungi, cache terakhir tetap dipakai; bila belum ada cache sama
-/// sekali, aplikasi memakai batas bawah tenggang 7 hari supaya akses yang
-/// sudah dibeli tetap dapat dibuka secara offline.
+/// sekali, aplikasi memakai masa tenggang 3 hari supaya fitur inti Plus
+/// tetap dapat diakses sementara sebelum terkunci.
 class PlusRemoteConfig {
   const PlusRemoteConfig({
     required this.plans,
@@ -43,8 +43,8 @@ class PlusRemoteConfig {
     required this.fetchedAtUtc,
   });
 
-  static const int minGraceDays = 7;
-  static const int maxGraceDays = 14;
+  static const int minGraceDays = 3;
+  static const int maxGraceDays = 3;
   static const int fallbackGraceDays = minGraceDays;
 
   /// Batas umur cache sebelum konfigurasi diambil ulang saat aplikasi dibuka.

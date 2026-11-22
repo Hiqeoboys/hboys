@@ -7,6 +7,7 @@ import '../../design/glass/hiqeo_liquid_glass.dart';
 import '../../design/layout.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
+import '../../design/widgets/account_badges.dart';
 import '../../design/widgets/hiqeo_button.dart';
 import '../../design/widgets/line_icons.dart';
 import '../../infrastructure/auth/active_account_scope.dart';
@@ -15,17 +16,21 @@ import '../../infrastructure/database/database_connection.dart';
 import '../../infrastructure/database/repositories/drift_tracking_repository.dart';
 import '../../infrastructure/supabase/supabase_services.dart';
 import '../auth/application/account_controller.dart';
+import '../auth/domain/username_policy.dart';
 import '../groups/application/group_key_manager.dart';
 import '../kartu/domain/kartu_data.dart';
 import '../notifications/data/user_notifications_service.dart';
 import '../plus/application/plus_navigation.dart';
 import '../plus/application/plus_scope.dart';
+import '../plus/domain/plus_remote_config.dart';
+import '../plus/presentation/widgets/plus_grace_warning_card.dart';
 import '../preparation/application/packing_list_store.dart';
 import '../profile/domain/profile_summary.dart';
 import '../safety/domain/safety_repository.dart';
 import '../safety/presentation/emergency_contacts_sheet.dart';
 import '../tracking/domain/tracking_repository.dart';
 import '../tracking/domain/tracking_session.dart';
+import 'beginner_guide_home_card.dart';
 import 'expandable_features_card.dart';
 import 'last_trip_summary_card.dart';
 
@@ -411,6 +416,13 @@ class _BerandaPageState extends State<BerandaPage> {
                   ? 'Pendakian solo'
                   : 'Pilih gunung dan atur persiapan sebelum berangkat');
           final profile = _account.profile;
+          final plus = PlusScope.maybeOf(context);
+          final plusAccess = plus?.access;
+          final showPlusWarning = plusAccess != null && plusAccess.isGrace;
+          final plusGraceDays =
+              plus?.config?.effectiveGraceDays ?? PlusRemoteConfig.fallbackGraceDays;
+          final isOfficial = (profile?.isOfficial == true) ||
+              UsernamePolicy.isOfficialUsername(profile?.username);
           final greetingName = profile?.fullName?.trim().isNotEmpty == true
               ? profile!.fullName!.trim()
               : (_account.user?.displayName?.trim().isNotEmpty == true
@@ -442,11 +454,21 @@ class _BerandaPageState extends State<BerandaPage> {
                           ),
                         ),
                         const SizedBox(height: HiqeoSpacing.xs),
-                        Text(
-                          'Halo, $greetingName',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.displaySmall,
+                        Row(
+                          children: <Widget>[
+                            Flexible(
+                              child: Text(
+                                'Halo, $greetingName',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.displaySmall,
+                              ),
+                            ),
+                            if (isOfficial) ...<Widget>[
+                              const SizedBox(width: 6),
+                              const OfficialVerifiedBadge(size: 20),
+                            ],
+                          ],
                         ),
                       ],
                     ),
@@ -461,6 +483,14 @@ class _BerandaPageState extends State<BerandaPage> {
                   ),
                 ],
               ),
+              if (showPlusWarning) ...<Widget>[
+                const SizedBox(height: HiqeoSpacing.lg),
+                PlusGraceWarningCard(
+                  access: plusAccess,
+                  graceDays: plusGraceDays,
+                  onSubscribeAgain: () => context.push(PlusRoutes.paywall),
+                ),
+              ],
               const SizedBox(height: HiqeoSpacing.xl),
               RepaintBoundary(
                 child: _HeroCard(
@@ -484,6 +514,15 @@ class _BerandaPageState extends State<BerandaPage> {
               ),
               const SizedBox(height: HiqeoSpacing.xl),
               ExpandableFeaturesCard(features: _features(context)),
+              const SizedBox(height: HiqeoSpacing.xl),
+              RepaintBoundary(
+                child: BeginnerGuideHomeCard(
+                  onOpenAll: () => context.push('/panduan-pemula'),
+                  onOpenTopic: (topicId) => context.push(
+                    '/panduan-pemula?topik=${Uri.encodeQueryComponent(topicId)}',
+                  ),
+                ),
+              ),
             ],
           );
         },

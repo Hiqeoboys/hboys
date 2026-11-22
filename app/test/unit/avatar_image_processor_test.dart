@@ -25,17 +25,22 @@ Future<Uint8List> _makePng(int width, int height) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('memotong foto 1:1 dan membatasi ukuran maksimal 512x512 px', () async {
+  test('memotong foto 1:1 dan membatasi ukuran maksimal 1080x1080 px', () async {
     int? capturedSizeSmall;
+    int? capturedQuality;
     final wideSmall = await _makePng(800, 400);
     final outSmall = await AvatarImageProcessor.cropSquareAndCompressWebp(
       wideSmall,
       webpEncoder: (pngBytes, size, quality) async {
         capturedSizeSmall = size;
+        capturedQuality = quality;
         return pngBytes;
       },
     );
     expect(capturedSizeSmall, 400);
+    expect(capturedQuality, AvatarImageProcessor.defaultQuality);
+    expect(AvatarImageProcessor.defaultMaxSize, 1080);
+    expect(AvatarImageProcessor.defaultQuality, 89);
     final codecSmall = await ui.instantiateImageCodec(outSmall);
     final frameSmall = await codecSmall.getNextFrame();
     expect(frameSmall.image.width, 400);
@@ -44,7 +49,7 @@ void main() {
     codecSmall.dispose();
 
     int? capturedSizeLarge;
-    final wideLarge = await _makePng(1200, 800);
+    final wideLarge = await _makePng(2400, 1600);
     final outLarge = await AvatarImageProcessor.cropSquareAndCompressWebp(
       wideLarge,
       webpEncoder: (pngBytes, size, quality) async {
@@ -52,11 +57,11 @@ void main() {
         return pngBytes;
       },
     );
-    expect(capturedSizeLarge, 512);
+    expect(capturedSizeLarge, 1080);
     final codecLarge = await ui.instantiateImageCodec(outLarge);
     final frameLarge = await codecLarge.getNextFrame();
-    expect(frameLarge.image.width, 512);
-    expect(frameLarge.image.height, 512);
+    expect(frameLarge.image.width, 1080);
+    expect(frameLarge.image.height, 1080);
     frameLarge.image.dispose();
     codecLarge.dispose();
   });

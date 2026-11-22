@@ -9,6 +9,7 @@ import '../../../core/utils/safe_url_launcher.dart';
 import '../../../design/glass/glass_surface.dart';
 import '../../../design/gooey/gooey_switch.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/account_badges.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../../../infrastructure/database/app_database.dart';
@@ -24,6 +25,8 @@ import '../domain/plus_entitlement.dart';
 import '../domain/plus_format.dart';
 import '../domain/plus_remote_config.dart';
 import '../plus_content_dependencies.dart';
+import 'widgets/plus_grace_warning_card.dart';
+import 'widgets/plus_subscription_history_card.dart';
 import 'widgets/plus_widgets.dart';
 
 /// D6 Kelola Langganan.
@@ -57,6 +60,7 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
   String? _backupError;
   bool _savingAutoBackup = false;
   bool _syncingNow = false;
+  bool _historyRequested = false;
 
   CloudBackupRepository get _backupRepository =>
       widget.backupRepository ?? PlusContentDependencies.cloudBackup();
@@ -68,6 +72,15 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
   void initState() {
     super.initState();
     unawaited(_loadBackup());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_historyRequested) {
+      _historyRequested = true;
+      unawaited(PlusScope.maybeOf(context)?.refreshSubscriptionHistory());
+    }
   }
 
   Future<void> _loadBackup() async {
@@ -264,6 +277,9 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
         plus?.config?.effectiveGraceDays ?? PlusRemoteConfig.fallbackGraceDays;
     final planTitle = plus?.currentPlan?.title ?? 'Plus';
 
+    final showHistory = (plus?.hasEverSubscribed ?? false) &&
+        (plus?.subscriptionHistory.isNotEmpty ?? false);
+
     return PlusScrollPage(
       topBar: PlusTopBar(
         lockup: true,
@@ -275,7 +291,19 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
           planTitle: planTitle,
           graceDays: graceDays,
         ),
-        if (access.hasFullSocialAccess) ...<Widget>[
+        if (access.isGrace || access.isExpired) ...<Widget>[
+          const SizedBox(height: HiqeoSpacing.md),
+          PlusGraceWarningCard(
+            access: access,
+            graceDays: graceDays,
+            onSubscribeAgain: () => context.push(PlusRoutes.paywall),
+          ),
+        ],
+        if (showHistory) ...<Widget>[
+          const SizedBox(height: HiqeoSpacing.md),
+          PlusSubscriptionHistoryCard(entries: plus!.subscriptionHistory),
+        ],
+        if (access.hasFullPlanIncludingGrace) ...<Widget>[
           const SizedBox(height: HiqeoSpacing.md),
           _ExclusiveToolsCard(
             onAnalytics: () => context.push(PlusRoutes.analytics),
@@ -383,8 +411,9 @@ class _StatusCard extends StatelessWidget {
         return 'Status tersimpan di HP dengan masa tenggang $graceDays hari, '
             'agar fitur tidak terkunci di tengah pendakian.';
       case PlusAccessState.grace:
-        return 'Tanggal berlaku sudah lewat. Fitur Plus tetap terbuka sampai '
-            'masa tenggang $graceDays hari habis; data tidak dihapus.';
+        return 'Tanggal berlaku sudah lewat. Fitur umum Plus tetap terbuka '
+            'selama masa tenggang $graceDays hari sebelum terkunci kembali. '
+            'Obrolan Komunitas dan Leaderboard langsung terkunci.';
       case PlusAccessState.expired:
         return 'Masa tenggang sudah habis. Riwayat, data, peta unduhan, dan '
             'ekspor tetap bisa dipakai; hanya fitur Plus yang berhenti.';
@@ -420,6 +449,10 @@ class _StatusCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: HiqeoSpacing.sm),
+              if (access.isUltima) ...<Widget>[
+                const UltimaBadge(),
+                const SizedBox(width: 6),
+              ],
               _StatusPill(access: access),
             ],
           ),

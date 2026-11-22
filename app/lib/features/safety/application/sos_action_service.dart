@@ -94,17 +94,28 @@ String formatSosEmergencyMessage({
 }
 
 /// URI SMS darurat untuk iOS atau fallback ketika izin `SEND_SMS` belum aktif.
+/// Mode pengiriman sinyal SOS berdasarkan konteks aktivitas pendaki saat ini.
+enum SosDispatchMode {
+  soloHike('solo_hike'),
+  groupHike('group_hike'),
+  nearbyHome('nearby');
+
+  const SosDispatchMode(this.wireValue);
+
+  final String wireValue;
+}
+
+/// Membangun URI `sms:` dengan body ter-encode persen (`%20`, bukan `+`)
+/// agar kompatibel lintas platform Android dan iOS Messages.
 Uri buildEmergencySmsUri(List<String> phones, String body) {
   final phonePattern = RegExp(r'^\+?[0-9]{6,16}$');
   final cleaned = phones
       .map((p) => p.trim())
       .where((p) => phonePattern.hasMatch(p))
       .toList(growable: false);
-  return Uri(
-    scheme: 'sms',
-    path: cleaned.join(','),
-    queryParameters: <String, String>{'body': body},
-  );
+  final recipients = cleaned.join(',');
+  final encodedBody = Uri.encodeComponent(body);
+  return Uri.parse('sms:$recipients?body=$encodedBody');
 }
 
 class SosDispatchOutcome {
@@ -124,7 +135,10 @@ class SosDispatchOutcome {
     this.openedOfflineSms = false,
     this.whatsappConfigured = false,
     this.whatsappAutoSent = false,
+    this.openedWhatsappFallback = false,
     this.hasPhoneEmergencyContacts = false,
+    this.sosMode = SosDispatchMode.nearbyHome,
+    this.emergencyPhones = const <String>[],
     this.remoteSosId,
     this.batteryPercent,
     this.mountainName,
@@ -146,7 +160,10 @@ class SosDispatchOutcome {
   final bool openedOfflineSms;
   final bool whatsappConfigured;
   final bool whatsappAutoSent;
+  final bool openedWhatsappFallback;
   final bool hasPhoneEmergencyContacts;
+  final SosDispatchMode sosMode;
+  final List<String> emergencyPhones;
   final String? remoteSosId;
   final int? batteryPercent;
   final String? mountainName;
@@ -193,6 +210,7 @@ class DeviceSosActionRunner implements SosActionRunner {
     String Function()? ownerIdResolver,
     String? Function()? activeGroupIdResolver,
     String? Function()? mountainNameResolver,
+    SosDispatchMode Function()? modeResolver,
     bool enableDeviceHardware = true,
   })  : _smsSender = smsSender ?? const MethodChannelSosSmsSender(),
         _offlineQueue = offlineQueue ?? SosOfflineQueueService.instance,
@@ -207,6 +225,7 @@ class DeviceSosActionRunner implements SosActionRunner {
         _ownerIdResolver = ownerIdResolver,
         _activeGroupIdResolver = activeGroupIdResolver,
         _mountainNameResolver = mountainNameResolver,
+        _modeResolver = modeResolver,
         _enableDeviceHardware = enableDeviceHardware;
 
   static const MethodChannel _hardwareChannel =
@@ -234,6 +253,7 @@ class DeviceSosActionRunner implements SosActionRunner {
   final String Function()? _ownerIdResolver;
   final String? Function()? _activeGroupIdResolver;
   final String? Function()? _mountainNameResolver;
+  final SosDispatchMode Function()? _modeResolver;
   final bool _enableDeviceHardware;
 
   AudioPlayer? _sirenPlayer;
@@ -297,12 +317,64 @@ class DeviceSosActionRunner implements SosActionRunner {
       senderName = 'Pendaki';
     }
 
-    final activeGroupId = _activeGroupIdResolver != null
-        ? _activeGroupIdResolver()
-        : (planStore.activePlan?.groupId ??
-            (account != null && account.groups.isNotEmpty
-                ? account.groups.first.group.id
-                : null));
+    final tracking = TrackingController.instance;
+    final explicitGroupId = _activeGroupIdResolver?.call()?.trim();
+    final trackingGroupId =
+        (tracking.isRecording && !tracking.isJoggingSession)
+            ? tracking.activeGroupId?.trim()
+            : null;
+    final currentPlan = planStore.activePlan;
+    final startedPlanGroupId = (currentPlan != null && currentPlan.isStarted)
+        ? currentPlan.groupId.trim()
+        : null;
+
+    final SosDispatchMode sosMode;
+    String? resolvedGroupId;
+    if (_modeResolver != null) {
+      sosMode = _modeResolver();
+      if (sosMode == SosDispatchMode.groupHike) {
+        if (_activeGroupIdResolver != null) {
+          resolvedGroupId = explicitGroupId;
+        } else {
+          resolvedGroupId =
+              (trackingGroupId != null && trackingGroupId.isNotEmpty)
+                  ? trackingGroupId
+                  : startedPlanGroupId;
+        }
+      }
+    } else if (_activeGroupIdResolver != null) {
+      if (explicitGroupId != null && explicitGroupId.isNotEmpty) {
+        sosMode = SosDispatchMode.groupHike;
+        resolvedGroupId = explicitGroupId;
+      } else if ((tracking.isRecording && !tracking.isJoggingSession) ||
+          planStore.soloPlan?.isStarted == true) {
+        sosMode = SosDispatchMode.soloHike;
+      } else {
+        sosMode = SosDispatchMode.nearbyHome;
+      }
+    } else if (trackingGroupId != null && trackingGroupId.isNotEmpty) {
+      sosMode = SosDispatchMode.groupHike;
+      resolvedGroupId = trackingGroupId;
+    } else if (startedPlanGroupId != null && startedPlanGroupId.isNotEmpty) {
+      sosMode = SosDispatchMode.groupHike;
+      resolvedGroupId = startedPlanGroupId;
+    } else if ((tracking.isRecording && !tracking.isJoggingSession) ||
+        planStore.soloPlan?.isStarted == true) {
+      sosMode = SosDispatchMode.soloHike;
+    } else {
+      sosMode = SosDispatchMode.nearbyHome;
+    }
+
+    final activeGroupId = sosMode == SosDispatchMode.groupHike &&
+            resolvedGroupId != null &&
+            resolvedGroupId.isNotEmpty
+        ? resolvedGroupId
+        : null;
+
+    final localTriggered = triggeredAtUtc.toLocal();
+    final localTimeHhmm =
+        '${localTriggered.hour.toString().padLeft(2, '0')}:'
+        '${localTriggered.minute.toString().padLeft(2, '0')}';
 
     final emergencyMessage = formatSosEmergencyMessage(
       senderName: senderName,
@@ -337,6 +409,7 @@ class DeviceSosActionRunner implements SosActionRunner {
     var openedOfflineSms = false;
     var whatsappConfigured = false;
     var whatsappAutoSent = false;
+    var openedWhatsappFallback = false;
 
     final dispatchFutures = <Future<void>>[
       // (a) Server `sos_events` UPSERT (online) atau masuk antrean sinkronisasi lokal.
@@ -351,6 +424,8 @@ class DeviceSosActionRunner implements SosActionRunner {
             'author_id': authUser?.id ?? senderId,
             if (activeGroupId != null && isValidUuid(activeGroupId))
               'group_id': activeGroupId,
+            'sos_mode': sosMode.wireValue,
+            'local_time_hhmm': localTimeHhmm,
             'category': category.index,
             'lat': fix.lat,
             'lon': fix.lon,
@@ -388,6 +463,8 @@ class DeviceSosActionRunner implements SosActionRunner {
             sosUuid: sosUuid,
             authorId: authUser?.id ?? senderId,
             groupId: activeGroupId,
+            sosMode: sosMode.wireValue,
+            localTimeHhmm: localTimeHhmm,
             categoryIndex: category.index,
             lat: fix.lat,
             lon: fix.lon,
@@ -404,10 +481,14 @@ class DeviceSosActionRunner implements SosActionRunner {
         queuedForServerSync = true;
       }(),
 
-      // (b) Ruang Obrolan Grup (online) & Siaran Hiqeo Mesh (offline/fallback).
+      // (b) Ruang Obrolan Grup (HANYA mode group_hike) & Siaran Hiqeo Mesh
+      //     (tidak pernah disiarkan ke grup saat mode solo_hike).
       () async {
+        if (sosMode == SosDispatchMode.soloHike) return;
         final sosChatClientMsgId = normalizeToUuid('sos-$sosUuid');
-        if (activeGroupId != null && activeGroupId.isNotEmpty) {
+        if (sosMode == SosDispatchMode.groupHike &&
+            activeGroupId != null &&
+            activeGroupId.isNotEmpty) {
           final msgRecord = GroupMessageRecord(
             clientMsgId: sosChatClientMsgId,
             groupId: activeGroupId,
@@ -455,10 +536,11 @@ class DeviceSosActionRunner implements SosActionRunner {
         }
 
         if ((!isOnline || !sentGroupMessage) && fix != null) {
-          final targetMeshGroup =
-              (activeGroupId != null && activeGroupId.isNotEmpty)
-                  ? activeGroupId
-                  : _fallbackMeshGroupId;
+          final targetMeshGroup = (sosMode == SosDispatchMode.groupHike &&
+                  activeGroupId != null &&
+                  activeGroupId.isNotEmpty)
+              ? activeGroupId
+              : _fallbackMeshGroupId;
           final sosPayload = MeshSosPayload(
             clientMsgId: sosChatClientMsgId,
             groupId: targetMeshGroup,
@@ -552,7 +634,7 @@ class DeviceSosActionRunner implements SosActionRunner {
         }
       }(),
 
-      // (d) Hook WhatsApp otomatis non-blocking (hanya saat online).
+      // (d) Hook WhatsApp otomatis non-blocking (online) + fallback app/web untuk Solo Hike.
       () async {
         if (!isOnline || phones.isEmpty) return;
         try {
@@ -567,9 +649,7 @@ class DeviceSosActionRunner implements SosActionRunner {
               whatsappAutoSent = true;
               notifiedEmergencyContacts = true;
             }
-            return;
-          }
-          if (client != null && authUser != null) {
+          } else if (client != null && authUser != null) {
             final response = await client.functions
                 .invoke(
                   'send-sos-whatsapp',
@@ -585,6 +665,30 @@ class DeviceSosActionRunner implements SosActionRunner {
               final sent = (data['sent'] as num?)?.toInt() ?? 0;
               if (sent > 0) {
                 whatsappAutoSent = true;
+                notifiedEmergencyContacts = true;
+              }
+            }
+          }
+
+          if (!whatsappAutoSent && sosMode == SosDispatchMode.soloHike) {
+            final waUri = buildSafeWhatsappUri(
+              phoneE164: phones.first,
+              message: emergencyMessage,
+            );
+            if (waUri != null) {
+              var launched = await _urlLauncher(waUri);
+              if (!launched) {
+                final webUri = buildSafeWhatsappUri(
+                  phoneE164: phones.first,
+                  message: emergencyMessage,
+                  webFallback: true,
+                );
+                if (webUri != null) {
+                  launched = await _urlLauncher(webUri);
+                }
+              }
+              if (launched) {
+                openedWhatsappFallback = true;
                 notifiedEmergencyContacts = true;
               }
             }
@@ -617,7 +721,10 @@ class DeviceSosActionRunner implements SosActionRunner {
       openedOfflineSms: openedOfflineSms,
       whatsappConfigured: whatsappConfigured,
       whatsappAutoSent: whatsappAutoSent,
+      openedWhatsappFallback: openedWhatsappFallback,
       hasPhoneEmergencyContacts: phones.isNotEmpty,
+      sosMode: sosMode,
+      emergencyPhones: phones,
       remoteSosId: savedRemoteUpsert ? sosUuid : null,
       batteryPercent: batteryPercent,
       mountainName: mountainName,

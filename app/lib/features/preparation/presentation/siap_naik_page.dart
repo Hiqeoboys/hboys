@@ -152,6 +152,7 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
   bool _syncingRemote = false;
   bool _refreshingDownloadStatus = false;
   bool _requestedInitialRepoLoad = false;
+  bool _syncedFromPlan = false;
   Timer? _snackBarTimer;
 
   List<RemoteGroup> get _syncedGroups =>
@@ -426,6 +427,7 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
   void _syncSelectionFromPlan() {
     final plan = _planStore.activePlan;
     if (plan != null) {
+      _syncedFromPlan = true;
       _applyMountainId(plan.mountainId, plan.trailId);
       for (final g in _syncedGroups) {
         if (g.group.id == plan.groupId) {
@@ -436,8 +438,19 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
       return;
     }
     final solo = _planStore.soloPlan;
-    if (solo != null && _selectedMountain == null) {
-      _applyMountainId(solo.mountainId, solo.trailId);
+    if (solo != null) {
+      _syncedFromPlan = true;
+      if (_selectedMountain == null) {
+        _applyMountainId(solo.mountainId, solo.trailId);
+      }
+      return;
+    }
+    if (_syncedFromPlan) {
+      _syncedFromPlan = false;
+      _selectedMountain = null;
+      _selectedTrail = null;
+      _selectedGroup = null;
+      _packingCategory = 'Semua';
     }
   }
 
@@ -871,6 +884,7 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
           mountainName: resolvedPack.name,
           trailId: trail?.id,
           trailName: trail?.name,
+          isStarted: true,
         ),
       );
       if (!mounted) return;

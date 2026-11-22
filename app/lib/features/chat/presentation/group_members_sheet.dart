@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../design/glass/glass_surface.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/account_badges.dart';
 import '../../../design/widgets/line_icons.dart';
 import '../../../design/widgets/persistent_avatar_image.dart';
 import '../../../infrastructure/cache/public_profile_cache_service.dart';
@@ -363,6 +364,11 @@ class _MemberInfoTile extends StatelessWidget {
           member.userId,
           fallback: member.avatarUrl,
         );
+        final isOfficial = cache.resolveIsOfficial(
+          member.userId,
+          fallback: member.isOfficial,
+          usernameFallback: resolvedUsername,
+        );
 
         final fallbackAvatar = Center(
           child: Text(
@@ -396,17 +402,21 @@ class _MemberInfoTile extends StatelessWidget {
                     Row(
                       children: <Widget>[
                         Flexible(
-                      child: Text(
-                        isSelf ? '$name (Kamu)' : name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: colors.textPrimary,
+                          child: Text(
+                            isSelf ? '$name (Kamu)' : name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: colors.textPrimary,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
+                        if (isOfficial) ...<Widget>[
+                          const SizedBox(width: 4),
+                          const OfficialVerifiedBadge(size: 15),
+                        ],
+                        const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,

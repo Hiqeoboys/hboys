@@ -1,3 +1,16 @@
+import 'package:flutter/foundation.dart';
+
+@immutable
+class UsernameAvailabilityResult {
+  const UsernameAvailabilityResult({
+    required this.available,
+    this.reason,
+  });
+
+  final bool available;
+  final String? reason;
+}
+
 class UserProfile {
   const UserProfile({
     required this.userId,
@@ -11,7 +24,9 @@ class UserProfile {
     bool? isProfileComplete,
     this.isPlus = false,
     this.plusPlanId,
+    this.plusStartedAtUtc,
     this.plusExpiresAtUtc,
+    this.isOfficial = false,
   }) : _isProfileCompleteOverride = isProfileComplete;
 
   final String userId;
@@ -44,7 +59,18 @@ class UserProfile {
   /// Status Hiqeo Plus yang disinkronkan dari server & dicache lokal.
   final bool isPlus;
   final String? plusPlanId;
+  final DateTime? plusStartedAtUtc;
   final DateTime? plusExpiresAtUtc;
+  final bool isOfficial;
+
+  bool get isUltima {
+    if (!isPlus) return false;
+    final normalized = plusPlanId?.trim().toLowerCase();
+    return plusExpiresAtUtc == null ||
+        normalized == 'lifetime' ||
+        normalized == 'founding' ||
+        normalized == 'ultima';
+  }
 
   UserProfile copyWith({
     String? userId,
@@ -58,7 +84,9 @@ class UserProfile {
     bool? isProfileComplete,
     bool? isPlus,
     String? plusPlanId,
+    DateTime? plusStartedAtUtc,
     DateTime? plusExpiresAtUtc,
+    bool? isOfficial,
     bool clearPlusExpiresAt = false,
   }) {
     return UserProfile(
@@ -73,8 +101,10 @@ class UserProfile {
       isProfileComplete: isProfileComplete ?? _isProfileCompleteOverride,
       isPlus: isPlus ?? this.isPlus,
       plusPlanId: plusPlanId ?? this.plusPlanId,
+      plusStartedAtUtc: plusStartedAtUtc ?? this.plusStartedAtUtc,
       plusExpiresAtUtc:
           clearPlusExpiresAt ? null : (plusExpiresAtUtc ?? this.plusExpiresAtUtc),
+      isOfficial: isOfficial ?? this.isOfficial,
     );
   }
 }
@@ -93,6 +123,9 @@ class DirectoryEntry {
 
 abstract interface class ProfileRepository {
   Future<UserProfile?> currentProfile();
+
+  /// Mengecek ketersediaan username secara realtime di server (`check_username_available`).
+  Future<UsernameAvailabilityResult> checkUsernameAvailability(String username);
 
   /// Mendaftarkan username publik dan kunci publik perangkat.
   Future<UserProfile> registerProfile({

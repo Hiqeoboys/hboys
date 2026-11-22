@@ -221,13 +221,32 @@ void main() {
     expect(usernameRect.top, greaterThan(nameRect.bottom));
 
     expect(find.text('budi@example.com'), findsOneWidget);
+    final scrollable = find.byType(Scrollable).first;
+    final switchBtn =
+        find.byKey(const ValueKey<String>('account-switch-button'));
+    await tester.scrollUntilVisible(switchBtn, 200, scrollable: scrollable);
+    await tester.pumpAndSettle();
     expect(find.text('Ganti akun'), findsOneWidget);
+    final signOutBtn =
+        find.byKey(const ValueKey<String>('account-signout-button'));
+    await tester.scrollUntilVisible(signOutBtn, 200, scrollable: scrollable);
+    await tester.pumpAndSettle();
     expect(find.text('Keluar'), findsOneWidget);
+    final deleteBtnCheck =
+        find.byKey(const ValueKey<String>('account-delete-button'));
+    await tester.scrollUntilVisible(deleteBtnCheck, 200, scrollable: scrollable);
+    await tester.pumpAndSettle();
     expect(find.text('Hapus akun'), findsOneWidget);
 
     // Zero group/invitation UI on AccountPage
     expect(find.text('Undangan masuk'), findsNothing);
     expect(find.text('Buat grup'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Masuk dengan Google'),
+      -200,
+      scrollable: scrollable,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Masuk dengan Google'), findsOneWidget);
 
     // Uji dialog hapus akun dengan ketik HAPUS

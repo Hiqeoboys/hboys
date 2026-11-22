@@ -394,6 +394,8 @@ class _TrackingPageState extends State<TrackingPage>
           simulationEnabled: _controller.simulationEnabled,
           simulationRouteAsset: _controller.simulationRouteAsset,
           simulatedLocationSource: _controller.simulatedLocationSource,
+          onRetryInitialize: () =>
+              unawaited(_controller.refreshPermissionsAndResume()),
           onToggleSimulation: (enabled) =>
               unawaited(_controller.setSimulationEnabled(enabled)),
           onSelectSimulationRoute: (asset) =>
@@ -449,6 +451,7 @@ class TrackingView extends StatefulWidget {
     this.onResume,
     this.onFinish,
     this.onOpenPermissions,
+    this.onRetryInitialize,
     this.onRequestStepPermission,
     this.onEditBodyMetrics,
   });
@@ -488,6 +491,7 @@ class TrackingView extends StatefulWidget {
   final VoidCallback? onResume;
   final VoidCallback? onFinish;
   final VoidCallback? onOpenPermissions;
+  final VoidCallback? onRetryInitialize;
   final VoidCallback? onRequestStepPermission;
   final VoidCallback? onEditBodyMetrics;
 
@@ -610,16 +614,24 @@ class _TrackingViewState extends State<TrackingView> {
                       ),
                       const SizedBox(height: 8),
                     ],
-                    if (widget.error != null) ...<Widget>[
+                    if (widget.error != null &&
+                        !recording &&
+                        !paused &&
+                        !loading) ...<Widget>[
                       _NoticeCard(
                         title: 'Rekaman tidak tersedia',
                         body: widget.error!,
                         isError: true,
-                        actionLabel: !widget.permissionReady &&
-                                widget.onOpenPermissions != null
-                            ? 'Buka panduan izin'
-                            : null,
-                        onAction: widget.onOpenPermissions,
+                        actionLabel: !widget.permissionReady
+                            ? (widget.onOpenPermissions != null
+                                ? 'Buka panduan izin'
+                                : null)
+                            : (widget.onRetryInitialize != null
+                                ? 'Muat ulang'
+                                : null),
+                        onAction: !widget.permissionReady
+                            ? widget.onOpenPermissions
+                            : widget.onRetryInitialize,
                       ),
                       const SizedBox(height: 8),
                     ] else if (widget.notice != null) ...<Widget>[

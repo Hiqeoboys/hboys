@@ -88,10 +88,8 @@ class GlobalOffGridOutboxService with WidgetsBindingObserver {
       try {
         final conn = Connectivity();
         unawaited(
-          conn
-              .checkConnectivity()
-              .timeout(const Duration(seconds: 2))
-              .then((results) {
+          conn.checkConnectivity().then((results) {
+            if (!_started) return;
             if (results.any((r) => r != ConnectivityResult.none)) {
               unawaited(syncNow());
             }

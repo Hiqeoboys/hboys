@@ -11,12 +11,15 @@ typedef WebpCompressFn = Future<Uint8List> Function(
 );
 
 /// Memotong foto profil menjadi 1:1 persegi di tengah, mengubah ukuran
-/// maksimal 512×512 px, lalu mengompresinya ke format WebP.
+/// maksimal 1080×1080 px agar tetap tajam di mode layar penuh, lalu mengompresinya ke format WebP.
 abstract final class AvatarImageProcessor {
+  static const int defaultMaxSize = 1080;
+  static const int defaultQuality = 89;
+
   static Future<Uint8List> cropSquareAndCompressWebp(
     Uint8List sourceBytes, {
-    int maxSize = 512,
-    int quality = 82,
+    int maxSize = defaultMaxSize,
+    int quality = defaultQuality,
     WebpCompressFn? webpEncoder,
   }) async {
     final codec = await ui.instantiateImageCodec(sourceBytes);

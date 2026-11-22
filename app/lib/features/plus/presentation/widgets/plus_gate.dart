@@ -30,7 +30,7 @@ class PlusGate extends StatelessWidget {
   Widget build(BuildContext context) {
     final plus = PlusScope.maybeOf(context);
     final allowed = requireFullPlan
-        ? (plus?.hasFullSocialAccess ?? false)
+        ? (plus?.hasFullPlanIncludingGrace ?? false)
         : (plus?.hasPlus ?? false);
     if (allowed) return child;
     return PlusLockedView(

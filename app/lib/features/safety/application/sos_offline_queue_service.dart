@@ -20,6 +20,8 @@ class PendingSosSyncItem {
     required this.createdAtUtc,
     required this.queuedAtUtc,
     this.groupId,
+    this.sosMode = 'nearby',
+    this.localTimeHhmm,
     this.accuracyM,
     this.altitudeM,
     this.batteryPercent,
@@ -32,6 +34,8 @@ class PendingSosSyncItem {
   final String sosUuid;
   final String authorId;
   final String? groupId;
+  final String sosMode;
+  final String? localTimeHhmm;
   final int categoryIndex;
   final double lat;
   final double lon;
@@ -54,6 +58,8 @@ class PendingSosSyncItem {
         sosUuid: sosUuid,
         authorId: authorId,
         groupId: groupId,
+        sosMode: sosMode,
+        localTimeHhmm: localTimeHhmm,
         categoryIndex: categoryIndex,
         lat: lat,
         lon: lon,
@@ -73,6 +79,8 @@ class PendingSosSyncItem {
         'sosUuid': sosUuid,
         'authorId': authorId,
         'groupId': groupId,
+        'sosMode': sosMode,
+        'localTimeHhmm': localTimeHhmm,
         'categoryIndex': categoryIndex,
         'lat': lat,
         'lon': lon,
@@ -93,10 +101,15 @@ class PendingSosSyncItem {
     final lat = (map['lat'] as num?)?.toDouble();
     final lon = (map['lon'] as num?)?.toDouble();
     if (id.isEmpty || lat == null || lon == null) return null;
+    final rawGroupId = map['groupId']?.toString();
+    final fallbackMode =
+        (rawGroupId != null && rawGroupId.trim().isNotEmpty) ? 'group_hike' : 'nearby';
     return PendingSosSyncItem(
       sosUuid: id,
       authorId: map['authorId']?.toString() ?? 'perangkat-lokal',
-      groupId: map['groupId']?.toString(),
+      groupId: rawGroupId,
+      sosMode: map['sosMode']?.toString() ?? fallbackMode,
+      localTimeHhmm: map['localTimeHhmm']?.toString(),
       categoryIndex: (map['categoryIndex'] as num?)?.toInt() ?? 4,
       lat: lat,
       lon: lon,
@@ -275,12 +288,16 @@ class SosOfflineQueueService extends ChangeNotifier {
     final authUser = client?.auth.currentUser;
     if (client == null || authUser == null) return false;
     final groupId = item.groupId;
-    final hasValidGroup = groupId != null && isValidUuid(groupId);
+    final isGroupMode = item.sosMode == 'group_hike';
+    final hasValidGroup = isGroupMode && groupId != null && isValidUuid(groupId);
     try {
       await client.from('sos_events').upsert(
         <String, dynamic>{
           'id': item.sosUuid,
           'author_id': authUser.id,
+          'sos_mode': item.sosMode,
+          if (item.localTimeHhmm != null && item.localTimeHhmm!.isNotEmpty)
+            'local_time_hhmm': item.localTimeHhmm,
           if (hasValidGroup) 'group_id': groupId,
           'category': item.categoryIndex,
           'lat': item.lat,

@@ -22,6 +22,7 @@ class FriendRecord {
     required this.status,
     required this.isIncoming,
     required this.createdAt,
+    this.isOfficial = false,
   });
 
   final String friendshipId;
@@ -32,6 +33,7 @@ class FriendRecord {
   final String status; // pending | accepted
   final bool isIncoming;
   final DateTime createdAt;
+  final bool isOfficial;
 
   String get label {
     final full = displayName?.trim();
@@ -50,6 +52,7 @@ class FriendRecord {
         'status': status,
         'is_incoming': isIncoming,
         'created_at': createdAt.toUtc().toIso8601String(),
+        'is_official': isOfficial,
       };
 
   static FriendRecord? fromJson(Object? raw) {
@@ -68,6 +71,7 @@ class FriendRecord {
       createdAt:
           DateTime.tryParse(raw['created_at']?.toString() ?? '')?.toUtc() ??
               DateTime.now().toUtc(),
+      isOfficial: raw['is_official'] == true,
     );
   }
 }
@@ -79,12 +83,14 @@ class UserSearchResult {
     required this.username,
     this.displayName,
     this.avatarUrl,
+    this.isOfficial = false,
   });
 
   final String userId;
   final String username;
   final String? displayName;
   final String? avatarUrl;
+  final bool isOfficial;
 
   String get label =>
       (displayName != null && displayName!.trim().isNotEmpty)
@@ -101,6 +107,8 @@ class OtherUserProfileData {
     this.avatarUrl,
     this.isPlus = false,
     this.plusPlanId,
+    this.isUltima = false,
+    this.isOfficial = false,
     this.mountainsClimbed = 0,
     this.totalDistanceM = 0,
     this.totalMovingSeconds = 0,
@@ -112,13 +120,17 @@ class OtherUserProfileData {
   final String? avatarUrl;
   final bool isPlus;
   final String? plusPlanId;
+  final bool isUltima;
+  final bool isOfficial;
   final int mountainsClimbed;
   final double totalDistanceM;
   final int totalMovingSeconds;
 
   /// Lencana Hiqeo Plus hanya muncul bila berlangganan Paket Mahasiswa / Tahunan.
   bool get showPlusBadge =>
-      isPlus && PlusAccess.isFullSocialPlan(plusPlanId);
+      isPlus &&
+      !isUltima &&
+      (plusPlanId == null || PlusAccess.isFullSocialPlan(plusPlanId));
 
   String get label =>
       (displayName != null && displayName!.trim().isNotEmpty)
@@ -261,6 +273,7 @@ class FriendsService extends ChangeNotifier {
           status: item.status,
           isIncoming: item.isIncoming,
           createdAt: item.createdAt,
+          isOfficial: prof.isOfficial || item.isOfficial,
         );
       }
 
@@ -371,6 +384,7 @@ class FriendsService extends ChangeNotifier {
                 fullName: (r['full_name'] ?? r['display_name'])?.toString(),
                 avatarUrl:
                     MediaUrlNormalizer.normalize(r['avatar_url']?.toString()),
+                isOfficial: r['is_official'] == true,
                 updatedAtUtc: DateTime.now().toUtc(),
               );
               profilesById[uid] = prof;
@@ -430,6 +444,7 @@ class FriendsService extends ChangeNotifier {
           status: status,
           isIncoming: isIncoming,
           createdAt: createdAt,
+          isOfficial: (prof?.isOfficial ?? false) || (prev?.isOfficial ?? false),
         );
         if (status == 'accepted') {
           accepted.add(record);
@@ -505,6 +520,7 @@ class FriendsService extends ChangeNotifier {
             username: r['username']?.toString() ?? '',
             displayName: r['full_name']?.toString(),
             avatarUrl: r['avatar_url']?.toString(),
+            isOfficial: r['is_official'] == true,
           );
         }).where((u) => u.userId.isNotEmpty && u.username.isNotEmpty).toList();
       }
@@ -518,7 +534,7 @@ class FriendsService extends ChangeNotifier {
         .replaceAll('_', r'\_');
     final rows = await client
         .from('profiles')
-        .select('id, username, full_name, avatar_url')
+        .select('id, username, full_name, avatar_url, is_official')
         .neq('id', user.id)
         .ilike('username', '$escaped%')
         .order('username', ascending: true)
@@ -531,6 +547,7 @@ class FriendsService extends ChangeNotifier {
             displayName:
                 (r['full_name'] ?? r['display_name'])?.toString(),
             avatarUrl: r['avatar_url']?.toString(),
+            isOfficial: r['is_official'] == true,
           ),
         )
         .where((u) => u.userId.isNotEmpty && u.username.isNotEmpty)
@@ -610,13 +627,19 @@ class FriendsService extends ChangeNotifier {
       );
       if (rows is List && rows.isNotEmpty && rows.first is Map) {
         final r = Map<String, dynamic>.from(rows.first as Map);
+        final isPlus = r['has_plus_badge'] == true || r['is_plus'] == true;
+        final planId = r['plus_plan_id']?.toString();
+        final isUltima = r['is_ultima'] == true ||
+            (isPlus && PlusAccess.isLifetimePlanId(planId));
         return OtherUserProfileData(
           userId: r['user_id']?.toString() ?? userId,
           username: r['username']?.toString() ?? 'pendaki',
           displayName: (r['full_name'] ?? r['display_name'])?.toString(),
           avatarUrl: r['avatar_url']?.toString(),
-          isPlus: r['has_plus_badge'] == true || r['is_plus'] == true,
-          plusPlanId: r['plus_plan_id']?.toString(),
+          isPlus: isPlus,
+          plusPlanId: planId,
+          isUltima: isUltima,
+          isOfficial: r['is_official'] == true,
           mountainsClimbed: (r['mountains_climbed'] as num?)?.toInt() ?? 0,
           totalDistanceM: (r['total_distance_m'] as num?)?.toDouble() ?? 0,
           totalMovingSeconds: (r['total_moving_seconds'] as num?)?.toInt() ?? 0,
@@ -628,7 +651,9 @@ class FriendsService extends ChangeNotifier {
 
     final prof = await client
         .from('profiles')
-        .select('id, username, full_name, avatar_url, is_plus, plus_plan_id')
+        .select(
+          'id, username, full_name, avatar_url, is_plus, plus_plan_id, plus_expires_at, is_official',
+        )
         .eq('id', userId)
         .maybeSingle();
     final sessions = await client
@@ -646,13 +671,23 @@ class FriendsService extends ChangeNotifier {
       secs += (s['moving_seconds'] as num?)?.toInt() ?? 0;
     }
 
+    final isPlus = prof?['is_plus'] == true;
+    final planId = prof?['plus_plan_id']?.toString();
+    final expiresRaw = prof?['plus_expires_at']?.toString();
+    final isUltima = isPlus &&
+        (expiresRaw == null ||
+            expiresRaw.isEmpty ||
+            PlusAccess.isLifetimePlanId(planId));
+
     return OtherUserProfileData(
       userId: userId,
       username: prof?['username']?.toString() ?? 'pendaki',
       displayName: (prof?['full_name'] ?? prof?['display_name'])?.toString(),
       avatarUrl: prof?['avatar_url']?.toString(),
-      isPlus: prof?['is_plus'] == true,
-      plusPlanId: prof?['plus_plan_id']?.toString(),
+      isPlus: isPlus,
+      plusPlanId: planId,
+      isUltima: isUltima,
+      isOfficial: prof?['is_official'] == true,
       mountainsClimbed: mountains.length,
       totalDistanceM: dist,
       totalMovingSeconds: secs,

@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
+import '../../features/auth/domain/username_policy.dart';
 import '../../features/chat/domain/group_chat_models.dart';
 import '../database/app_database.dart';
 import '../database/database_connection.dart';
@@ -19,6 +20,7 @@ class PublicProfile {
     this.fullName,
     this.avatarUrl,
     this.lastSeenAtUtc,
+    this.isOfficial = false,
     this.updatedAtUtc,
   });
 
@@ -27,6 +29,7 @@ class PublicProfile {
   final String? fullName;
   final String? avatarUrl;
   final DateTime? lastSeenAtUtc;
+  final bool isOfficial;
   final DateTime? updatedAtUtc;
 
   String get displayName {
@@ -107,6 +110,18 @@ class PublicProfileCacheService extends ChangeNotifier {
         : null;
   }
 
+  bool resolveIsOfficial(
+    String userId, {
+    bool fallback = false,
+    String? usernameFallback,
+  }) {
+    final cached = _memory[userId];
+    if (cached != null && cached.isOfficial) return true;
+    final uname = cached?.username ?? usernameFallback;
+    if (UsernamePolicy.isOfficialUsername(uname)) return true;
+    return fallback;
+  }
+
   Future<AppDatabase?> _db() async {
     if (_injectedDb != null) return _injectedDb;
     if (_openedDb != null) return _openedDb;
@@ -164,6 +179,7 @@ class PublicProfileCacheService extends ChangeNotifier {
           avatarUrl: MediaUrlNormalizer.normalize(d['avatar_url']?.toString()),
           lastSeenAtUtc:
               rawLastSeen != null ? DateTime.tryParse(rawLastSeen)?.toUtc() : null,
+          isOfficial: ((d['is_official'] as num?)?.toInt() ?? 0) == 1,
           updatedAtUtc: rawUpdated != null
               ? DateTime.fromMillisecondsSinceEpoch(rawUpdated, isUtc: true)
               : null,
@@ -205,6 +221,9 @@ class PublicProfileCacheService extends ChangeNotifier {
             : existing?.fullName,
         avatarUrl: normalizedAvatar ?? existing?.avatarUrl,
         lastSeenAtUtc: raw.lastSeenAtUtc ?? existing?.lastSeenAtUtc,
+        isOfficial: raw.isOfficial ||
+            (existing?.isOfficial ?? false) ||
+            UsernamePolicy.isOfficialUsername(raw.username ?? existing?.username),
         updatedAtUtc: raw.updatedAtUtc ?? nowUtc,
       );
 
@@ -212,7 +231,8 @@ class PublicProfileCacheService extends ChangeNotifier {
           existing.username != next.username ||
           existing.fullName != next.fullName ||
           existing.avatarUrl != next.avatarUrl ||
-          existing.lastSeenAtUtc != next.lastSeenAtUtc) {
+          existing.lastSeenAtUtc != next.lastSeenAtUtc ||
+          existing.isOfficial != next.isOfficial) {
         changed = true;
       }
       _memory[raw.userId] = next;
@@ -235,13 +255,17 @@ class PublicProfileCacheService extends ChangeNotifier {
           await db.customInsert(
             '''
             INSERT INTO cached_public_profiles (
-              user_id, username, full_name, avatar_url, last_seen_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+              user_id, username, full_name, avatar_url, last_seen_at, is_official, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
               username = COALESCE(excluded.username, cached_public_profiles.username),
               full_name = COALESCE(excluded.full_name, cached_public_profiles.full_name),
               avatar_url = COALESCE(excluded.avatar_url, cached_public_profiles.avatar_url),
               last_seen_at = COALESCE(excluded.last_seen_at, cached_public_profiles.last_seen_at),
+              is_official = CASE
+                WHEN excluded.is_official = 1 THEN 1
+                ELSE cached_public_profiles.is_official
+              END,
               updated_at = excluded.updated_at
             ''',
             variables: <Variable<Object>>[
@@ -250,6 +274,7 @@ class PublicProfileCacheService extends ChangeNotifier {
               _nullableText(p.fullName),
               _nullableText(p.avatarUrl),
               _nullableText(p.lastSeenAtUtc?.toUtc().toIso8601String()),
+              Variable<int>(p.isOfficial ? 1 : 0),
               Variable<int>(
                 (p.updatedAtUtc ?? nowUtc).toUtc().millisecondsSinceEpoch,
               ),
@@ -322,6 +347,7 @@ class PublicProfileCacheService extends ChangeNotifier {
             lastSeenAtUtc: rawLastSeen != null
                 ? DateTime.tryParse(rawLastSeen)?.toUtc()
                 : null,
+            isOfficial: r['is_official'] == true,
             updatedAtUtc: DateTime.now().toUtc(),
           );
         }).where((p) => p.userId.isNotEmpty).toList(growable: false);
@@ -330,7 +356,7 @@ class PublicProfileCacheService extends ChangeNotifier {
       // Fallback bila RPC belum dimigrasi: hanya membaca profil yang diizinkan RLS.
       final rows = await client
           .from('profiles')
-          .select('id, username, full_name, avatar_url, last_seen_at')
+          .select('id, username, full_name, avatar_url, last_seen_at, is_official')
           .inFilter('id', userIds);
       return rows.map((r) {
         final rawLastSeen = r['last_seen_at']?.toString();
@@ -342,6 +368,7 @@ class PublicProfileCacheService extends ChangeNotifier {
           lastSeenAtUtc: rawLastSeen != null
               ? DateTime.tryParse(rawLastSeen)?.toUtc()
               : null,
+          isOfficial: r['is_official'] == true,
           updatedAtUtc: DateTime.now().toUtc(),
         );
       }).where((p) => p.userId.isNotEmpty).toList(growable: false);

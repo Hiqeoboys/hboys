@@ -3,13 +3,59 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../infrastructure/crypto/flutter_secure_value_store.dart';
 import '../../../infrastructure/crypto/secure_group_key_store.dart';
 import '../../../infrastructure/notifications/push_notification_service.dart';
 import '../../../infrastructure/supabase/supabase_services.dart';
 import '../../chat/application/group_chat_crypto.dart';
+import '../../chat/domain/group_chat_models.dart';
 import '../../preparation/application/packing_list_store.dart';
+
+/// Membandingkan dua ruang obrolan berdasarkan aktivitas/pesan terbaru
+/// (`lastMessageAtUtc DESC NULLS LAST`, lalu fallback `createdAtUtc DESC`).
+int compareRoomsByLatestActivity({
+  required DateTime? aLastMessageAtUtc,
+  required DateTime aCreatedAtUtc,
+  required DateTime? bLastMessageAtUtc,
+  required DateTime bCreatedAtUtc,
+  String? aId,
+  String? bId,
+}) {
+  if (aLastMessageAtUtc != null && bLastMessageAtUtc != null) {
+    final msgCmp = bLastMessageAtUtc.compareTo(aLastMessageAtUtc);
+    if (msgCmp != 0) return msgCmp;
+  } else if (aLastMessageAtUtc != null) {
+    return -1;
+  } else if (bLastMessageAtUtc != null) {
+    return 1;
+  }
+  final createdCmp = bCreatedAtUtc.compareTo(aCreatedAtUtc);
+  if (createdCmp != 0) return createdCmp;
+  if (aId != null && bId != null) {
+    return aId.compareTo(bId);
+  }
+  return 0;
+}
+
+/// Membentuk cuplikan pesan ringkas dari rekaman obrolan grup lokal / Hiqeo Mesh.
+String formatGroupPreviewSnippetFromRecord(GroupMessageRecord record) {
+  if (record.isDeleted) return 'Pesan telah dihapus';
+  if (record.isCancelled) return 'Ajakan pendakian dibatalkan';
+  final sender = record.senderName.trim();
+  if (record.messageType == GroupMessageType.audio) {
+    return sender.isNotEmpty ? '$sender: Pesan suara' : 'Pesan suara';
+  }
+  final rawText = record.content?.trim() ?? '';
+  if (rawText.isEmpty) return 'Pesan baru';
+  final invite = GroupHikeInviteMessage.tryDecodeInvite(rawText);
+  if (invite != null) return 'Ajakan pendakian: ${invite.mountainName}';
+  if (GroupHikeInviteMessage.tryDecodeReady(rawText) != null) {
+    return 'Anggota siap naik';
+  }
+  return sender.isNotEmpty ? '$sender: $rawText' : rawText;
+}
 
 @immutable
 class SocialLatestPreview {
@@ -156,6 +202,9 @@ class SocialUnreadStore extends ChangeNotifier {
   final Map<String, int> _localLastReadMs = <String, int>{};
   final Map<String, String> _localLastReadMsgId = <String, String>{};
   bool _refreshing = false;
+  RealtimeChannel? _realtimeChannel;
+  String? _realtimeUserId;
+  Timer? _realtimeRefreshTimer;
 
   SocialLatestPreview? groupPreview(String groupId) => _groupPreviews[groupId];
 
@@ -165,6 +214,188 @@ class SocialUnreadStore extends ChangeNotifier {
   bool get hasAnyUnread =>
       _groupPreviews.values.any((e) => e.hasUnread) ||
       _communityPreviews.values.any((e) => e.hasUnread);
+
+  /// Berlangganan Supabase Realtime (`group_messages` & `community_messages`)
+  /// untuk akun aktif agar daftar Grup & Komunitas langsung naik ke teratas
+  /// begitu pesan baru tiba tanpa harus membuka ruang terlebih dahulu.
+  void ensureRealtimeSubscribed() {
+    final client = SupabaseServices.clientOrNull;
+    final uid = _currentUserIdProvider()?.trim();
+    if (client == null || uid == null || uid.isEmpty) return;
+    if (_realtimeChannel != null && _realtimeUserId == uid) return;
+    unawaited(unsubscribeRealtime());
+    _realtimeUserId = uid;
+    try {
+      final channel = client.channel('hiqeo_social_activity_$uid');
+      channel
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'group_messages',
+            callback: (payload) {
+              final r = payload.newRecord;
+              final gid = r['group_id']?.toString() ?? '';
+              if (gid.isEmpty) return;
+              final rawCreated = r['created_at']?.toString() ??
+                  r['client_created_at']?.toString() ??
+                  '';
+              final ts = DateTime.tryParse(rawCreated)?.toUtc() ??
+                  DateTime.now().toUtc();
+              final senderId = r['sender_id']?.toString() ?? '';
+              final msgId =
+                  (r['client_id'] ?? r['client_msg_id'] ?? r['id'])?.toString();
+              final existing = _groupPreviews[gid];
+              recordGroupActivity(
+                groupId: gid,
+                createdAtUtc: ts,
+                snippet: existing?.snippet ?? 'Pesan terenkripsi',
+                senderId: senderId,
+                messageId: msgId,
+                markUnread: senderId.isNotEmpty && senderId != uid,
+              );
+              _scheduleDebouncedRefresh();
+            },
+          )
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'community_messages',
+            callback: (payload) {
+              final r = payload.newRecord;
+              final cid = r['community_id']?.toString() ?? '';
+              if (cid.isEmpty) return;
+              final rawCreated = r['created_at']?.toString() ?? '';
+              final ts = DateTime.tryParse(rawCreated)?.toUtc() ??
+                  DateTime.now().toUtc();
+              final senderId = r['sender_id']?.toString() ?? '';
+              final msgId = r['id']?.toString();
+              recordCommunityActivity(
+                communityId: cid,
+                createdAtUtc: ts,
+                snippet: resolveCommunitySnippetFromRow(r),
+                senderId: senderId,
+                messageId: msgId,
+                markUnread: senderId.isNotEmpty && senderId != uid,
+              );
+            },
+          )
+          .subscribe();
+      _realtimeChannel = channel;
+    } catch (_) {
+      _realtimeChannel = null;
+      _realtimeUserId = null;
+    }
+  }
+
+  void _scheduleDebouncedRefresh() {
+    _realtimeRefreshTimer?.cancel();
+    _realtimeRefreshTimer = Timer(const Duration(milliseconds: 300), () {
+      unawaited(refresh());
+    });
+  }
+
+  Future<void> unsubscribeRealtime() async {
+    _realtimeRefreshTimer?.cancel();
+    _realtimeRefreshTimer = null;
+    _realtimeUserId = null;
+    final ch = _realtimeChannel;
+    _realtimeChannel = null;
+    if (ch != null) {
+      try {
+        await SupabaseServices.clientOrNull?.removeChannel(ch);
+      } catch (_) {}
+    }
+  }
+
+  /// Mencatat aktivitas pesan grup terbaru secara langsung di memori (dari pesan
+  /// terkirim, Hiqeo Mesh offline, maupun Supabase Realtime) agar grup otomatis
+  /// naik ke posisi teratas tanpa menunggu polling server.
+  void recordGroupActivity({
+    required String groupId,
+    required DateTime createdAtUtc,
+    String? snippet,
+    String? senderId,
+    String? messageId,
+    bool? markUnread,
+  }) {
+    _recordRoomActivity(
+      roomKind: 'group',
+      roomId: groupId,
+      cache: _groupPreviews,
+      createdAtUtc: createdAtUtc,
+      snippet: snippet,
+      senderId: senderId,
+      messageId: messageId,
+      markUnread: markUnread,
+    );
+  }
+
+  /// Mencatat aktivitas pesan komunitas terbaru secara langsung di memori.
+  void recordCommunityActivity({
+    required String communityId,
+    required DateTime createdAtUtc,
+    String? snippet,
+    String? senderId,
+    String? messageId,
+    bool? markUnread,
+  }) {
+    _recordRoomActivity(
+      roomKind: 'community',
+      roomId: communityId,
+      cache: _communityPreviews,
+      createdAtUtc: createdAtUtc,
+      snippet: snippet,
+      senderId: senderId,
+      messageId: messageId,
+      markUnread: markUnread,
+    );
+  }
+
+  void _recordRoomActivity({
+    required String roomKind,
+    required String roomId,
+    required Map<String, SocialLatestPreview> cache,
+    required DateTime createdAtUtc,
+    String? snippet,
+    String? senderId,
+    String? messageId,
+    bool? markUnread,
+  }) {
+    if (roomId.isEmpty) return;
+    final utc = createdAtUtc.toUtc();
+    final existing = cache[roomId];
+    if (existing != null && utc.isBefore(existing.createdAtUtc)) {
+      return;
+    }
+
+    final currentUid = _currentUserIdProvider()?.trim() ?? '';
+    final sid = senderId?.trim() ?? existing?.senderId ?? '';
+    final isOwn =
+        sid.isNotEmpty && currentUid.isNotEmpty && sid == currentUid;
+    final isActiveRoom =
+        PushNotificationService.instance.activeRoomType == roomKind &&
+            PushNotificationService.instance.activeRoomId == roomId;
+
+    final nextUnread = isOwn || isActiveRoom
+        ? false
+        : (markUnread ?? existing?.hasUnread ?? false);
+    final nextSnippet = (snippet != null && snippet.trim().isNotEmpty)
+        ? snippet.trim()
+        : (existing?.snippet ?? 'Pesan baru');
+
+    cache[roomId] = SocialLatestPreview(
+      roomKind: roomKind,
+      roomId: roomId,
+      snippet: nextSnippet,
+      senderId: sid,
+      createdAtUtc: utc,
+      hasUnread: nextUnread,
+      lastMessageId: (messageId != null && messageId.trim().isNotEmpty)
+          ? messageId.trim()
+          : existing?.lastMessageId,
+    );
+    notifyListeners();
+  }
 
   static const Duration _timeout = Duration(seconds: 8);
   static final GroupChatCrypto _sharedCrypto = GroupChatCrypto(
@@ -447,6 +678,21 @@ class SocialUnreadStore extends ChangeNotifier {
         }
       }
 
+      for (final entry in _groupPreviews.entries) {
+        final incoming = nextGroups[entry.key];
+        if (incoming == null ||
+            entry.value.createdAtUtc.isAfter(incoming.createdAtUtc)) {
+          nextGroups[entry.key] = entry.value;
+        }
+      }
+      for (final entry in _communityPreviews.entries) {
+        final incoming = nextCommunities[entry.key];
+        if (incoming == null ||
+            entry.value.createdAtUtc.isAfter(incoming.createdAtUtc)) {
+          nextCommunities[entry.key] = entry.value;
+        }
+      }
+
       _groupPreviews
         ..clear()
         ..addAll(nextGroups);
@@ -510,7 +756,7 @@ class SocialUnreadStore extends ChangeNotifier {
     }
   }
 
-  String _resolveCommunitySnippet(Map<String, dynamic> row) {
+  static String resolveCommunitySnippetFromRow(Map<String, dynamic> row) {
     final sender = row['sender_name']?.toString().trim() ?? '';
     final prefix = sender.isNotEmpty ? '$sender: ' : '';
     if (row['is_deleted'] == true) return '${prefix}Pesan telah dihapus';
@@ -521,6 +767,9 @@ class SocialUnreadStore extends ChangeNotifier {
     if (text.isEmpty) return '${prefix}Pesan baru';
     return '$prefix$text';
   }
+
+  String _resolveCommunitySnippet(Map<String, dynamic> row) =>
+      resolveCommunitySnippetFromRow(row);
 
   Future<void> clearGroup(String groupId) async {
     if (groupId.isEmpty) return;
@@ -541,6 +790,7 @@ class SocialUnreadStore extends ChangeNotifier {
 
   /// Mengosongkan seluruh cache unread & kursor baca di memori saat akun berganti.
   void clearForAccountChange() {
+    unawaited(unsubscribeRealtime());
     _groupPreviews.clear();
     _communityPreviews.clear();
     _localLastReadMs.clear();

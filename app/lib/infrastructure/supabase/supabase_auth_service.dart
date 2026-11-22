@@ -61,6 +61,118 @@ class SupabaseAuthService implements domain.AuthService {
   }
 
   @override
+  Future<List<domain.LinkedIdentity>> linkedIdentities() async {
+    final current = _client.auth.currentUser;
+    if (current == null) return const <domain.LinkedIdentity>[];
+    List<UserIdentity> rawIdentities = current.identities ?? const <UserIdentity>[];
+    try {
+      rawIdentities = await _client.auth.getUserIdentities();
+    } catch (_) {
+      // Offline / cache fallback menggunakan identities pada sesi saat ini.
+    }
+    final result = <domain.LinkedIdentity>[];
+    final seen = <domain.AuthProviderKind>{};
+    for (final identity in rawIdentities) {
+      final kind = _kindFromProviderName(identity.provider);
+      if (kind == null || !seen.add(kind)) continue;
+      final email = identity.identityData?['email']?.toString();
+      result.add(
+        domain.LinkedIdentity(
+          provider: kind,
+          email: (email != null && email.trim().isNotEmpty) ? email.trim() : null,
+          identityId: identity.identityId,
+        ),
+      );
+    }
+    return List<domain.LinkedIdentity>.unmodifiable(result);
+  }
+
+  @override
+  Future<void> linkProvider(domain.AuthProviderKind provider) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const domain.AuthFailure(
+        domain.AuthFailureCode.server,
+        'Masuk ke akun terlebih dahulu sebelum menautkan akun.',
+      );
+    }
+    final label = provider == domain.AuthProviderKind.apple ? 'Apple' : 'Google';
+    try {
+      final oauthProvider = provider == domain.AuthProviderKind.apple
+          ? OAuthProvider.apple
+          : OAuthProvider.google;
+      final launched = await _client.auth.linkIdentity(
+        oauthProvider,
+        redirectTo: SupabaseConfig.oauthRedirect,
+        authScreenLaunchMode: LaunchMode.externalApplication,
+        queryParams: provider == domain.AuthProviderKind.google
+            ? const <String, String>{'prompt': 'select_account'}
+            : null,
+      );
+      if (!launched) {
+        throw const domain.AuthFailure(
+          domain.AuthFailureCode.notConfigured,
+          'Browser login tidak dapat dibuka untuk menautkan akun.',
+        );
+      }
+    } on domain.AuthFailure {
+      rethrow;
+    } on AuthException catch (error) {
+      final lower = error.message.toLowerCase();
+      final code = (error.code ?? '').toLowerCase();
+      if (code.contains('identity_already_exists') ||
+          lower.contains('identity_already_exists') ||
+          lower.contains('already exists') ||
+          lower.contains('already linked') ||
+          lower.contains('already registered') ||
+          lower.contains('already associated')) {
+        throw domain.AuthFailure(
+          domain.AuthFailureCode.identityAlreadyLinked,
+          'Akun $label ini sudah terdaftar di akun Hiqeo lain. '
+          'Data akun aktifmu tetap aman.',
+        );
+      }
+      if (code.contains('manual_linking_disabled') ||
+          lower.contains('manual linking is disabled') ||
+          lower.contains('manual_linking_disabled')) {
+        throw const domain.AuthFailure(
+          domain.AuthFailureCode.manualLinkingDisabled,
+          'Fitur tautkan akun belum diaktifkan di server autentikasi.',
+        );
+      }
+      if (lower.contains('cancel')) {
+        throw const domain.AuthFailure(
+          domain.AuthFailureCode.cancelled,
+          'Penautan akun dibatalkan.',
+        );
+      }
+      if (lower.contains('provider is not enabled') ||
+          lower.contains('unsupported provider')) {
+        throw domain.AuthFailure(
+          domain.AuthFailureCode.notConfigured,
+          'Login $label belum diaktifkan di server.',
+        );
+      }
+      throw domain.AuthFailure(
+        domain.AuthFailureCode.server,
+        'Gagal menautkan akun $label: ${error.message}',
+      );
+    } catch (_) {
+      throw domain.AuthFailure(
+        domain.AuthFailureCode.network,
+        'Gagal menautkan akun $label. Periksa koneksi internetmu.',
+      );
+    }
+  }
+
+  domain.AuthProviderKind? _kindFromProviderName(String? raw) =>
+      switch (raw?.trim().toLowerCase()) {
+        'google' => domain.AuthProviderKind.google,
+        'apple' => domain.AuthProviderKind.apple,
+        _ => null,
+      };
+
+  @override
   Future<void> signOut() async {
     await _service.signOut();
   }

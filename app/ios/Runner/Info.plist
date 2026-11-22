@@ -51,6 +51,9 @@
 	<array>
 		<string>sms</string>
 		<string>tel</string>
+		<string>whatsapp</string>
+		<string>comgooglemaps</string>
+		<string>maps</string>
 		<string>https</string>
 		<string>googlegmail</string>
 		<string>googlechromes</string>

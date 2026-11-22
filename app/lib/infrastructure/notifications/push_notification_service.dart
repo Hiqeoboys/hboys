@@ -130,7 +130,8 @@ class InAppPushNotification {
   final DateTime? sentAtUtc;
   final Map<String, String> rawData;
 
-  bool get isUrgent => type == 'sos' || type == 'sos_alert';
+  bool get isUrgent =>
+      type == 'sos' || type == 'sos_alert' || type == 'sos_nearby';
 
   bool get isRoomChatNotification =>
       (type == 'group_chat' ||
@@ -223,6 +224,7 @@ class InAppPushNotification {
       'community_message_deleted' => 'community_message_deleted',
       'friend_request' => 'friend_request',
       'sos' || 'sos_alert' => 'sos',
+      'sos_nearby' => 'sos_nearby',
       'emergency_contact_request' => 'emergency_contact_request',
       _ => rawType,
     };
@@ -244,7 +246,9 @@ class InAppPushNotification {
             : null);
     final inviteId = _nonEmpty(normalized['invite_id']);
     final sosId = _nonEmpty(normalized['sos_id']) ??
-        (canonicalType == 'sos' ? rawTarget : null);
+        ((canonicalType == 'sos' || canonicalType == 'sos_nearby')
+            ? rawTarget
+            : null);
     final messageId = _nonEmpty(normalized['message_id']);
     final roomName = _nonEmpty(normalized['room_name']);
     final roomAvatarUrl =
@@ -267,6 +271,7 @@ class InAppPushNotification {
         '/grup',
       'friend_request' => '/teman',
       'sos' => groupId != null ? '/grup' : '/sos',
+      'sos_nearby' => '',
       'emergency_contact_request' => '/profil',
       _ => '/beranda',
     };
@@ -285,6 +290,7 @@ class InAppPushNotification {
           'community_mention' => 'Kamu Disebut di Komunitas',
           'friend_request' => 'Permintaan Pertemanan',
           'sos' => 'DARURAT SOS HIQEO',
+          'sos_nearby' => 'DARURAT SOS TERDEKAT',
           'emergency_contact_request' => 'Permintaan Kontak Darurat',
           _ => 'Hiqeo',
         };
@@ -397,7 +403,7 @@ class PushNotificationService {
 
   static String resolveChannelId(InAppPushNotification notif) =>
       switch (notif.type) {
-        'sos' || 'sos_alert' => kHiqeoSosChannelId,
+        'sos' || 'sos_alert' || 'sos_nearby' => kHiqeoSosChannelId,
         'group_chat' => kHiqeoGroupMessagesChannelId,
         'community_chat' => kHiqeoCommunityMessagesChannelId,
         'community_mention' => kHiqeoMentionsChannelId,
@@ -581,13 +587,17 @@ class PushNotificationService {
 
     try {
       final messaging = FirebaseMessaging.instance;
+      // Nonaktifkan alert/badge/sound bawaan iOS di foreground agar Flutter
+      // selalu memeriksa status mute ruang & ruang aktif terlebih dahulu.
       await messaging.setForegroundNotificationPresentationOptions(
         alert: false,
-        badge: true,
-        sound: true,
+        badge: false,
+        sound: false,
       );
 
-      FirebaseMessaging.onMessage.listen(_handleForegroundRemoteMessage);
+      FirebaseMessaging.onMessage.listen(
+        (msg) => unawaited(_handleForegroundRemoteMessage(msg)),
+      );
       FirebaseMessaging.onMessageOpenedApp.listen(_handleTapRemoteMessage);
       messaging.onTokenRefresh.listen((token) {
         _currentToken = token;
@@ -756,10 +766,10 @@ class PushNotificationService {
     } catch (_) {}
   }
 
-  void _handleForegroundRemoteMessage(RemoteMessage message) {
+  Future<void> _handleForegroundRemoteMessage(RemoteMessage message) async {
     final notif = _toNotification(message);
     if (notif.type == 'community_message_deleted') {
-      unawaited(handleRemoteMessageDeleted(notif));
+      await handleRemoteMessageDeleted(notif);
       unawaited(UserNotificationsService.instance.loadNotifications());
       return;
     }
@@ -772,6 +782,7 @@ class PushNotificationService {
         notif.type == 'group_hike_cancelled' ||
         notif.type == 'community_chat' ||
         notif.type == 'community_mention') {
+      // Tetap perbarui daftar obrolan secara senyap tanpa pop-up/suara bila bisu.
       unawaited(SocialUnreadStore.instance.refresh());
     }
     if (notif.type == 'community_mention' ||
@@ -783,16 +794,21 @@ class PushNotificationService {
         notif.isUrgent) {
       unawaited(UserNotificationsService.instance.loadNotifications());
     }
+    await ChatMuteService.instance.ensureLoaded();
     if (shouldShowForegroundBanner(notif)) {
       if (!_foregroundCtrl.isClosed) _foregroundCtrl.add(notif);
-      unawaited(showLocalNotification(notif));
+      await showLocalNotification(notif);
     }
   }
 
   /// Dipanggil di background isolate FCM saat notifikasi data-only tiba.
   Future<void> handleBackgroundRemoteMessage(RemoteMessage message) async {
-    await _initLocalNotifications();
+    await ChatMuteService.instance.ensureLoaded(forceReload: true);
     final notif = _toNotification(message);
+    if (await isSuppressedByMuteAsync(notif, forceReloadPrefs: true)) {
+      return;
+    }
+    await _initLocalNotifications();
     if (notif.type == 'community_message_deleted') {
       await handleRemoteMessageDeleted(notif);
       return;
@@ -802,8 +818,9 @@ class PushNotificationService {
 
   /// Menyelaraskan notifikasi perangkat aktif secara senyap saat pesan
   /// komunitas dihapus oleh pengirimnya (tidak memunculkan notifikasi baru bila
-  /// tidak ada antrean aktif).
+  /// tidak ada antrean aktif atau ruang sedang dibisukan).
   Future<bool> handleRemoteMessageDeleted(InAppPushNotification notif) async {
+    if (await isSuppressedByMuteAsync(notif)) return false;
     final roomType = notif.roomType ?? 'community';
     final roomId = notif.roomId?.trim() ?? '';
     final messageId = notif.messageId?.trim() ?? '';
@@ -969,6 +986,7 @@ class PushNotificationService {
   /// (`ic_stat_hiqeo`), aksen `#242B40`, `MessagingStyleInformation`
   /// berkelompok per ruang (`"Nama · N pesan baru"`), dan avatar melingkar.
   Future<void> showLocalNotification(InAppPushNotification notif) async {
+    if (await isSuppressedByMuteAsync(notif)) return;
     if (notif.type == 'community_message_deleted') {
       await handleRemoteMessageDeleted(notif);
       return;
@@ -1076,12 +1094,42 @@ class PushNotificationService {
     } catch (_) {}
   }
 
+  /// Memeriksa status mute untuk notifikasi obrolan grup atau komunitas secara sinkron.
+  /// Pengecualian keselamatan: sinyal darurat SOS (`isUrgent`) & `hike_started` selalu lolos.
+  bool isSuppressedByMute(InAppPushNotification notif) {
+    if (notif.isUrgent || notif.type == 'hike_started') return false;
+    final incomingType = notif.roomType;
+    final incomingId = notif.roomId;
+    if (incomingType == null || incomingId == null || incomingId.isEmpty) {
+      return false;
+    }
+    if (notif.type == 'group_chat' ||
+        notif.type == 'community_chat' ||
+        notif.type == 'community_mention' ||
+        notif.type == 'group_ready' ||
+        notif.type == 'group_hike_cancelled' ||
+        notif.type == 'community_message_deleted') {
+      return ChatMuteService.instance.isMuted(incomingType, incomingId);
+    }
+    return false;
+  }
+
+  /// Memastikan status mute terhidrasi dari SharedPreferences (penting di
+  /// background isolate) lalu memeriksa apakah notifikasi wajib dibatalkan 100%.
+  Future<bool> isSuppressedByMuteAsync(
+    InAppPushNotification notif, {
+    bool forceReloadPrefs = false,
+  }) async {
+    if (notif.isUrgent || notif.type == 'hike_started') return false;
+    await ChatMuteService.instance.ensureLoaded(forceReload: forceReloadPrefs);
+    return isSuppressedByMute(notif);
+  }
+
   /// Anti-spam in-app & per-ruang mute (`chat_notification_mutes`):
   /// - Sinyal SOS (`isUrgent`) selalu ditampilkan menembus mute dan ruang aktif.
   /// - Ruang obrolan yang sedang dibuka user tidak memunculkan pop-up.
-  /// - `@username` mention (`community_mention`) menembus mute sementara, dan
-  ///   hanya dibungkam bila user memilih mute selamanya (`9999-12-31`).
-  /// - Pesan biasa grup/komunitas mengikuti status `ChatMuteService.isMuted`.
+  /// - Semua pesan obrolan grup & komunitas (termasuk mention) di ruang yang
+  ///   dibisukan diblokir 100% dari banner/suara/getar/notifikasi OS.
   bool shouldShowForegroundBanner(InAppPushNotification notif) {
     if (notif.type == 'community_message_deleted') return false;
     if (notif.isUrgent || notif.type == 'hike_started') return true;
@@ -1093,21 +1141,8 @@ class PushNotificationService {
         activeRoomId == incomingId) {
       return false;
     }
-    if (incomingType != null && incomingId != null) {
-      if (notif.type == 'community_mention') {
-        if (ChatMuteService.instance.isMutedForever(incomingType, incomingId)) {
-          return false;
-        }
-        return true;
-      }
-      if (notif.type == 'group_chat' ||
-          notif.type == 'community_chat' ||
-          notif.type == 'group_ready' ||
-          notif.type == 'group_hike_cancelled') {
-        if (ChatMuteService.instance.isMuted(incomingType, incomingId)) {
-          return false;
-        }
-      }
+    if (isSuppressedByMute(notif)) {
+      return false;
     }
     return true;
   }
@@ -1127,6 +1162,7 @@ class PushNotificationService {
         record.senderId == currentUserId) {
       return;
     }
+    await ChatMuteService.instance.ensureLoaded();
     final cleanRoomName =
         groupName.trim().isNotEmpty ? groupName.trim() : 'Grup Pendakian';
     final cleanSender =

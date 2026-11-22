@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 
 import '../../../../design/glass/hiqeo_liquid_glass.dart';
 import '../../../../design/tokens.dart';
+import '../../../../design/widgets/account_badges.dart';
 import '../../../../design/widgets/persistent_avatar_image.dart';
 import '../../../../design/widgets/persistent_media_image.dart';
+import '../../../../infrastructure/cache/public_profile_cache_service.dart';
 import '../../../../infrastructure/storage/media_url_normalizer.dart';
 import '../../../chat/presentation/chat_room_chrome.dart';
 import '../../data/community_service.dart';
@@ -604,15 +606,30 @@ class CommunityMentionSuggestionsOverlay extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              color: ChatRoomPalette.textPrimary,
-                            ),
+                          Row(
+                            children: <Widget>[
+                              Flexible(
+                                child: Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: ChatRoomPalette.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              if (PublicProfileCacheService.instance
+                                  .resolveIsOfficial(
+                                member.userId,
+                                fallback: member.isOfficial,
+                                usernameFallback: member.username,
+                              )) ...<Widget>[
+                                const SizedBox(width: 4),
+                                const OfficialVerifiedBadge(size: 14),
+                              ],
+                            ],
                           ),
                           Text(
                             '@${member.username}',

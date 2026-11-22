@@ -29,11 +29,64 @@ class SupabaseIdentityRepository implements ProfileRepository, KeyDirectory {
   }
 
   @override
+  Future<UsernameAvailabilityResult> checkUsernameAvailability(
+    String username,
+  ) async {
+    final user = _client.auth.currentUser;
+    final validation = UsernamePolicy.validate(
+      username,
+      userEmail: user?.email,
+    );
+    if (!validation.isValid) {
+      return UsernameAvailabilityResult(
+        available: false,
+        reason: validation.isReserved ? 'blocked' : 'invalid_format',
+      );
+    }
+    try {
+      final raw = await _client.rpc(
+        'check_username_available',
+        params: <String, dynamic>{'p_username': validation.normalized},
+      );
+      final rows = _rows(raw);
+      if (rows.isNotEmpty) {
+        final r = rows.first;
+        return UsernameAvailabilityResult(
+          available: r['available'] == true,
+          reason: r['reason']?.toString(),
+        );
+      }
+    } on PostgrestException catch (error) {
+      final msgLower = error.message.toLowerCase();
+      if (error.code != 'PGRST202' &&
+          error.code != '42883' &&
+          !msgLower.contains('check_username_available')) {
+        rethrow;
+      }
+    }
+
+    // Fallback bila RPC belum terdeploy
+    final rows = await _client
+        .from('profiles')
+        .select('id')
+        .ilike('username', validation.normalized)
+        .limit(1);
+    final taken = rows.any((r) => r['id']?.toString() != user?.id);
+    return UsernameAvailabilityResult(
+      available: !taken,
+      reason: taken ? 'taken' : null,
+    );
+  }
+
+  @override
   Future<UserProfile> registerProfile({
     required String username,
     required String publicKeyBase64,
   }) async {
-    final validation = UsernamePolicy.validate(username);
+    final validation = UsernamePolicy.validate(
+      username,
+      userEmail: _client.auth.currentUser?.email,
+    );
     if (!validation.isValid) {
       throw AccountException(
         validation.isReserved ? 'blocked' : 'invalid_format',
@@ -59,7 +112,10 @@ class SupabaseIdentityRepository implements ProfileRepository, KeyDirectory {
 
   @override
   Future<UserProfile> setUsername(String newUsername) async {
-    final validation = UsernamePolicy.validate(newUsername);
+    final validation = UsernamePolicy.validate(
+      newUsername,
+      userEmail: _client.auth.currentUser?.email,
+    );
     if (!validation.isValid) {
       throw AccountException(
         validation.isReserved ? 'blocked' : 'invalid_format',
@@ -135,19 +191,17 @@ class SupabaseIdentityRepository implements ProfileRepository, KeyDirectory {
   @override
   Future<UserProfile> updateFullName(String fullName) async {
     final trimmed = fullName.trim();
-    if (trimmed.isEmpty) {
-      throw const AccountException(
-        'FULL_NAME_EMPTY',
-        'Nama akun tidak boleh kosong.',
-      );
-    }
-    if (trimmed.length > 40) {
-      throw const AccountException(
-        'FULL_NAME_TOO_LONG',
-        'Nama akun maksimal 40 karakter.',
-      );
-    }
     final user = _client.auth.currentUser;
+    final nameErr = UsernamePolicy.validateDisplayName(
+      trimmed,
+      userEmail: user?.email,
+    );
+    if (nameErr != null) {
+      final code = trimmed.isEmpty
+          ? 'FULL_NAME_EMPTY'
+          : (trimmed.length > 40 ? 'FULL_NAME_TOO_LONG' : 'blocked');
+      throw AccountException(code, nameErr);
+    }
     if (user == null) {
       throw const AccountException(
         'AUTH_REQUIRED',
@@ -227,6 +281,11 @@ class SupabaseIdentityRepository implements ProfileRepository, KeyDirectory {
     if (rawChanged is String && rawChanged.isNotEmpty) {
       changedAt = DateTime.tryParse(rawChanged)?.toUtc();
     }
+    DateTime? plusStartedAt;
+    final rawPlusStart = row['plus_started_at'];
+    if (rawPlusStart is String && rawPlusStart.isNotEmpty) {
+      plusStartedAt = DateTime.tryParse(rawPlusStart)?.toUtc();
+    }
     DateTime? plusExpiresAt;
     final rawPlusExp = row['plus_expires_at'];
     if (rawPlusExp is String && rawPlusExp.isNotEmpty) {
@@ -234,17 +293,25 @@ class SupabaseIdentityRepository implements ProfileRepository, KeyDirectory {
     }
     final rawIsPlus = row['is_plus'];
     final isPlus = rawIsPlus is bool ? rawIsPlus : false;
+    final rawOfficial = row['is_official'];
+    final uname = row['username'] as String?;
+    final email = row['email'] as String?;
+    final isOfficial = (rawOfficial is bool ? rawOfficial : false) ||
+        UsernamePolicy.isOfficialUsername(uname) ||
+        UsernamePolicy.isOfficialEmail(email);
     return UserProfile(
       userId: row['id'] as String,
-      username: row['username'] as String?,
+      username: uname,
       publicKeyBase64: row['public_key'] as String?,
       fullName: row['full_name'] as String?,
       avatarUrl: row['avatar_url'] as String?,
-      email: row['email'] as String?,
+      email: email,
       usernameChangedAtUtc: changedAt,
       isPlus: isPlus,
       plusPlanId: row['plus_plan_id'] as String?,
+      plusStartedAtUtc: plusStartedAt,
       plusExpiresAtUtc: plusExpiresAt,
+      isOfficial: isOfficial,
     );
   }
 

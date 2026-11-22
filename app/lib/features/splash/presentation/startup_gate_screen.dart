@@ -28,6 +28,7 @@ import '../../notifications/data/user_notifications_service.dart';
 import '../../plus/plus_dependencies.dart';
 import '../../preparation/application/packing_list_store.dart';
 import '../../safety/application/sos_offline_queue_service.dart';
+import '../../social/data/chat_mute_service.dart';
 import '../../tracking/application/tracking_controller.dart';
 
 /// Lapisan 3 startup lokal-first: latar `#313851` dan posisi logo identik dengan
@@ -196,6 +197,7 @@ class _StartupGateScreenState extends State<StartupGateScreen>
   }
 
   Future<void> _initFirebaseAndLocalNotifications() async {
+    await ChatMuteService.instance.ensureLoaded(forceReload: true);
     await PushNotificationService.instance.initializeFirebase();
     await PushNotificationService.instance.initializeLocalNotifications();
   }
@@ -235,6 +237,7 @@ class _StartupGateScreenState extends State<StartupGateScreen>
       if (SupabaseServices.isAvailable) {
         GroupAutoLocationService.instance.start();
         UserNotificationsService.instance.ensureRealtimeSubscribed();
+        unawaited(ChatMuteService.instance.loadAll(forceRemote: true));
         SosOfflineQueueService.instance.startConnectivityAutoSync();
         unawaited(SosOfflineQueueService.instance.flushPending());
         unawaited(

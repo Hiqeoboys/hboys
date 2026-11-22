@@ -6,6 +6,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../features/chat/domain/group_chat_models.dart';
 import '../../features/chat/domain/group_chat_remote_service.dart';
+import '../../features/social/data/social_unread_store.dart';
 import 'mesh_router_service.dart';
 import 'off_grid_chat_local_store.dart';
 
@@ -159,6 +160,15 @@ class OffGridSupabaseSyncService {
         } else {
           await _localStore.upsertMessagesBatch(normalized);
         }
+        final latest = normalized.last;
+        SocialUnreadStore.instance.recordGroupActivity(
+          groupId: groupId,
+          createdAtUtc: latest.createdAtUtc ?? latest.clientCreatedAtUtc,
+          snippet: formatGroupPreviewSnippetFromRecord(latest),
+          senderId: latest.senderId,
+          messageId: latest.clientMsgId,
+          markUnread: false,
+        );
       },
       onError: (_) {},
     );

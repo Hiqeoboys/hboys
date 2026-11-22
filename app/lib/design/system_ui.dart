@@ -55,6 +55,9 @@ class HiqeoSystemInset extends InheritedWidget {
 
   final double bottom;
 
+  static bool isPresent(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<HiqeoSystemInset>() != null;
+
   static double bottomOf(BuildContext context) {
     final inset = context.dependOnInheritedWidgetOfExactType<HiqeoSystemInset>();
     return inset?.bottom ?? MediaQuery.viewPaddingOf(context).bottom;

@@ -44,6 +44,41 @@ class OffGridChatLocalStore {
     yield* _msgController(groupId).stream;
   }
 
+  /// Membaca satu rekaman pesan terakhir untuk tiap grup (untuk mengurutkan daftar grup).
+  Future<Map<String, GroupMessageRecord>> latestMessagePerGroup() async {
+    final db = _db;
+    if (db == null) {
+      final result = <String, GroupMessageRecord>{};
+      for (final entry in _memMessages.entries) {
+        if (entry.value.isEmpty) continue;
+        var latest = entry.value.first;
+        for (final m in entry.value) {
+          if (m.clientCreatedAtUtc.isAfter(latest.clientCreatedAtUtc)) {
+            latest = m;
+          }
+        }
+        result[entry.key] = latest;
+      }
+      return result;
+    }
+
+    try {
+      final rows = await db.customSelect(
+        'SELECT * FROM local_group_messages '
+        'ORDER BY client_created_at DESC, client_msg_id DESC',
+      ).get();
+      final result = <String, GroupMessageRecord>{};
+      for (final r in rows) {
+        final gid = r.data['group_id']?.toString() ?? '';
+        if (gid.isEmpty || result.containsKey(gid)) continue;
+        result[gid] = GroupMessageRecord.fromLocalSqliteMap(r.data);
+      }
+      return result;
+    } catch (_) {
+      return const <String, GroupMessageRecord>{};
+    }
+  }
+
   /// Membaca seluruh pesan tersimpan untuk [groupId] terurut `client_created_at ASC`.
   Future<List<GroupMessageRecord>> messagesForGroup(String groupId) async {
     final db = _db;

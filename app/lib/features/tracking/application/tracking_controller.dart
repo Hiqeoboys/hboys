@@ -67,26 +67,40 @@ class TrackingController extends ChangeNotifier {
   String? _activeMountainName;
   String? _activeTrailName;
   String? _activeTrailId;
+  String? _activeGroupId;
   String _activeActivityType = TrackingSession.activityHiking;
 
   String? get activeMountainName => _activeMountainName;
   String? get activeTrailName => _activeTrailName;
   String? get activeTrailId => _activeTrailId;
+  String? get activeGroupId => _activeGroupId;
   String get activeActivityType => _status?.activityType ?? _activeActivityType;
   bool get isJoggingSession =>
       activeActivityType == TrackingSession.activityJogging;
 
-  /// Menetapkan gunung & jalur yang sedang didaki agar tercatat di Riwayat
-  /// dan disinkronkan ke Supabase saat sesi selesai.
+  /// Menetapkan gunung, jalur, dan grup opsional yang sedang didaki agar
+  /// tercatat di Riwayat, disinkronkan ke Supabase, serta mengarahkan mode SOS.
   void setActiveRoute({
     String? mountainName,
     String? trailName,
     String? trailId,
+    String? groupId,
   }) {
     _activeActivityType = TrackingSession.activityHiking;
     _activeMountainName = mountainName;
     _activeTrailName = trailName;
     _activeTrailId = trailId;
+    final trimmedGroup = groupId?.trim();
+    _activeGroupId =
+        (trimmedGroup != null && trimmedGroup.isNotEmpty) ? trimmedGroup : null;
+  }
+
+  /// Menghapus konteks rute & grup aktif setelah sesi pendakian berhenti.
+  void clearActiveRoute() {
+    _activeMountainName = null;
+    _activeTrailName = null;
+    _activeTrailId = null;
+    _activeGroupId = null;
   }
 
   bool get simulationEnabled => kDebugMode && _simulationEnabled;
@@ -146,6 +160,21 @@ class TrackingController extends ChangeNotifier {
     return _initializationFuture ??= _initializeOnce();
   }
 
+  Future<PermissionReport> _safeCheckPermissions() async {
+    try {
+      return await const PermissionService().check();
+    } catch (_) {
+      return PermissionReport(
+        notificationGranted: !Platform.isAndroid,
+        locationWhileInUse: false,
+        locationAlways: false,
+        locationServiceEnabled: false,
+        preciseLocation: false,
+        ignoringBatteryOptimizations: false,
+      );
+    }
+  }
+
   Future<void> _initializeOnce() async {
     final sw = Stopwatch()..start();
     void lap(String name) {
@@ -153,6 +182,7 @@ class TrackingController extends ChangeNotifier {
         debugPrint('INIT_LAP $name ${sw.elapsedMilliseconds}ms');
       }
     }
+    _error = null;
     _phase = TrackingPhase.initializing;
     notifyListeners();
     try {
@@ -164,7 +194,7 @@ class TrackingController extends ChangeNotifier {
       _database = openAppDatabase(file);
       final repository = DriftTrackingRepository(_database!);
       _repository = repository;
-      _permission = await const PermissionService().check();
+      _permission = await _safeCheckPermissions();
       lap('db_open+permission');
 
       final backend = Platform.isAndroid
@@ -180,7 +210,12 @@ class TrackingController extends ChangeNotifier {
 
       final active = await repository.findActiveSession();
       lap('active_session');
-      final running = await backend.isRunning();
+      var running = false;
+      try {
+        running = await backend.isRunning();
+      } catch (_) {
+        running = false;
+      }
       lap('is_running');
       if (running) {
         _phase = TrackingPhase.preparing;
@@ -198,6 +233,7 @@ class TrackingController extends ChangeNotifier {
       } else {
         _phase = TrackingPhase.idle;
       }
+      _error = null;
       _initialized = true;
       lap('initialized');
     } catch (error) {
@@ -227,16 +263,30 @@ class TrackingController extends ChangeNotifier {
     notifyListeners();
   }
 
+  @visibleForTesting
+  void setErrorForTesting(
+    String? error, {
+    TrackingPhase? phase,
+    bool? initialized,
+  }) {
+    _error = error;
+    if (phase != null) _phase = phase;
+    if (initialized != null) _initialized = initialized;
+    notifyListeners();
+  }
+
   Future<bool> start({
     String activityType = TrackingSession.activityHiking,
     bool allowForegroundOnly = false,
   }) async {
     final normalizedType = TrackingSession.normalizeActivityType(activityType);
     _activeActivityType = normalizedType;
+    _error = null;
     if (normalizedType == TrackingSession.activityJogging) {
       _activeMountainName = null;
       _activeTrailName = null;
       _activeTrailId = null;
+      _activeGroupId = null;
     }
     if (startOverride != null) return startOverride!();
     await initialize();
@@ -247,7 +297,7 @@ class TrackingController extends ChangeNotifier {
       _simulatedLocationSource?.reset();
       return _startBackend(activityType: normalizedType);
     }
-    final permission = await const PermissionService().check();
+    final permission = await _safeCheckPermissions();
     _permission = permission;
     final hasAnyLocationPermission = permission.locationServiceEnabled &&
         (permission.locationWhileInUse || permission.locationAlways);
@@ -520,10 +570,7 @@ class TrackingController extends ChangeNotifier {
         );
       }
       if (!isJogging) {
-        // Otomatis reset Packing List ke Tahap 1 & status persiapan Beranda
-        // segera setelah sesi pendakian berakhir (baik sampai puncak maupun berhenti manual).
-        unawaited(PackingListStore.instance.clearAll());
-        unawaited(GroupHikePlanStore.instance.completeAndResetAfterHike());
+        await _resetPrepareHikeAfterStop();
       }
       DriftTrackingRepository.notifyExternalChange();
     } catch (error) {
@@ -534,6 +581,16 @@ class TrackingController extends ChangeNotifier {
       _error = 'Rekaman belum bisa dihentikan dengan aman. Coba lagi.';
     }
     notifyListeners();
+  }
+
+  Future<void> _resetPrepareHikeAfterStop() async {
+    clearActiveRoute();
+    try {
+      await PackingListStore.instance.clearAll();
+    } catch (_) {}
+    try {
+      await GroupHikePlanStore.instance.completeAndResetAfterHike();
+    } catch (_) {}
   }
 
   Future<bool> _closeActiveSessionIfAny({
@@ -635,16 +692,36 @@ class TrackingController extends ChangeNotifier {
     }
   }
 
-  /// Dipanggil setelah halaman onboarding ditutup atau aplikasi kembali aktif.
+  /// Dipanggil setelah halaman onboarding ditutup, tab Track dibuka, atau aplikasi aktif kembali.
   Future<void> refreshPermissionsAndResume() async {
     if (!_initialized) {
       await initialize();
       return;
     }
-    _permission = await const PermissionService().check();
+    _permission = await _safeCheckPermissions();
     final backend = _backend;
-    if (backend == null) return;
-    final running = await backend.isRunning();
+    if (backend == null) {
+      _error = null;
+      if (_phase == TrackingPhase.error) {
+        _phase = TrackingPhase.idle;
+      }
+      notifyListeners();
+      return;
+    }
+    var running = false;
+    try {
+      running = await backend.isRunning();
+    } catch (_) {
+      running = false;
+    }
+    if (running || _phase == TrackingPhase.error) {
+      _error = null;
+      if (!running && _phase == TrackingPhase.error) {
+        _phase = TrackingPhase.idle;
+      }
+    } else if (_initialized && _error != null) {
+      _error = null;
+    }
     if (!running && _phase == TrackingPhase.recording) {
       final active = await _repository?.findActiveSession();
       if (active == null) {
@@ -671,7 +748,7 @@ class TrackingController extends ChangeNotifier {
 
   Future<bool> openPermissionSettings() async {
     final opened = await const PermissionService().openSettings();
-    _permission = await const PermissionService().check();
+    _permission = await _safeCheckPermissions();
     notifyListeners();
     return opened;
   }
@@ -690,14 +767,23 @@ class TrackingController extends ChangeNotifier {
           DriftTrackingRepository.notifyExternalChange();
         }
       case TrackingStoppedEvent(:final status, :final warning):
+        final wasStopping = _phase == TrackingPhase.stopping;
         if (status != null) _status = status;
+        _error = null;
         _phase = TrackingPhase.finished;
         _notice = warning;
+        if (!wasStopping && !isJoggingSession) {
+          unawaited(_resetPrepareHikeAfterStop());
+        }
         DriftTrackingRepository.notifyExternalChange();
       case TrackingFailureEvent(:final message, :final fatal):
-        _error = message;
-        _phase = fatal ? TrackingPhase.error : _phase;
-        if (fatal) unawaited(_abortServiceAfterFailure());
+        if (fatal) {
+          _error = message;
+          _phase = TrackingPhase.error;
+          unawaited(_abortServiceAfterFailure());
+        } else {
+          _notice = message;
+        }
     }
     notifyListeners();
   }
@@ -715,9 +801,7 @@ class TrackingController extends ChangeNotifier {
   void resetForAccountChange() {
     if (isRecording) return;
     _status = null;
-    _activeMountainName = null;
-    _activeTrailName = null;
-    _activeTrailId = null;
+    clearActiveRoute();
     _activeActivityType = TrackingSession.activityHiking;
     _recoveryPending = false;
     _error = null;

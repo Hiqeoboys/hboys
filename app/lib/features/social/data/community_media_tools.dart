@@ -13,6 +13,103 @@ import '../../chat/presentation/chat_room_chrome.dart';
 /// Tag animasi `Hero` konsisten antara gelembung media chat dan viewer layar penuh.
 String communityMediaHeroTag(String messageId) => 'community-media-$messageId';
 
+/// Konfigurasi kualitas & ukuran unggahan media Hiqeo (foto chat, video, & avatar)
+/// agar tetap tajam secara visual tanpa mengirim berkas mentah berukuran raksasa.
+abstract final class HiqeoMediaCompressionConfig {
+  static const int chatPhotoMaxLongestSide = 1920;
+  static const int chatPhotoQuality = 86;
+  static const int chatPhotoFallbackQuality = 82;
+
+  static const int avatarMaxSize = 1080;
+  static const int avatarQuality = 89;
+
+  static const int maxProxyVideoBytes = 25 * 1024 * 1024;
+  static const int safeTargetVideoBytes = 23 * 1024 * 1024;
+  static const int videoMinBitrateBps = 2500000;
+  static const int videoDefault720pBitrateBps = 3000000;
+  static const int videoHd1080pBitrateBps = 3800000;
+  static const int videoMaxBitrateBps = 4000000;
+  static const int videoAudioBitrateBps = 128000;
+}
+
+/// Profil target kompresi video H.264 lintas platform (Android Media3 & iOS AVAssetExportSession).
+class VideoCompressionProfile {
+  const VideoCompressionProfile({
+    required this.targetShortSidePx,
+    required this.targetVideoBitrateBps,
+    required this.maxBytes,
+  });
+
+  final int targetShortSidePx;
+  final int targetVideoBitrateBps;
+  final int maxBytes;
+
+  bool get isHd1080p => targetShortSidePx >= 1080;
+}
+
+/// Menghitung dimensi target yang mempertahankan rasio asli dengan sisi terpanjang
+/// maksimal [maxLongestSide] (1600-1920 px). Gambar kecil tidak pernah di-upscale.
+({int width, int height}) computeProportionalMaxDimensions({
+  required int width,
+  required int height,
+  int maxLongestSide = HiqeoMediaCompressionConfig.chatPhotoMaxLongestSide,
+}) {
+  if (width <= 0 || height <= 0) {
+    return (width: maxLongestSide, height: maxLongestSide);
+  }
+  final longest = math.max(width, height);
+  if (longest <= maxLongestSide) {
+    return (width: width, height: height);
+  }
+  final scale = maxLongestSide / longest;
+  return (
+    width: math.max(1, (width * scale).round()),
+    height: math.max(1, (height * scale).round()),
+  );
+}
+
+/// Menentukan resolusi (720p atau 1080p jika sumber HD dan durasi muat) serta
+/// bitrate H.264 adaptif ~2.5-4 Mbps agar video tetap jernih di bawah batas 25 MB.
+VideoCompressionProfile computeVideoCompressionProfile({
+  required int durationSec,
+  int? sourceWidth,
+  int? sourceHeight,
+}) {
+  final safeDuration = durationSec.clamp(1, 60);
+  final maxTotalBps =
+      ((HiqeoMediaCompressionConfig.safeTargetVideoBytes * 8) / safeDuration)
+          .floor();
+  final budgetVideoBps =
+      maxTotalBps - HiqeoMediaCompressionConfig.videoAudioBitrateBps;
+
+  final shortSide = (sourceWidth != null &&
+          sourceHeight != null &&
+          sourceWidth > 0 &&
+          sourceHeight > 0)
+      ? math.min(sourceWidth, sourceHeight)
+      : 720;
+
+  final canUse1080p = shortSide >= 1080 &&
+      budgetVideoBps >= HiqeoMediaCompressionConfig.videoHd1080pBitrateBps;
+
+  final targetShortSide = canUse1080p ? 1080 : 720;
+  final idealBitrate = canUse1080p
+      ? HiqeoMediaCompressionConfig.videoHd1080pBitrateBps
+      : HiqeoMediaCompressionConfig.videoDefault720pBitrateBps;
+  final targetBitrate = budgetVideoBps
+      .clamp(
+        HiqeoMediaCompressionConfig.videoMinBitrateBps,
+        math.min(HiqeoMediaCompressionConfig.videoMaxBitrateBps, idealBitrate),
+      )
+      .toInt();
+
+  return VideoCompressionProfile(
+    targetShortSidePx: targetShortSide,
+    targetVideoBitrateBps: targetBitrate,
+    maxBytes: HiqeoMediaCompressionConfig.maxProxyVideoBytes,
+  );
+}
+
 /// Menghitung ukuran kotak pratinjau adaptif agar media mengikuti rasio alami
 /// dengan batas `maxWidth` (~74% lebar layar) serta tinggi `[minHeight, maxHeight]`.
 Size computeAdaptiveMediaBoxSize({
@@ -112,10 +209,10 @@ abstract final class CommunityMediaChannel {
     return '0+0';
   }
 
-  /// Mengekstrak frame pertama video (jalur lokal maupun URL HTTP/HTTPS) menjadi byte WebP.
+  /// Mengekstrak frame pertama video (jalur lokal maupun URL HTTP/HTTPS) menjadi byte WebP/JPEG.
   static Future<Uint8List?> extractVideoThumbnail(
     String source, {
-    int maxWidth = 720,
+    int maxWidth = 960,
   }) async {
     if (source.trim().isEmpty) return null;
     try {
@@ -126,6 +223,36 @@ abstract final class CommunityMediaChannel {
           'maxWidth': maxWidth,
         },
       );
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Mengompresi video menjadi H.264/AAC (720p atau 1080p) secara native pada Android & iOS
+  /// sehingga tidak pernah memakai preset beresolusi rendah yang buram.
+  static Future<String?> compressVideo(
+    String sourcePath, {
+    required int maxHeight,
+    required int bitrateBps,
+    required int maxBytes,
+  }) async {
+    if (sourcePath.trim().isEmpty) return null;
+    try {
+      final path = await _channel.invokeMethod<String>(
+        'compressVideo',
+        <String, dynamic>{
+          'sourcePath': sourcePath,
+          'maxHeight': maxHeight,
+          'bitrateBps': bitrateBps,
+          'maxBytes': maxBytes,
+        },
+      );
+      if (path != null && path.trim().isNotEmpty) return path.trim();
+      return null;
     } on MissingPluginException {
       return null;
     } on PlatformException {

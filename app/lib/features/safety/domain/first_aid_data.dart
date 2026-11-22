@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
-/// Satu topik Panduan Keselamatan & P3K Gunung 100% offline mengacu pada
+import '../../guides/domain/field_sketch_spec.dart';
+
+/// Satu topik Panduan Keselamatan, P3K, & Wilderness Survival 100% offline mengacu
 /// standar medis lapangan Wilderness Medical Society (WMS), WHO, Palang Merah,
 /// AHA, dan Basarnas.
 @immutable
@@ -13,6 +15,8 @@ class FirstAidTopic {
     required this.dangerSigns,
     required this.firstAidSteps,
     required this.prohibitionsAndMyths,
+    this.stepSketches = const <FieldSketchId>[],
+    this.isSurvivalChapter = false,
   });
 
   final String id;
@@ -23,11 +27,17 @@ class FirstAidTopic {
   /// Tanda Bahaya (SOS / Evakuasi Segera)
   final List<String> dangerSigns;
 
-  /// Langkah Pertolongan Pertama
+  /// Langkah Pertolongan Pertama / Protokol Bertahan Hidup
   final List<String> firstAidSteps;
 
   /// Larangan & Mitos Berbahaya
   final List<String> prohibitionsAndMyths;
+
+  /// Kanvas Technical Field Sketch 1:1 untuk tiap item di [firstAidSteps].
+  final List<FieldSketchId> stepSketches;
+
+  /// Menandai topik dari bab baru Protokol Tersesat & Bertahan Hidup Multi-Hari.
+  final bool isSurvivalChapter;
 }
 
 const List<String> kFirstAidCategories = <String>[
@@ -36,7 +46,10 @@ const List<String> kFirstAidCategories = <String>[
   'Cedera & Luka',
   'Hewan & Alergi',
   'Cuaca & Navigasi',
+  'Survival & Tersesat',
 ];
+
+const List<String> kSafetyGuideCategories = kFirstAidCategories;
 
 const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
   FirstAidTopic(
@@ -56,6 +69,13 @@ const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
       'Isolasi dari tanah memakai matras tebal, lalu bungkus dengan sleeping bag dan selimut foil darurat (hipotermia wrap).',
       'Hipotermia ringan (sadar penuh & bisa menelan): beri minuman hangat manis dan kalori tinggi; kompres hangat di ketiak, dada, dan selangkangan.',
       'Hipotermia berat: tangani tubuh korban secara SANGAT LEMBUT (horizontal) dan lakukan evakuasi medis segera; siapkan RJP bila napas/nadi hilang.',
+    ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.p3kHypoShelter,
+      FieldSketchId.p3kHypoDryClothes,
+      FieldSketchId.p3kHypoBurritoWrap,
+      FieldSketchId.p3kHypoWarmDrinks,
+      FieldSketchId.p3kHypoGentleEvac,
     ],
     prohibitionsAndMyths: <String>[
       'JANGAN menggosok-gosok kulit atau anggota gerak korban secara keras (berisiko memicu henti jantung/afterdrop).',
@@ -80,6 +100,12 @@ const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
       'Jaga korban tetap hangat dan posisi setengah duduk pada kecurigaan HAPE; kurangi beban kerja fisik korban saat turun.',
       'Jika tersedia sesuai resep dokter/protokol WMS: oksigen portabel, asetazolamid (AMS), deksametason (HACE), atau nifedipin (HAPE).',
     ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.p3kAmsStopClimb,
+      FieldSketchId.p3kAmsDescend300m,
+      FieldSketchId.p3kAmsSemiSitting,
+      FieldSketchId.p3kAmsOxygenMeds,
+    ],
     prohibitionsAndMyths: <String>[
       'JANGAN pernah memaksa naik ketinggian ("mumpung dekat puncak") saat gejala AMS/HAPE/HACE sudah muncul.',
       'JANGAN biarkan penderita gejala ketinggian tidur sendirian atau turun sendirian tanpa pendamping.',
@@ -102,6 +128,12 @@ const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
       'Keseleo ringan: istirahatkan sendi, kompres dingin 15–20 menit (balut kain), balut elastis sedang tanpa mencekik, dan elevasikan.',
       'Patah tulang: imobilisasi dengan bidai darurat (trekking pole, ranting lurus, atau matras gulung) yang dilapisi kain lembut, melewati DUA sendi (di atas dan di bawah area patah).',
       'Ikat bidai cukup kuat agar tidak bergeser namun tetap longgar bagi aliran darah; cek ulang CSM tiap 15–30 menit dan panggil evakuasi.',
+    ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.p3kFractureCsmCheck,
+      FieldSketchId.p3kSprainRice,
+      FieldSketchId.p3kFractureSplintTwoJoints,
+      FieldSketchId.p3kFractureTieRecheck,
     ],
     prohibitionsAndMyths: <String>[
       'JANGAN memijat, mengurut, atau menarik paksa tulang/sendi yang bengkok atau dislokasi.',
@@ -126,6 +158,12 @@ const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
       'Luka sayat/lecet ringan: cuci bersih dengan air mengalir matang/bersih, tutup kasa steril dan plester.',
       'Luka bakar kompor/air panas: dinginkan segera dengan air mengalir sejuk (bukan es) selama 10–20 menit, lepaskan jam/cincin sebelum bengkak, lalu tutup longgar kasa steril tidak lengket.',
     ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.p3kBleedDirectPressure,
+      FieldSketchId.p3kBleedTourniquet,
+      FieldSketchId.p3kWoundCleanDress,
+      FieldSketchId.p3kBurnCoolWater,
+    ],
     prohibitionsAndMyths: <String>[
       'JANGAN mengoleskan pasta gigi, mentega, kopi, minyak goreng, kecap, atau dedaunan mentah pada luka bakar maupun luka terbuka.',
       'JANGAN memecahkan lepuhan (blister) luka bakar karena meningkatkan risiko infeksi berat.',
@@ -149,6 +187,12 @@ const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
       'Imobilisasi anggota gerak yang digigit dengan bidai longgar dan posisikan sejajar atau sedikit di bawah jantung; evakuasi korban dengan tandu/bantuan (jangan biarkan berjalan jauh bila memungkinkan).',
       'Sengatan lebah: kikis sengat mendatar dengan kartu (jangan dijepit pinset), cuci bersih, kompres dingin untuk nyeri/bengkak.',
     ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.p3kSnakeCalmMoveAway,
+      FieldSketchId.p3kSnakeRemoveRings,
+      FieldSketchId.p3kSnakeImmobilizeSplint,
+      FieldSketchId.p3kBeeScrapeCard,
+    ],
     prohibitionsAndMyths: <String>[
       'JANGAN menyedot bisa dengan mulut, menyayat/mengiris luka, atau membakar luka gigitan.',
       'JANGAN mengikat torniket ketat (mematikan jaringan dan berisiko amputasi).',
@@ -170,6 +214,11 @@ const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
       'Pindahkan segera ke tempat teduh, lepaskan carrier dan pakaian berlapis/ketat.',
       'Heat Exhaustion (sadar, lemas, kram, mual): beri minum air + oralit/elektrolit sedikit demi sedikit, basahi kulit dan kipasi.',
       'Heat Stroke: DINGINKAN SEGERA secara agresif (siram/basahi seluruh tubuh dengan air dingin, kompres es/air dingin di leher, ketiak, dan selangkangan sambil dikipasi terus-menerus) lalu evakuasi segera.',
+    ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.p3kHeatShadeRemovePack,
+      FieldSketchId.p3kHeatElectrolyte,
+      FieldSketchId.p3kHeatStrokeAggressiveCool,
     ],
     prohibitionsAndMyths: <String>[
       'JANGAN memaksa memberi minum pada korban yang setengah sadar, kebingungan berat, atau pingsan (risiko tersedak).',
@@ -193,6 +242,11 @@ const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
       'Bila korban tidak sadar: miringkan ke posisi pemulihan (recovery position), jaga jalan napas, panggil SOS segera.',
       'Keracunan makanan/air: fokus rehidrasi oral dengan oralit/air matang sedikit demi sedikit namun sering; simpan sampel makanan/tanaman yang dikonsumsi untuk tim medis.',
     ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.p3kHypoglycemiaSugar,
+      FieldSketchId.p3kRecoveryPosition,
+      FieldSketchId.p3kPoisonRehydrateSample,
+    ],
     prohibitionsAndMyths: <String>[
       'JANGAN memaksa memuntahkan isi perut pada kasus keracunan (berisiko aspirasi paru dan melukai kerongkongan).',
       'JANGAN memasukkan makanan, gula cair, atau minuman ke mulut korban yang sudah pingsan/kejang.',
@@ -215,6 +269,11 @@ const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
       'Posisi darurat jika terjebak di tempat terbuka: jongkok di atas matras/carrier kering dengan kedua kaki merapat (hanya ujung kaki menyentuh tanah), tundukkan kepala, tutup telinga, jaga jarak minimal 10–15 meter antar pendaki.',
       'Pertolongan korban sambaran: korban petir AMAN disentuh (tidak menyimpan muatan listrik!). Utamakan korban yang tampak tidak bernapas/tidak responsif: lakukan RJP (kompresi dada & napas buatan) segera dan aktifkan SOS.',
     ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.p3kLightningDescendRidge,
+      FieldSketchId.p3kLightningCrouch,
+      FieldSketchId.p3kLightningCprSafeTouch,
+    ],
     prohibitionsAndMyths: <String>[
       'MITOS BERBAHAYA: "Korban tersambar petir masih mengandung listrik sehingga berbahaya disentuh". SALAH TOTAL: segera sentuh dan lakukan RJP bila tidak bernapas!',
       'JANGAN berbaring telentang langsung di tanah basah (memperbesar beda potensial arus tanah / ground current).',
@@ -236,6 +295,11 @@ const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
       'Anafilaksis: segera gunakan auto-injektor epinefrin (EpiPen) di paha luar bila korban membawanya; baringkan korban dengan kaki sedikit ditinggikan (atau duduk tegak bila sesak napas dominan).',
       'Serangan Asma: bantu korban duduk condong sedikit ke depan (tripod position), tenangkan napas, bantu gunakan inhaler pereda cepat (salbutamol) sesuai dosis pribadinya, dan hangatkan udara yang dihirup memakai buff/masker.',
       'Longgarkan tali carrier, kerah jaket, dan pakaian ketat di dada/leher; aktifkan SOS & siapkan evakuasi segera.',
+    ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.p3kAnaEpipenPosition,
+      FieldSketchId.p3kAsthmaTripodInhaler,
+      FieldSketchId.p3kAirwayLoosenSos,
     ],
     prohibitionsAndMyths: <String>[
       'JANGAN menyuruh korban anafilaksis berdiri atau berjalan tiba-tiba (risiko syok fatal / empty ventricle syndrome).',
@@ -260,10 +324,194 @@ const List<FirstAidTopic> kFirstAidTopics = <FirstAidTopic>[
       'O: Observe (Amati). Periksa peta offline & titik GPS di Hiqeo, kompas, sisa logistik, cuaca, dan lokasi aman untuk berlindung.',
       'P: Plan (Rencanakan). Bila jalur asli dekat dan terverifikasi GPS, kembali perlahan sambil menandai jejak; jika ragu atau gelap, BERTAHAN DI SATU TEMPAT TERBUKA yang aman, bangun bivak hangat, hemat baterai (mode pesawat), dan bunyikan peluit 3x tiap 1 menit (kode SOS internasional).',
     ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.p3kStopFreeze,
+      FieldSketchId.p3kStopThink,
+      FieldSketchId.p3kStopObserve,
+      FieldSketchId.p3kStopPlanStayPut,
+    ],
     prohibitionsAndMyths: <String>[
       'JANGAN panik dan berlari atau memotong kompas menuruni jurang/sungai terjal tanpa peta (penyebab utama kecelakaan fatal pendaki tersesat).',
       'JANGAN berpencar mencari jalan sendiri-sendiri; seluruh anggota rombongan WAJIB tetap bersama.',
       'JANGAN terus berjalan malam hari saat kabut/hujan tanpa jalur jelas: berhenti lebih awal untuk mendirikan shelter jauh lebih aman daripada kehabisan tenaga.',
     ],
   ),
+];
+
+/// Bab Baru: Protokol Tersesat & Bertahan Hidup Multi-Hari (Wilderness Survival).
+const List<FirstAidTopic> kWildernessSurvivalTopics = <FirstAidTopic>[
+  FirstAidTopic(
+    id: 'survival_stop_3jam',
+    title: 'Prinsip STOP & Aturan Emas 3 Jam Pertama',
+    category: 'Survival & Tersesat',
+    summary:
+        'Langkah krusial 3 jam pertama saat tersesat agar tidak jatuh ke tebing sungai gunung Indonesia.',
+    isSurvivalChapter: true,
+    dangerSigns: <String>[
+      'Jejak jalur pendakian hilang total disertai kabut tebal atau hari mulai gelap.',
+      'Anggota tim terpancing menuruni lembah sungai liar tanpa melihat tebing di bawah.',
+      'Kepanikan memicu keputusan berpisah mencari jalur masing-masing.',
+    ],
+    firstAidSteps: <String>[
+      'Terapkan urutan STOP (Stop, Think, Observe, Plan) segera setelah sadar keluar jalur untuk menghentikan kesalahan arah makin jauh.',
+      'Hentikan seluruh pergerakan seketika bila kabut pekat, hujan deras, atau menjelang gelap agar tidak terperosok ke jurang.',
+      'KHUSUS GUNUNG INDONESIA: JANGAN menuruni alur sungai liar karena sering berujung air terjun vertikal terjal dan batu lumut licin.',
+      'Tetap diam di titik aman dekat lokasi terakhir atau naik perlahan ke punggungan terbuka saat hari terang untuk mendapat sinyal GPS dan jangkauan pandang SAR.',
+    ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.survStopGolden3h,
+      FieldSketchId.survNoFogNightWalk,
+      FieldSketchId.survNoWildStreamDescent,
+      FieldSketchId.survClimbRidgeDaylight,
+    ],
+    prohibitionsAndMyths: <String>[
+      'MITOS BERBAHAYA: "Ikuti aliran sungai pasti tembus ke kampung". Di gunung tropis Indonesia, sungai hutan sering berakhir di tebing air terjun curam tanpa jalur keluar.',
+      'JANGAN berpencar dari rombongan saat mencari jalur balik.',
+    ],
+  ),
+  FirstAidTopic(
+    id: 'survival_rule_of_3',
+    title: 'Prioritas Survival (Aturan Angka 3 / Rule of 3)',
+    category: 'Survival & Tersesat',
+    summary:
+        'Urutan prioritas bertahan hidup agar tenaga tidak terbuang mencari hal yang salah lebih dulu.',
+    isSurvivalChapter: true,
+    dangerSigns: <String>[
+      'Suhu malam turun drastis sementara penyintas membuang energi mencari makanan sebelum membuat shelter.',
+      'Stok air bersih menipis tanpa rencana penampungan hujan atau embun.',
+    ],
+    firstAidSteps: <String>[
+      'Pahami hierarki Rule of 3: manusia rata-rata bertahan 3 jam tanpa perlindungan cuaca ekstrem, 3 hari tanpa air, dan 3 minggu tanpa makanan.',
+      'Prioritas 3 JAM: fokus pertama adalah menahan angin/hujan, menjaga pakaian tetap kering, dan memutus kontak dingin tanah.',
+      'Prioritas 3 HARI: kumpulkan dan murnikan air dari hujan, embun, atau sumber aman sebelum dehidrasi menurunkan fokus otak.',
+      'Prioritas 3 MINGGU: hemat kalori dengan istirahat cukup di shelter sebelum memikirkan sumber makanan darurat.',
+    ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.survRuleOf3Hierarchy,
+      FieldSketchId.survRule3HoursShelter,
+      FieldSketchId.survRule3DaysWater,
+      FieldSketchId.survRule3WeeksFood,
+    ],
+    prohibitionsAndMyths: <String>[
+      'JANGAN menghabiskan tenaga seharian berburu makanan saat malam dingin sudah dekat dan shelter belum berdiri.',
+      'JANGAN menahan diri minum air bersih yang ada terlalu ketat sampai dehidrasi berat (minum sedikit tetapi teratur).',
+    ],
+  ),
+  FirstAidTopic(
+    id: 'survival_bivak_darurat',
+    title: 'Membangun Shelter Darurat (Bivak Ponco & Alam)',
+    category: 'Survival & Tersesat',
+    summary:
+        'Teknik membuat bivak A-frame / lean-to dan kasur daun kering 15-20 cm pemutus dingin tanah.',
+    isSurvivalChapter: true,
+    dangerSigns: <String>[
+      'Angin kencang menyapu area punggungan tanpa perlindungan.',
+      'Tanah camp lembap atau basah berisiko menyedot panas tubuh saat tidur malam.',
+    ],
+    firstAidSteps: <String>[
+      'Pilih lokasi aman dari dahan rapuh dan cekungan air, lalu bentangkan tali ridgeline di antara dua batang pohon kokoh.',
+      'Model A-Frame: sampirkan ponco/flysheet di atas tali ridgeline rendah dan pasak kedua sisi ke tanah untuk perlindungan penuh dari angin dua arah.',
+      'Model Lean-To: ikat satu sisi atas ponco ke tali/dahan dan pasak sisi bawah rapat ke tanah menghadap arah datangnya angin dominan.',
+      'WAJIB buat alas tidur (insulating bed) setebal 15-20 cm dari tumpukan daun kering, ranting kecil, dan pakis kering untuk memutus konduksi panas ke tanah lembap.',
+    ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.survBivouacSiteWind,
+      FieldSketchId.survBivouacAFrame,
+      FieldSketchId.survBivouacLeanTo,
+      FieldSketchId.survBivouacLeafBed15cm,
+    ],
+    prohibitionsAndMyths: <String>[
+      'JANGAN tidur langsung di atas tanah atau hanya beralas plastik tipis tanpa lapisan daun kering tebal (tanah menyerap panas jauh lebih cepat daripada udara).',
+      'JANGAN membangun bivak terlalu tinggi sehingga angin bebas masuk dari samping.',
+    ],
+  ),
+  FirstAidTopic(
+    id: 'survival_air_darurat',
+    title: 'Mencari, Menampung, & Memurnikan Air',
+    category: 'Survival & Tersesat',
+    summary:
+        'Cara mendapatkan air hujan, embun pagi, tumbuhan aman, penyaringan arang, dan perebusan.',
+    isSurvivalChapter: true,
+    dangerSigns: <String>[
+      'Bibir pecah, pusing berdiri, dan urine sangat pekat atau tidak buang air >8 jam.',
+      'Cairan tumbuhan berwarna putih susu, berbau menyengat, atau terasa pahit/gatal.',
+    ],
+    firstAidSteps: <String>[
+      'Tadah hujan langsung menggunakan ponco atau flysheet yang dibentuk corong huruf V menuju botol atau wadah bersih.',
+      'Kumpulkan embun pagi dari dedaunan rumput bersih memakai kain/kaos bersih lalu peras ke dalam botol.',
+      'Air tumbuhan (rotan/liana): potong batang berdiameter sedang dan periksa airnya jernih tidak berbau tajam serta tidak bergetah putih susu.',
+      'Saring air keruh melalui lapisan kerikil, pasir bersih, arang tumbuk, dan kain, lalu WAJIB rebus mendidih minimal 1-3 menit sebelum diminum.',
+    ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.survWaterRainPoncho,
+      FieldSketchId.survWaterMorningDew,
+      FieldSketchId.survWaterSafeLiana,
+      FieldSketchId.survWaterFilterBoil,
+    ],
+    prohibitionsAndMyths: <String>[
+      'JANGAN minum urine, darah, atau air tumbuhan bergetah putih susu (beracun dan memperparah dehidrasi).',
+      'JANGAN mengandalkan kain saring saja tanpa perebusan untuk menghilangkan bakteri/parasit gunung.',
+    ],
+  ),
+  FirstAidTopic(
+    id: 'survival_api_sar_baterai',
+    title: 'Api di Hutan Lembap, Sinyal SAR, & Baterai HP',
+    category: 'Survival & Tersesat',
+    summary:
+        'Teknik kayu kering inti (feather stick), sinyal darurat 3 repetisi, dan urutan hemat baterai HP.',
+    isSurvivalChapter: true,
+    dangerSigns: <String>[
+      'Seluruh kayu permukaan basah kuyup oleh hujan dan baterai ponsel tersisa <25%.',
+      'Terdengar suara helikopter atau tim pencari di kejauhan.',
+    ],
+    firstAidSteps: <String>[
+      'Belah ranting mati (bukan kayu lapuk di tanah) menggunakan pisau/batu untuk mengambil bagian inti dalam yang masih kering, lalu serut tipis membentuk feather stick.',
+      'Susun tinder kering di tengah kerucut ranting kecil (teepee) di atas alas batu/kulit kayu kering agar tidak menyerap lembap tanah.',
+      'Kirim sinyal darurat internasional 3 repetisi tiap 1 menit: 3 tiupan peluit panjang, 3 kilatan senter ke langit/lereng seberang, atau 3 kepulan asap daun hijau saat siang.',
+      'Urutan baterai HP: kunci koordinat GPS dahulu -> kirim atau antrekan Hiqeo SOS -> langsung aktifkan Mode Pesawat & penghemat baterai ekstrem.',
+    ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.survFireFeatherStick,
+      FieldSketchId.survFireTeepeeTinder,
+      FieldSketchId.survSarSignal3x,
+      FieldSketchId.survBatteryGpsSosAirplane,
+    ],
+    prohibitionsAndMyths: <String>[
+      'JANGAN membiarkan layar HP menyala terus mencari sinyal di area blank-spot (menghabiskan baterai dalam hitungan jam).',
+      'JANGAN meninggalkan api menyala tanpa sekat tanah/batu pembersih dari dedaunan kering sekitar.',
+    ],
+  ),
+  FirstAidTopic(
+    id: 'survival_mental_pangan',
+    title: 'Ketahanan Mental & Pangan Darurat Multi-Hari',
+    category: 'Survival & Tersesat',
+    summary:
+        'Menjaga ritme psikologis melawan panik, manajemen ransum, dan protokol ketat cegah keracunan tumbuhan.',
+    isSurvivalChapter: true,
+    dangerSigns: <String>[
+      'Keputusasaan, apatis berat, atau nekat makan buah/jamur liar tanpa uji keamanan.',
+      'Ransum tersisa dihabiskan sekaligus pada hari pertama karena panik.',
+    ],
+    firstAidSteps: <String>[
+      'Bangun rutinitas kecil harian: periksa pengikat bivak pagi hari, keringkan kaus kaki, kumpulkan air, dan bunyikan sinyal SAR pada jadwal tetap untuk menjaga mental tetap terkendali.',
+      'Bagi sisa makanan dan minuman menjadi porsi-porsi kecil terjadwal setiap beberapa jam; utamakan pasokan air sebelum makanan padat.',
+      'Bila terpaksa menguji tumbuhan liar tak dikenal (hanya bila persediaan habis total): lakukan uji tempel kulit 15 menit -> sudut bibir 15 menit -> ujung lidah tanpa ditelan; hentikan seketika jika gatal, panas, atau pahit.',
+      'PATUHI LARANGAN MUTLAK: jangan pernah memakan jamur liar apa pun maupun buah berwarna mencolok atau bergetah putih susu.',
+    ],
+    stepSketches: <FieldSketchId>[
+      FieldSketchId.survMentalRoutine,
+      FieldSketchId.survRationingWaterFood,
+      FieldSketchId.survPlantPatchTest,
+      FieldSketchId.survAvoidPoisonMushrooms,
+    ],
+    prohibitionsAndMyths: <String>[
+      'DILARANG MUTLAK makan jamur liar gunung (banyak spesies beracun mematikan sulit dibedakan secara visual).',
+      'MITOS BERBAHAYA: "Jika dimakan burung atau monyet berarti aman untuk manusia". Sistem pencernaan satwa liar berbeda dan tetap bisa beracun fatal bagi manusia.',
+    ],
+  ),
+];
+
+final List<FirstAidTopic> kAllSafetyTopics = <FirstAidTopic>[
+  ...kFirstAidTopics,
+  ...kWildernessSurvivalTopics,
 ];

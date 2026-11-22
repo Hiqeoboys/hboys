@@ -3,16 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/utils/safe_url_launcher.dart';
-import '../../design/tokens.dart';
 import '../../design/widgets/nav_bar_visibility.dart';
 import '../../features/map/data/mountain_catalog_repository.dart';
 import '../../features/map/domain/map_package.dart';
 import '../../features/map/domain/mountain_pack.dart';
 import '../../features/map/domain/mountain_pack_data.dart';
 import '../../features/preparation/application/packing_list_store.dart';
+import '../../features/safety/presentation/widgets/nearby_sos_modal_overlay.dart';
 import '../../features/social/data/community_service.dart';
 import '../../features/social/data/social_unread_store.dart';
+import '../supabase/supabase_services.dart';
 import 'push_notification_service.dart';
 
 const Set<String> _kShellBranchPaths = <String>{
@@ -80,6 +80,39 @@ void dispatchPushNavigation(
   InAppPushNotification notif, {
   BuildContext? dialogContext,
 }) {
+  final sosMode = notif.rawData['sos_mode']?.trim().toLowerCase();
+  final rawGroupId = notif.groupId?.trim();
+  final isNearbySos = notif.type == 'sos_nearby' ||
+      ((notif.type == 'sos' || notif.type == 'sos_alert') &&
+          (sosMode == 'nearby' || rawGroupId == null || rawGroupId.isEmpty));
+  if (isNearbySos) {
+    final modalCtx = (dialogContext != null && dialogContext.mounted)
+        ? dialogContext
+        : router.routerDelegate.navigatorKey.currentContext;
+    if (modalCtx != null && modalCtx.mounted) {
+      unawaited(showNearbySosModalOverlay(modalCtx, notif));
+    }
+    return;
+  }
+
+  final account = SupabaseServices.sharedAccountController;
+  if (notif.type == 'sos' &&
+      rawGroupId != null &&
+      rawGroupId.isNotEmpty &&
+      account != null &&
+      account.hasSyncedGroupsFromServer &&
+      !account.groups.any((g) => g.group.id == rawGroupId)) {
+    // Notifikasi SOS grup lama / grup yang sudah ditinggalkan: tampilkan modal
+    // di layar aktif agar tidak pernah membuat ruang hantu "Grup Pendakian".
+    final modalCtx = (dialogContext != null && dialogContext.mounted)
+        ? dialogContext
+        : router.routerDelegate.navigatorKey.currentContext;
+    if (modalCtx != null && modalCtx.mounted) {
+      unawaited(showNearbySosModalOverlay(modalCtx, notif));
+    }
+    return;
+  }
+
   final rootNav = router.routerDelegate.navigatorKey.currentState;
   if (rootNav != null) {
     rootNav.popUntil((route) => route.settings is Page || route.isFirst);
@@ -164,21 +197,24 @@ void dispatchPushNavigation(
       pushOverShell('/teman');
 
     case 'sos':
-      final gid = notif.groupId;
+      final gid = notif.groupId?.trim();
+      final modalCtx = (dialogContext != null && dialogContext.mounted)
+          ? dialogContext
+          : router.routerDelegate.navigatorKey.currentContext;
       if (gid != null && gid.isNotEmpty) {
         PushNotificationService.instance.queueSocialIntent(
           SocialNavigationTargetKind.groupLastLocation,
           gid,
         );
         router.go('/grup');
-      } else {
-        pushOverShell('/sos');
       }
-      if (dialogContext != null &&
-          dialogContext.mounted &&
+      if (modalCtx != null &&
+          modalCtx.mounted &&
           (notif.rawData['lat']?.isNotEmpty == true ||
               notif.rawData['mountain_name']?.isNotEmpty == true)) {
-        unawaited(_showIncomingSosDetailDialog(dialogContext, notif));
+        unawaited(showNearbySosModalOverlay(modalCtx, notif));
+      } else if (gid == null || gid.isEmpty) {
+        pushOverShell('/sos');
       }
 
     case 'emergency_contact_request':
@@ -202,81 +238,6 @@ void dispatchPushNavigation(
           router.go('/beranda');
       }
   }
-}
-
-Future<void> _showIncomingSosDetailDialog(
-  BuildContext context,
-  InAppPushNotification notif,
-) async {
-  final lat = notif.rawData['lat']?.trim() ?? '';
-  final lon = notif.rawData['lon']?.trim() ?? '';
-  final sender = notif.rawData['sender_name']?.trim() ?? 'Pendaki';
-  final mountain = notif.rawData['mountain_name']?.trim() ?? '';
-  final alt = notif.rawData['altitude_m']?.trim() ?? '';
-  final bat = notif.rawData['battery_pct']?.trim() ?? '';
-
-  await showDialog<void>(
-    context: context,
-    builder: (ctx) {
-      final colors = HiqeoColors.of(ctx);
-      return AlertDialog(
-        backgroundColor: colors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: Row(
-          children: <Widget>[
-            Icon(Icons.warning_amber_rounded, color: colors.warning, size: 24),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Sinyal SOS Darurat',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: colors.textPrimary,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              '$sender membutuhkan bantuan darurat.',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: colors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (mountain.isNotEmpty) Text('Gunung: $mountain'),
-            if (lat.isNotEmpty && lon.isNotEmpty)
-              Text('Koordinat: $lat, $lon'),
-            if (alt.isNotEmpty) Text('Elevasi: $alt mdpl'),
-            if (bat.isNotEmpty) Text('Baterai: $bat%'),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Tutup'),
-          ),
-          if (lat.isNotEmpty && lon.isNotEmpty)
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                final uri = buildSafeGoogleMapsUri(rawLat: lat, rawLon: lon);
-                if (uri != null) {
-                  unawaited(launchSafeExternalUrl(uri));
-                }
-              },
-              icon: const Icon(Icons.map_outlined, size: 18),
-              label: const Text('Buka di Peta'),
-            ),
-        ],
-      );
-    },
-  );
 }
 
 class _PushOverlayScope extends InheritedWidget {

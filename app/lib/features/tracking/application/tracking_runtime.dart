@@ -185,9 +185,8 @@ class TrackingRuntime {
       if (kDebugMode) {
         debugPrint('TrackingRuntime _refreshBattery error: $error');
       }
-      _onError(
-        const TrackingRuntimeError('Status baterai tidak terbaca.'),
-      );
+      // Kegagalan pembacaan sensor sekunder (baterai) tidak boleh menghentikan
+      // atau memicu spanduk kesalahan perekaman GPS.
     }
   }
 

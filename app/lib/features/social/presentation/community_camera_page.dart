@@ -123,33 +123,44 @@ class _CommunityCameraPageState extends State<CommunityCameraPage>
     _controller = null;
     await prev?.dispose();
 
-    final controller = CameraController(
-      _cameras[index],
-      ResolutionPreset.medium,
-      enableAudio: true,
-    );
-    try {
-      await controller.initialize();
-      if (!mounted) {
-        await controller.dispose();
+    CameraController? controller;
+    var preset = ResolutionPreset.veryHigh;
+    while (true) {
+      final candidate = CameraController(
+        _cameras[index],
+        preset,
+        enableAudio: true,
+      );
+      try {
+        await candidate.initialize();
+        controller = candidate;
+        break;
+      } catch (e) {
+        await candidate.dispose();
+        if (preset == ResolutionPreset.veryHigh) {
+          preset = ResolutionPreset.high;
+          continue;
+        }
+        if (kDebugMode) {
+          debugPrint('CommunityCameraPage._setupCamera failed: $e');
+        }
+        if (!mounted) return;
+        setState(() {
+          _initializing = false;
+          _cameraError =
+              'Kamera belum siap digunakan. Coba buka ulang halaman ini.';
+        });
         return;
       }
-      setState(() {
-        _controller = controller;
-        _initializing = false;
-      });
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('CommunityCameraPage._setupCamera failed: $e');
-      }
-      await controller.dispose();
-      if (!mounted) return;
-      setState(() {
-        _initializing = false;
-        _cameraError =
-            'Kamera belum siap digunakan. Coba buka ulang halaman ini.';
-      });
     }
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    setState(() {
+      _controller = controller;
+      _initializing = false;
+    });
   }
 
   Future<void> _toggleTorch() async {

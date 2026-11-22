@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../../design/app_theme.dart';
 import '../../../design/glass/hiqeo_liquid_glass.dart';
+import '../../../design/widgets/account_badges.dart';
 import '../../../design/widgets/hiqeo_back_button.dart';
 import '../../../design/widgets/persistent_avatar_image.dart';
 import '../../../infrastructure/cache/public_profile_cache_service.dart';
@@ -218,6 +219,7 @@ class ChatRoomHeaderBar extends StatelessWidget {
     this.avatarCacheKey,
     required this.fallbackIcon,
     required this.title,
+    this.isOfficialTitle = false,
     required this.subtitle,
     this.isOnline = true,
     this.showPresenceDot = true,
@@ -252,6 +254,7 @@ class ChatRoomHeaderBar extends StatelessWidget {
   final String? avatarCacheKey;
   final IconData fallbackIcon;
   final String title;
+  final bool isOfficialTitle;
   final String subtitle;
   final bool isOnline;
   final bool showPresenceDot;
@@ -307,6 +310,10 @@ class ChatRoomHeaderBar extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (isOfficialTitle) ...<Widget>[
+                      const SizedBox(width: 4),
+                      const OfficialVerifiedBadge(size: 14),
+                    ],
                     if (isMuted) ...<Widget>[
                       const SizedBox(width: 6),
                       const Icon(

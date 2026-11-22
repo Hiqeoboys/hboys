@@ -84,7 +84,7 @@ void main() {
   testWidgets('masa tenggang tetap membuka isi Plus', (tester) async {
     final controller = await buildPlusController(
       token: 'tenggang',
-      payload: plusPayload(expiresAtUtc: DateTime.utc(2026, 10, 25)),
+      payload: plusPayload(expiresAtUtc: DateTime.utc(2026, 10, 29)),
     );
     final router = _gateRouter();
     addTearDown(router.dispose);

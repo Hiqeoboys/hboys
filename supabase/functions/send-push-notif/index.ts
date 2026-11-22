@@ -285,35 +285,95 @@ async function fetchRoomMutes(
   admin: ReturnType<typeof createClient>,
   roomType: "group" | "community",
   roomId: string,
-  userIds: string[],
 ): Promise<Map<string, MuteState>> {
   const mutes = new Map<string, MuteState>();
-  if (!roomId || userIds.length === 0) return mutes;
+  if (!roomId) return mutes;
 
-  try {
-    const { data } = await admin
-      .from("chat_notification_mutes")
-      .select("user_id, muted_until")
-      .eq("room_type", roomType)
-      .eq("room_id", roomId)
-      .in("user_id", userIds);
-
-    const nowMs = Date.now();
-    for (const row of data ?? []) {
-      const uid = String((row as { user_id?: string }).user_id ?? "").trim();
-      const rawUntil = (row as { muted_until?: string | null }).muted_until;
-      if (!uid || !rawUntil) continue;
+  const nowMs = Date.now();
+  const applyMuteRow = (row: {
+    user_id?: string;
+    is_muted?: boolean | null;
+    muted_until?: string | null;
+  }) => {
+    const uid = String(row.user_id ?? "").trim().toLowerCase();
+    if (!uid) return;
+    const rawUntil = row.muted_until;
+    if (rawUntil) {
       const untilDate = new Date(rawUntil);
       const untilMs = untilDate.getTime();
-      if (!Number.isFinite(untilMs) || untilMs <= nowMs) continue;
+      if (!Number.isFinite(untilMs) || untilMs <= nowMs) return;
       const forever = untilDate.getUTCFullYear() >= 9999;
-      mutes.set(uid, { muted: true, forever });
+      const existing = mutes.get(uid);
+      mutes.set(uid, { muted: true, forever: forever || Boolean(existing?.forever) });
+      return;
+    }
+    if (row.is_muted === true) {
+      const existing = mutes.get(uid);
+      mutes.set(uid, { muted: true, forever: Boolean(existing?.forever) });
+    }
+  };
+
+  // Query by room_type + room_id only (no large `.in("user_id", ...)` URL query)
+  // so communities with hundreds of members never hit URL length errors.
+  try {
+    const res = await admin
+      .from("chat_notification_mutes")
+      .select("user_id, is_muted, muted_until")
+      .eq("room_type", roomType)
+      .eq("room_id", roomId);
+
+    if (res.error) {
+      const fallback = await admin
+        .from("chat_notification_mutes")
+        .select("user_id, muted_until")
+        .eq("room_type", roomType)
+        .eq("room_id", roomId);
+      for (const row of fallback.data ?? []) {
+        applyMuteRow(row as { user_id?: string; muted_until?: string | null });
+      }
+    } else {
+      for (const row of res.data ?? []) {
+        applyMuteRow(
+          row as {
+            user_id?: string;
+            is_muted?: boolean | null;
+            muted_until?: string | null;
+          },
+        );
+      }
     }
   } catch {
-    // Fail open for notifications if mute table is not yet migrated.
+    // Best-effort mute lookup; membership fallback runs below.
+  }
+
+  // Also check membership-level mute flags (`group_members` / `community_members`).
+  try {
+    const memberTable = roomType === "group" ? "group_members" : "community_members";
+    const roomCol = roomType === "group" ? "group_id" : "community_id";
+    const memberRes = await admin
+      .from(memberTable)
+      .select("user_id, is_muted, muted_until")
+      .eq(roomCol, roomId);
+    if (!memberRes.error) {
+      for (const row of memberRes.data ?? []) {
+        applyMuteRow(
+          row as {
+            user_id?: string;
+            is_muted?: boolean | null;
+            muted_until?: string | null;
+          },
+        );
+      }
+    }
+  } catch {
+    // Ignore when membership mute columns are not yet migrated.
   }
 
   return mutes;
+}
+
+function isUserMuted(mutes: Map<string, MuteState>, userId: string): boolean {
+  return Boolean(mutes.get(userId.trim().toLowerCase())?.muted);
 }
 
 async function insertInboxNotifications(
@@ -675,8 +735,8 @@ serve(async (req: Request) => {
       .map((m: { user_id?: string }) => String(m.user_id ?? ""))
       .filter((uid: string) => uid.length > 0 && uid !== senderId);
 
-    const mutes = await fetchRoomMutes(admin, "group", groupId, rawRecipients);
-    const pushUserIds = rawRecipients.filter((uid) => !mutes.get(uid)?.muted);
+    const mutes = await fetchRoomMutes(admin, "group", groupId);
+    const pushUserIds = rawRecipients.filter((uid) => !isUserMuted(mutes, uid));
 
     const groupName = String(groupRow?.name ?? "Grup Pendakian");
     const groupAvatarUrl = String(groupRow?.avatar_url ?? "").trim();
@@ -747,6 +807,8 @@ serve(async (req: Request) => {
     const commName = String(commRow?.name ?? "Komunitas Hiqeo");
     const commAvatarUrl = String(commRow?.avatar_url ?? "").trim();
 
+    const mutes = await fetchRoomMutes(admin, "community", communityId);
+
     if (isSoftDelete) {
       if (messageId) {
         try {
@@ -761,9 +823,10 @@ serve(async (req: Request) => {
         }
       }
 
-      if (memberIds.length > 0 && messageId) {
+      const activeMemberIds = memberIds.filter((uid) => !isUserMuted(mutes, uid));
+      if (activeMemberIds.length > 0 && messageId) {
         dispatches.push({
-          userIds: memberIds,
+          userIds: activeMemberIds,
           title: commName,
           body: "Pesan telah dihapus",
           channelId: "hiqeo_community_messages",
@@ -794,12 +857,6 @@ serve(async (req: Request) => {
       const mentionRecipients = Array.from(mentionedSet);
       const regularRecipients = memberIds.filter((uid) => !mentionedSet.has(uid));
 
-      const mutes = await fetchRoomMutes(
-        admin,
-        "community",
-        communityId,
-        memberIds,
-      );
       const msgType = String(record.message_type ?? "text");
       const content = String(record.content ?? "").trim();
       const snippet =
@@ -830,7 +887,7 @@ serve(async (req: Request) => {
           sent_at: String(record.created_at ?? ""),
         });
 
-        // Record @username mention in Home Inbox regardless of mute state.
+        // Record @username mention silently in Home Inbox even when muted.
         for (const uid of mentionRecipients) {
           inboxRows.push({
             user_id: uid,
@@ -846,9 +903,9 @@ serve(async (req: Request) => {
           });
         }
 
-        // Mentions break through temporary mutes (1 day / 1 week), suppressed only on forever mute (9999-12-31).
+        // Suppress all push notifications for any member who muted this community.
         const mentionPushIds = mentionRecipients.filter(
-          (uid) => !mutes.get(uid)?.forever,
+          (uid) => !isUserMuted(mutes, uid),
         );
         if (mentionPushIds.length > 0) {
           dispatches.push({
@@ -863,7 +920,7 @@ serve(async (req: Request) => {
       }
 
       const regularPushIds = regularRecipients.filter(
-        (uid) => !mutes.get(uid)?.muted,
+        (uid) => !isUserMuted(mutes, uid),
       );
       if (regularPushIds.length > 0) {
         dispatches.push({
@@ -948,8 +1005,8 @@ serve(async (req: Request) => {
     const recipients = (members ?? [])
       .map((m: { user_id?: string }) => String(m.user_id ?? ""))
       .filter((uid: string) => uid.length > 0 && uid !== actorId);
-    const mutes = await fetchRoomMutes(admin, "group", groupId, recipients);
-    const pushUserIds = recipients.filter((uid) => !mutes.get(uid)?.muted);
+    const mutes = await fetchRoomMutes(admin, "group", groupId);
+    const pushUserIds = recipients.filter((uid) => !isUserMuted(mutes, uid));
 
     const groupName = String(groupRow?.name ?? "Grup Pendakian");
     const groupAvatarUrl = String(groupRow?.avatar_url ?? "").trim();
@@ -1208,109 +1265,229 @@ serve(async (req: Request) => {
     }
     const authorId = String(record.author_id ?? record.user_id ?? "").trim();
     const groupId = String(record.group_id ?? "").trim();
+    const rawMode = String(record.sos_mode ?? "").trim().toLowerCase();
+    const sosMode =
+      rawMode === "solo_hike" || rawMode === "group_hike" || rawMode === "nearby"
+        ? rawMode
+        : groupId
+        ? "group_hike"
+        : "nearby";
     const sosId = String(record.id ?? "").trim();
     const mountainName = String(record.mountain_name ?? "").trim();
-    const lat = record.lat != null ? Number(record.lat).toFixed(5) : "";
-    const lon = record.lon != null ? Number(record.lon).toFixed(5) : "";
+    const areaLabel = String(record.area_label ?? "").trim();
+    const latNum = record.lat != null ? Number(record.lat) : NaN;
+    const lonNum = record.lon != null ? Number(record.lon) : NaN;
+    const lat = Number.isFinite(latNum) ? latNum.toFixed(5) : "";
+    const lon = Number.isFinite(lonNum) ? lonNum.toFixed(5) : "";
     const alt =
       record.altitude_m != null
         ? `${Math.round(Number(record.altitude_m))} mdpl`
         : "";
-    const bat =
-      record.battery_pct != null ? `Baterai ${record.battery_pct}%` : "";
+    const batteryPctNum =
+      record.battery_pct != null && Number.isFinite(Number(record.battery_pct))
+        ? Math.round(Number(record.battery_pct))
+        : null;
+    const bat = batteryPctNum != null ? `Baterai ${batteryPctNum}%` : "";
 
-    const recipients = new Set<string>();
-    let groupName = "";
-    let groupAvatarUrl = "";
-    if (groupId) {
-      const [{ data: groupRow }, { data: members }] = await Promise.all([
-        admin
-          .from("groups")
-          .select("name, avatar_url")
-          .eq("id", groupId)
-          .maybeSingle(),
-        admin.from("group_members").select("user_id").eq("group_id", groupId),
-      ]);
-      groupName = String(groupRow?.name ?? "").trim();
-      groupAvatarUrl = String(groupRow?.avatar_url ?? "").trim();
-      for (const m of members ?? []) {
-        const uid = String((m as { user_id?: string }).user_id ?? "");
-        if (uid && uid !== authorId) recipients.add(uid);
-      }
-    }
-    if (authorId) {
-      const { data: contacts } = await admin
-        .from("emergency_contacts")
-        .select("contact_user_id")
-        .eq("user_id", authorId)
-        .eq("contact_kind", "hiqeo_account")
-        .eq("consent_status", "granted");
-      for (const c of contacts ?? []) {
-        const uid = String(
-          (c as { contact_user_id?: string }).contact_user_id ?? "",
-        );
-        if (uid && uid !== authorId) recipients.add(uid);
-      }
+    const rawHhmm = String(record.local_time_hhmm ?? "").trim();
+    let timeHhMm = /^\d{2}:\d{2}$/.test(rawHhmm) ? rawHhmm : "";
+    if (!timeHhMm) {
+      const parsedAt = new Date(
+        String(record.created_at ?? new Date().toISOString()),
+      );
+      const validMs = Number.isFinite(parsedAt.getTime())
+        ? parsedAt.getTime()
+        : Date.now();
+      const wib = new Date(validMs + 7 * 60 * 60 * 1000);
+      timeHhMm =
+        `${String(wib.getUTCHours()).padStart(2, "0")}:${
+          String(wib.getUTCMinutes()).padStart(2, "0")
+        }`;
     }
 
     const senderProf = await fetchSenderProfile(admin, authorId, "Pendaki");
-    const targetUserIds = Array.from(recipients);
-    const title = "DARURAT SOS HIQEO";
-    const metaParts = [
-      mountainName,
-      lat && lon ? `${lat}, ${lon}` : "",
-      alt,
-      bat,
-    ].filter((s) => s.length > 0);
-    const body =
-      metaParts.length > 0
-        ? `${senderProf.name} mengirim sinyal SOS (${metaParts.join(" · ")})`
-        : `${senderProf.name} membutuhkan bantuan darurat sekarang!`;
-    const payloadData = stringifyData({
-      type: "sos",
-      target_id: sosId || groupId,
-      sos_id: sosId,
-      group_id: groupId,
-      room_type: groupId ? "group" : "",
-      room_id: groupId,
-      room_name: groupName,
-      room_avatar_url: groupAvatarUrl,
-      sender_id: authorId,
-      sender_name: senderProf.name,
-      sender_avatar_url: senderProf.avatarUrl,
-      message_id: sosId,
-      mountain_name: mountainName,
-      lat,
-      lon,
-      altitude_m: record.altitude_m != null ? String(record.altitude_m) : "",
-      battery_pct: record.battery_pct != null ? String(record.battery_pct) : "",
-    });
 
-    for (const uid of targetUserIds) {
-      inboxRows.push({
-        user_id: uid,
+    if (sosMode === "nearby" && Number.isFinite(latNum) && Number.isFinite(lonNum)) {
+      const formatDistId = (meters: number): string => {
+        if (!Number.isFinite(meters) || meters < 0) return "dekat sini";
+        if (meters < 1000) return `${Math.round(meters)} m`;
+        return `${(meters / 1000).toFixed(1).replace(".", ",")} km`;
+      };
+
+      const coordText = lat && lon ? `${lat}, ${lon}` : "";
+      const areaText = areaLabel || mountainName;
+      const locationPoint =
+        areaText && coordText
+          ? `${areaText} (${coordText})`
+          : coordText || areaText || "lokasi saat ini";
+      const batteryLabel =
+        batteryPctNum != null ? `${batteryPctNum}%` : "tidak diketahui";
+
+      let nearbyRows: Array<{ user_id?: string; distance_m?: number }> = [];
+      try {
+        const { data: rpcRows } = await admin.rpc(
+          "find_nearby_sos_recipients",
+          {
+            p_author_id: UUID_RE.test(authorId) ? authorId : null,
+            p_lat: latNum,
+            p_lon: lonNum,
+            p_radius_m: 5000,
+            p_max_age_hours: 24,
+          },
+        );
+        if (Array.isArray(rpcRows)) {
+          nearbyRows = rpcRows as Array<{ user_id?: string; distance_m?: number }>;
+        }
+      } catch {
+        nearbyRows = [];
+      }
+
+      const title = "DARURAT SOS TERDEKAT";
+      for (const row of nearbyRows) {
+        const uid = String(row.user_id ?? "").trim();
+        if (!uid || uid === authorId) continue;
+        const distM = Number(row.distance_m ?? 0);
+        const distanceLabel = formatDistId(distM);
+        const body =
+          `Seseorang dalam jarak ${distanceLabel} mengirimkan SOS pada titik lokasi ${locationPoint} pukul ${timeHhMm} dengan sisa baterai ${batteryLabel}. Ayo kita periksa keadaannya.`;
+        const nearbyData = stringifyData({
+          type: "sos_nearby",
+          sos_mode: "nearby",
+          target_id: sosId,
+          sos_id: sosId,
+          sender_id: authorId,
+          sender_name: senderProf.name,
+          sender_avatar_url: senderProf.avatarUrl,
+          message_id: sosId,
+          mountain_name: mountainName,
+          area_label: areaText,
+          lat,
+          lon,
+          altitude_m: record.altitude_m != null ? String(record.altitude_m) : "",
+          battery_pct: batteryPctNum != null ? String(batteryPctNum) : "",
+          distance_m: Number.isFinite(distM) ? String(Math.round(distM)) : "",
+          distance_label: distanceLabel,
+          sos_time_hhmm: timeHhMm,
+          sent_at: String(record.created_at ?? ""),
+        });
+
+        inboxRows.push({
+          user_id: uid,
+          type: "sos_nearby",
+          title,
+          body,
+          actor_id: UUID_RE.test(authorId) ? authorId : null,
+          target_id: sosId || null,
+          room_type: null,
+          room_id: null,
+          message_id: sosId || null,
+          data: nearbyData,
+        });
+        dispatches.push({
+          userIds: [uid],
+          title,
+          body,
+          channelId: "hiqeo_sos_urgent",
+          urgent: true,
+          data: nearbyData,
+        });
+      }
+    } else {
+      const recipients = new Set<string>();
+      let groupName = "";
+      let groupAvatarUrl = "";
+      if (sosMode === "group_hike" && groupId) {
+        const [{ data: groupRow }, { data: members }] = await Promise.all([
+          admin
+            .from("groups")
+            .select("name, avatar_url")
+            .eq("id", groupId)
+            .maybeSingle(),
+          admin.from("group_members").select("user_id").eq("group_id", groupId),
+        ]);
+        groupName = String(groupRow?.name ?? "").trim();
+        groupAvatarUrl = String(groupRow?.avatar_url ?? "").trim();
+        for (const m of members ?? []) {
+          const uid = String((m as { user_id?: string }).user_id ?? "");
+          if (uid && uid !== authorId) recipients.add(uid);
+        }
+      }
+      if (authorId) {
+        const { data: contacts } = await admin
+          .from("emergency_contacts")
+          .select("contact_user_id")
+          .eq("user_id", authorId)
+          .eq("contact_kind", "hiqeo_account")
+          .eq("consent_status", "granted");
+        for (const c of contacts ?? []) {
+          const uid = String(
+            (c as { contact_user_id?: string }).contact_user_id ?? "",
+          );
+          if (uid && uid !== authorId) recipients.add(uid);
+        }
+      }
+
+      const targetUserIds = Array.from(recipients);
+      const effectiveGroupId = sosMode === "group_hike" ? groupId : "";
+      const title = "DARURAT SOS HIQEO";
+      const metaParts = [
+        mountainName,
+        lat && lon ? `${lat}, ${lon}` : "",
+        alt,
+        bat,
+      ].filter((s) => s.length > 0);
+      const body =
+        metaParts.length > 0
+          ? `${senderProf.name} mengirim sinyal SOS (${metaParts.join(" · ")})`
+          : `${senderProf.name} membutuhkan bantuan darurat sekarang!`;
+      const payloadData = stringifyData({
         type: "sos",
-        title,
-        body,
-        actor_id: UUID_RE.test(authorId) ? authorId : null,
-        target_id: sosId || groupId || null,
-        room_type: groupId ? "group" : null,
-        room_id: UUID_RE.test(groupId) ? groupId : null,
-        message_id: sosId || null,
-        data: payloadData,
+        sos_mode: sosMode,
+        target_id: sosId || effectiveGroupId,
+        sos_id: sosId,
+        group_id: effectiveGroupId,
+        room_type: effectiveGroupId ? "group" : "",
+        room_id: effectiveGroupId,
+        room_name: groupName,
+        room_avatar_url: groupAvatarUrl,
+        sender_id: authorId,
+        sender_name: senderProf.name,
+        sender_avatar_url: senderProf.avatarUrl,
+        message_id: sosId,
+        mountain_name: mountainName,
+        lat,
+        lon,
+        altitude_m: record.altitude_m != null ? String(record.altitude_m) : "",
+        battery_pct: batteryPctNum != null ? String(batteryPctNum) : "",
+        sos_time_hhmm: timeHhMm,
+        sent_at: String(record.created_at ?? ""),
       });
-    }
 
-    // SOS ALWAYS bypasses all room mutes.
-    if (targetUserIds.length > 0) {
-      dispatches.push({
-        userIds: targetUserIds,
-        title,
-        body,
-        channelId: "hiqeo_sos_urgent",
-        urgent: true,
-        data: payloadData,
-      });
+      for (const uid of targetUserIds) {
+        inboxRows.push({
+          user_id: uid,
+          type: "sos",
+          title,
+          body,
+          actor_id: UUID_RE.test(authorId) ? authorId : null,
+          target_id: sosId || effectiveGroupId || null,
+          room_type: effectiveGroupId ? "group" : null,
+          room_id: UUID_RE.test(effectiveGroupId) ? effectiveGroupId : null,
+          message_id: sosId || null,
+          data: payloadData,
+        });
+      }
+
+      if (targetUserIds.length > 0) {
+        dispatches.push({
+          userIds: targetUserIds,
+          title,
+          body,
+          channelId: "hiqeo_sos_urgent",
+          urgent: true,
+          data: payloadData,
+        });
+      }
     }
   } else if (table === "emergency_contacts") {
     if (

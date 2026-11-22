@@ -9,6 +9,7 @@ import '../../../core/brand/app_brand.dart';
 import '../../../core/constants/emergency_numbers.dart';
 import '../../../core/platform/phone_dialer.dart';
 import '../../../core/utils/clock.dart';
+import '../../../core/utils/safe_url_launcher.dart';
 import '../../../design/app_theme.dart';
 import '../../../design/motion/visual_effect_policy.dart';
 import '../../../design/tokens.dart';
@@ -667,9 +668,8 @@ class _SosPageState extends State<SosPage> {
         SosTriggerState.idle => 'Tekan dan tahan 3 detik',
         SosTriggerState.holding =>
           'Tetap tahan hingga penuh. Lepas untuk membatalkan.',
-        SosTriggerState.countdown => _saving
-            ? 'Mengaktifkan SOS…'
-            : (_saveNotice ?? 'SOS aktif.'),
+        SosTriggerState.countdown =>
+          _saving ? 'Mengaktifkan SOS…' : (_saveNotice ?? 'SOS aktif.'),
         SosTriggerState.triggered => _saving
             ? 'Mengaktifkan SOS, senter Morse & sirene…'
             : (_saveNotice ??
@@ -805,7 +805,8 @@ class _SosPageState extends State<SosPage> {
                                 ],
                                 if (_active) ...<Widget>[
                                   if (_sosOutcome?.flashlightActive == true ||
-                                      _sosOutcome?.sirenActive == true) ...<Widget>[
+                                      _sosOutcome?.sirenActive ==
+                                          true) ...<Widget>[
                                     const SizedBox(height: HiqeoSpacing.md),
                                     Wrap(
                                       alignment: WrapAlignment.center,
@@ -995,14 +996,19 @@ class _SosPageState extends State<SosPage> {
     final contactReached =
         _tracker.reached(SosDeliveryStage.deliveredToEmergencyContact);
 
-    final peerLabel = outcome?.sentMeshBroadcast == true &&
-            outcome?.sentGroupMessage != true
-        ? 'Disiarkan via Hiqeo Mesh (offline)'
-        : (outcome?.sentGroupMessage == true && outcome?.sentMeshBroadcast == true
-            ? 'Terkirim ke chat grup & Hiqeo Mesh'
-            : (outcome?.sentGroupMessage == true
-                ? 'Terkirim ke ruang obrolan grup'
-                : 'Pesan grup / Hiqeo Mesh'));
+    final peerLabel = outcome?.sosMode == SosDispatchMode.soloHike
+        ? 'Mode Solo: hanya WhatsApp & SMS ke kontak darurat'
+        : (outcome?.sentMeshBroadcast == true &&
+                outcome?.sentGroupMessage != true
+            ? 'Disiarkan via Hiqeo Mesh (offline)'
+            : (outcome?.sentGroupMessage == true &&
+                    outcome?.sentMeshBroadcast == true
+                ? 'Terkirim ke chat grup & Hiqeo Mesh'
+                : (outcome?.sentGroupMessage == true
+                    ? 'Terkirim ke ruang obrolan grup'
+                    : (outcome?.sosMode == SosDispatchMode.groupHike
+                        ? 'Pesan ke grup pendakian aktif'
+                        : 'Siaran SOS pengguna sekitar (radius 5 km)'))));
 
     final serverLabel = serverReached
         ? 'Terkirim ke server & kontak Hiqeo'
@@ -1010,15 +1016,27 @@ class _SosPageState extends State<SosPage> {
             ? 'Menunggu sinyal internet untuk sinkronisasi server'
             : 'Diteruskan ke server');
 
+    final modeSuffix = switch (outcome?.sosMode) {
+      SosDispatchMode.soloHike => ' · Mode Solo',
+      SosDispatchMode.groupHike => ' · Grup Aktif',
+      SosDispatchMode.nearbyHome => ' · Siaran 5 km',
+      null => '',
+    };
+
     final String contactLabel;
     if (outcome?.sentDirectSms == true && outcome?.whatsappAutoSent == true) {
       contactLabel = 'SMS Darurat & WhatsApp terkirim otomatis';
+    } else if (outcome?.sentDirectSms == true &&
+        outcome?.openedWhatsappFallback == true) {
+      contactLabel = 'SMS otomatis terkirim & WhatsApp darurat dibuka';
     } else if (outcome?.sentDirectSms == true) {
       contactLabel = 'SMS Darurat terkirim otomatis';
     } else if (outcome?.openedOfflineSms == true) {
       contactLabel = 'Draft SMS darurat dibuka otomatis';
     } else if (outcome?.whatsappAutoSent == true) {
       contactLabel = 'Pesan WhatsApp & kontak darurat terkirim otomatis';
+    } else if (outcome?.openedWhatsappFallback == true) {
+      contactLabel = 'Pesan WhatsApp darurat dibuka untuk dikirim';
     } else if (outcome?.smsPermissionDenied == true &&
         outcome?.hasPhoneEmergencyContacts == true) {
       contactLabel = 'Izin SMS darurat otomatis belum diaktifkan';
@@ -1035,7 +1053,7 @@ class _SosPageState extends State<SosPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          'Status pengiriman',
+          'Status pengiriman$modeSuffix',
           style: theme.textTheme.bodySmall?.copyWith(
             color: colors.textSecondary,
           ),
@@ -1062,6 +1080,47 @@ class _SosPageState extends State<SosPage> {
           label: contactLabel,
           reached: contactReached,
         ),
+        if (_active &&
+            outcome?.hasPhoneEmergencyContacts == true &&
+            outcome?.emergencyPhones.isNotEmpty == true &&
+            outcome?.emergencyMessage != null) ...<Widget>[
+          const SizedBox(height: HiqeoSpacing.sm),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              OutlinedButton.icon(
+                key: const ValueKey('sos-quick-whatsapp'),
+                onPressed: () => unawaited(_openEmergencyWhatsapp(outcome!)),
+                icon: const Icon(Icons.chat_outlined, size: 16),
+                label: const Text('Kirim WhatsApp'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: colors.textPrimary,
+                  side: BorderSide(color: colors.hairline),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              OutlinedButton.icon(
+                key: const ValueKey('sos-quick-sms'),
+                onPressed: () => unawaited(
+                  launchSafeExternalUrl(
+                    buildEmergencySmsUri(
+                      outcome!.emergencyPhones,
+                      outcome.emergencyMessage!,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.sms_outlined, size: 16),
+                label: const Text('Buka SMS'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: colors.textPrimary,
+                  side: BorderSide(color: colors.hairline),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+        ],
         if (saved && waitingInternetSync && !serverReached) ...<Widget>[
           const SizedBox(height: HiqeoSpacing.sm),
           Text(
@@ -1081,6 +1140,25 @@ class _SosPageState extends State<SosPage> {
         ],
       ],
     );
+  }
+
+  Future<void> _openEmergencyWhatsapp(SosDispatchOutcome outcome) async {
+    final msg = outcome.emergencyMessage;
+    if (msg == null || outcome.emergencyPhones.isEmpty) return;
+    final phone = outcome.emergencyPhones.first;
+    final appUri = buildSafeWhatsappUri(phoneE164: phone, message: msg);
+    if (appUri != null) {
+      final launched = await launchSafeExternalUrl(appUri);
+      if (launched) return;
+    }
+    final webUri = buildSafeWhatsappUri(
+      phoneE164: phone,
+      message: msg,
+      webFallback: true,
+    );
+    if (webUri != null) {
+      await launchSafeExternalUrl(webUri);
+    }
   }
 
   Widget _bottomBar(ThemeData theme, HiqeoColors colors) {

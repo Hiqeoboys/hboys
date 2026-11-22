@@ -39,6 +39,7 @@ class AccountPlusGrant {
     required this.userId,
     required this.isPlus,
     this.planId,
+    this.startedAtUtc,
     this.expiresAtUtc,
     required this.syncedAtUtc,
   });
@@ -46,6 +47,7 @@ class AccountPlusGrant {
   final String userId;
   final bool isPlus;
   final String? planId;
+  final DateTime? startedAtUtc;
   final DateTime? expiresAtUtc;
   final DateTime syncedAtUtc;
 
@@ -53,6 +55,7 @@ class AccountPlusGrant {
         'user_id': userId,
         'is_plus': isPlus,
         'plan_id': planId,
+        'started_at': startedAtUtc?.toUtc().toIso8601String(),
         'expires_at': expiresAtUtc?.toUtc().toIso8601String(),
         'synced_at': syncedAtUtc.toUtc().toIso8601String(),
       };
@@ -64,6 +67,9 @@ class AccountPlusGrant {
     if (userId is! String || userId.trim().isEmpty || isPlus is! bool) {
       return null;
     }
+    final rawStarted = raw['started_at'];
+    final startedAt =
+        rawStarted is String ? DateTime.tryParse(rawStarted)?.toUtc() : null;
     final rawExp = raw['expires_at'];
     final expiresAt =
         rawExp is String ? DateTime.tryParse(rawExp)?.toUtc() : null;
@@ -76,6 +82,7 @@ class AccountPlusGrant {
       userId: userId,
       isPlus: isPlus,
       planId: raw['plan_id'] as String?,
+      startedAtUtc: startedAt,
       expiresAtUtc: expiresAt,
       syncedAtUtc: syncedAt,
     );

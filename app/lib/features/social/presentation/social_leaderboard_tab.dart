@@ -8,10 +8,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../design/gooey/gooey_selector.dart';
 import '../../../design/layout.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/account_badges.dart';
 import '../../../design/widgets/hiqeo_state_view.dart';
 import '../../../design/widgets/persistent_avatar_image.dart';
+import '../../../infrastructure/cache/public_profile_cache_service.dart';
 import '../../../infrastructure/supabase/supabase_services.dart';
+import '../../plus/application/plus_navigation.dart';
 import '../../plus/application/plus_scope.dart';
+import '../../plus/domain/plus_remote_config.dart';
+import '../../plus/presentation/widgets/plus_grace_warning_card.dart';
 import '../../profile/presentation/other_user_profile_page.dart';
 
 enum LeaderboardCategory {
@@ -49,6 +54,7 @@ class LeaderboardRowEntry {
     this.avatarUrl,
     required this.mountainsCount,
     required this.distanceM,
+    this.isOfficial = false,
   });
 
   final int rank;
@@ -58,6 +64,7 @@ class LeaderboardRowEntry {
   final String? avatarUrl;
   final int mountainsCount;
   final double distanceM;
+  final bool isOfficial;
 
   String get name =>
       (displayName != null && displayName!.trim().isNotEmpty)
@@ -157,6 +164,7 @@ class _SocialLeaderboardTabState extends State<SocialLeaderboardTab> {
           avatarUrl: raw['avatar_url']?.toString(),
           mountainsCount: mountainsCount,
           distanceM: distanceM,
+          isOfficial: raw['is_official'] == true,
         ),
       );
     }
@@ -380,18 +388,30 @@ class _SocialLeaderboardTabState extends State<SocialLeaderboardTab> {
 
           if (!isRankedEligible) ...<Widget>[
             const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: colors.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: colors.hairline),
+            if (plus != null && plus.access.isGrace)
+              PlusGraceWarningCard(
+                access: plus.access,
+                graceDays: plus.config?.effectiveGraceDays ??
+                    PlusRemoteConfig.fallbackGraceDays,
+                onSubscribeAgain: () => openPlusPaywall(
+                  context,
+                  requireFullSocialPlan: true,
+                ),
+              )
+            else
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: colors.hairline),
+                ),
+                child: Text(
+                  'Kamu dapat melihat papan peringkat. Tingkatkan langganan untuk ikut masuk peringkat pendaki.',
+                  style: TextStyle(fontSize: 12.5, color: colors.textSecondary),
+                ),
               ),
-              child: Text(
-                'Kamu dapat melihat papan peringkat. Tingkatkan langganan untuk ikut masuk peringkat pendaki.',
-                style: TextStyle(fontSize: 12.5, color: colors.textSecondary),
-              ),
-            ),
           ],
 
           const SizedBox(height: 14),
@@ -500,15 +520,30 @@ class _SocialLeaderboardTabState extends State<SocialLeaderboardTab> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            Text(
-                              entry.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w700,
-                                color: colors.textPrimary,
-                              ),
+                            Row(
+                              children: <Widget>[
+                                Flexible(
+                                  child: Text(
+                                    entry.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: colors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                                if (entry.isOfficial ||
+                                    PublicProfileCacheService.instance
+                                        .resolveIsOfficial(
+                                      entry.userId,
+                                      usernameFallback: entry.username,
+                                    )) ...<Widget>[
+                                  const SizedBox(width: 4),
+                                  const OfficialVerifiedBadge(size: 15),
+                                ],
+                              ],
                             ),
                             Text(
                               '@${entry.username}',

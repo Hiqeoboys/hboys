@@ -65,6 +65,13 @@ class _FakeAuth implements AuthService {
 
   @override
   Future<void> switchAccount(AuthProviderKind provider) async {}
+
+  @override
+  Future<List<LinkedIdentity>> linkedIdentities() async =>
+      const <LinkedIdentity>[];
+
+  @override
+  Future<void> linkProvider(AuthProviderKind provider) async {}
 }
 
 class _FakeProfileRepo implements ProfileRepository, KeyDirectory {
@@ -74,6 +81,12 @@ class _FakeProfileRepo implements ProfileRepository, KeyDirectory {
 
   @override
   Future<UserProfile?> currentProfile() async => _profile;
+
+  @override
+  Future<UsernameAvailabilityResult> checkUsernameAvailability(
+    String username,
+  ) async =>
+      const UsernameAvailabilityResult(available: true);
 
   @override
   Future<DirectoryEntry?> findByUsername(String username) async => null;

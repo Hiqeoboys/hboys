@@ -7,11 +7,14 @@ import '../../../design/background/app_background.dart';
 import '../../../design/background/page_background.dart';
 import '../../../design/glass/hiqeo_liquid_glass.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/account_badges.dart';
+import '../../../design/widgets/fullscreen_avatar_viewer_page.dart';
 import '../../../design/widgets/hiqeo_back_button.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/hiqeo_state_view.dart';
 import '../../../design/widgets/persistent_avatar_image.dart';
 import '../../../infrastructure/cache/public_profile_cache_service.dart';
+import '../../auth/domain/username_policy.dart';
 import '../../social/data/friends_service.dart';
 import '../../social/data/moderation_service.dart';
 
@@ -214,6 +217,12 @@ class _OtherUserProfilePageState extends State<OtherUserProfilePage> {
     final avatarUrl = profile?.avatarUrl ??
         widget.initialAvatarUrl ??
         cached?.avatarUrl;
+    final isOfficial = (profile?.isOfficial == true) ||
+        (cached?.isOfficial == true) ||
+        UsernamePolicy.isOfficialUsername(username);
+    final isUltima = profile?.isUltima ?? false;
+    final hasAvatar = (avatarUrl != null && avatarUrl.trim().isNotEmpty);
+    final heroTag = profileAvatarHeroTag('other_${widget.userId}');
 
     return PageBackground(
       page: AppBackgroundPage.profil,
@@ -256,20 +265,46 @@ class _OtherUserProfilePageState extends State<OtherUserProfilePage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: <Widget>[
                           Center(
-                            child: PersistentAvatarImage(
-                              cacheKey: widget.userId,
-                              avatarUrl: avatarUrl,
-                              size: 92,
-                              backgroundColor: colors.hairline,
-                              fallback: Center(
-                                child: Text(
-                                  displayName.isNotEmpty
-                                      ? displayName[0].toUpperCase()
-                                      : '?',
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w700,
-                                    color: colors.textPrimary,
+                            child: Semantics(
+                              button: hasAvatar,
+                              label: hasAvatar
+                                  ? 'Lihat foto profil $displayName'
+                                  : null,
+                              child: GestureDetector(
+                                key: const ValueKey<String>(
+                                  'other-user-avatar-tap',
+                                ),
+                                onTap: hasAvatar
+                                    ? () => unawaited(
+                                          openFullscreenAvatarViewer(
+                                            context,
+                                            heroTag: heroTag,
+                                            displayName: displayName,
+                                            avatarUrl: avatarUrl,
+                                            cacheKey: widget.userId,
+                                            isOfficial: isOfficial,
+                                          ),
+                                        )
+                                    : null,
+                                child: Hero(
+                                  tag: heroTag,
+                                  child: PersistentAvatarImage(
+                                    cacheKey: widget.userId,
+                                    avatarUrl: avatarUrl,
+                                    size: 92,
+                                    backgroundColor: colors.hairline,
+                                    fallback: Center(
+                                      child: Text(
+                                        displayName.isNotEmpty
+                                            ? displayName[0].toUpperCase()
+                                            : '?',
+                                        style: TextStyle(
+                                          fontSize: 32,
+                                          fontWeight: FontWeight.w700,
+                                          color: colors.textPrimary,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -290,7 +325,19 @@ class _OtherUserProfilePageState extends State<OtherUserProfilePage> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            if (profile?.showPlusBadge == true) ...<Widget>[
+                            if (isOfficial) ...<Widget>[
+                              const SizedBox(width: 6),
+                              const OfficialVerifiedBadge(
+                                key: ValueKey('other-user-official-badge'),
+                                size: 20,
+                              ),
+                            ],
+                            if (isUltima) ...<Widget>[
+                              const SizedBox(width: 8),
+                              const UltimaBadge(
+                                key: ValueKey('other-user-ultima-badge'),
+                              ),
+                            ] else if (profile?.showPlusBadge == true) ...<Widget>[
                               const SizedBox(width: 8),
                               Container(
                                 key: const ValueKey('other-user-plus-badge'),

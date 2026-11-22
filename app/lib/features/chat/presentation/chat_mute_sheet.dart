@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../../design/glass/hiqeo_liquid_glass.dart';
 import '../../../design/tokens.dart';
+import '../../../infrastructure/notifications/push_notification_service.dart';
 import '../../social/data/chat_mute_service.dart';
 import 'chat_room_chrome.dart';
 
@@ -87,10 +88,22 @@ class _ChatMuteSheetContent extends StatelessWidget {
         await service.unmute(roomType, roomId);
       case _MuteChoice.oneDay:
         await service.muteFor(roomType, roomId, const Duration(days: 1));
+        await PushNotificationService.instance.clearRoomNotifications(
+          type: roomType,
+          id: roomId,
+        );
       case _MuteChoice.oneWeek:
         await service.muteFor(roomType, roomId, const Duration(days: 7));
+        await PushNotificationService.instance.clearRoomNotifications(
+          type: roomType,
+          id: roomId,
+        );
       case _MuteChoice.forever:
         await service.muteForever(roomType, roomId);
+        await PushNotificationService.instance.clearRoomNotifications(
+          type: roomType,
+          id: roomId,
+        );
     }
     if (context.mounted) {
       Navigator.of(context).pop();
