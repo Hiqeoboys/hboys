@@ -1,0 +1,59 @@
+workflows:
+  ios-unsigned-sideload:
+    name: Hiqeo iOS Unsigned (Sideloadly)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    working_directory: app
+    environment:
+      groups:
+        - hiqeo_secrets
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Siapkan kredensial Mapbox (~/.netrc)
+        script: |
+          if [ -n "$RNMAPBOX_MAPS_DOWNLOAD_TOKEN" ]; then
+            printf "machine api.mapbox.com\nlogin mapbox\npassword %s\n" "$RNMAPBOX_MAPS_DOWNLOAD_TOKEN" > ~/.netrc
+            chmod 600 ~/.netrc
+            echo "Mapbox .netrc berhasil dibuat."
+          else
+            echo "PERINGATAN: RNMAPBOX_MAPS_DOWNLOAD_TOKEN belum diisi di Codemagic."
+          fi
+
+      - name: Decode GoogleService-Info.plist & .env
+        script: |
+          if [ -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" ]; then
+            echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > ios/Runner/GoogleService-Info.plist
+            echo "GoogleService-Info.plist siap."
+          else
+            echo "PERINGATAN: GOOGLE_SERVICE_INFO_PLIST_BASE64 kosong."
+          fi
+          if [ -n "$ENV_FILE_BASE64" ]; then
+            echo "$ENV_FILE_BASE64" | base64 --decode > .env
+            echo "File .env siap."
+          fi
+
+      - name: Install dependensi Flutter & CocoaPods
+        script: |
+          flutter pub get
+          cd ios
+          pod install --repo-update
+
+      - name: Build iOS Release (No Codesign)
+        script: |
+          ARGS="--release --no-codesign"
+          [ -n "$SUPABASE_URL" ] && ARGS="$ARGS --dart-define=SUPABASE_URL=$SUPABASE_URL"
+          [ -n "$SUPABASE_ANON_KEY" ] && ARGS="$ARGS --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+          [ -n "$MAPBOX_ACCESS_TOKEN" ] && ARGS="$ARGS --dart-define=MAPBOX_ACCESS_TOKEN=$MAPBOX_ACCESS_TOKEN"
+          flutter build ios $ARGS
+
+      - name: Kemas Runner.app menjadi Hiqeo-unsigned.ipa
+        script: |
+          rm -rf build/ios/ipa
+          mkdir -p build/ios/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
+          cd build/ios/ipa
+          zip -r -9 Hiqeo-unsigned.ipa Payload
+    artifacts:
+      - "**/build/ios/ipa/Hiqeo-unsigned.ipa"
