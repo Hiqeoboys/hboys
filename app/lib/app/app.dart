@@ -8,6 +8,7 @@ import '../design/theme_mode_controller.dart';
 import '../features/plus/application/plus_controller.dart';
 import '../features/plus/application/plus_scope.dart';
 import '../features/plus/plus_dependencies.dart';
+import '../infrastructure/notifications/push_notification_overlay.dart';
 import 'router.dart';
 
 class NamaApp extends StatelessWidget {
@@ -44,7 +45,10 @@ class NamaApp extends StatelessWidget {
           // termasuk Peta yang peta terangnya diredam di mode malam.
           builder: (context, child) => HiqeoSystemUiRegion(
             brightness: Theme.of(context).brightness,
-            child: child ?? const SizedBox.shrink(),
+            child: PushNotificationOverlayHost(
+              router: hiqeoRouter,
+              child: child ?? const SizedBox.shrink(),
+            ),
           ),
         ),
       ),

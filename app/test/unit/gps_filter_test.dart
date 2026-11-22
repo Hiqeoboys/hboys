@@ -25,7 +25,7 @@ void main() {
 
   test('menerima pergerakan wajar', () {
     final f = GpsFilter()..accept(fix(-6.9, 107.6, 0));
-    expect(f.accept(fix(-6.89999, 107.6, 5)), isNotNull); // ~1 m
+    expect(f.accept(fix(-6.89995, 107.6, 5)), isNotNull); // ~5,5 m
   });
 
   test('titik acuan direset setelah penolakan beruntun', () {

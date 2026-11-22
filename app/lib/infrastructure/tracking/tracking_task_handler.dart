@@ -1,17 +1,19 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../../../features/tracking/application/recording_session.dart';
 import '../../../features/tracking/application/tracking_backend.dart';
 import '../../../features/tracking/application/tracking_runtime.dart';
 import '../../../features/tracking/application/tracking_status.dart';
+import '../../../features/tracking/domain/tracking_session.dart';
 import '../../core/utils/clock.dart';
 import '../database/app_database.dart';
 import '../database/database_connection.dart';
 import '../database/repositories/drift_tracking_repository.dart';
-import '../location/geolocator_tracking_source.dart';
+import '../location/location_source.dart';
 import '../power/device_battery_reader.dart';
 
 /// Titik masuk isolate latar Android. Harus top-level dan punya entry point.
@@ -26,6 +28,7 @@ class TrackingTaskHandler extends TaskHandler {
   TrackingStatus? _lastStatus;
   bool _stopping = false;
   DateTime? _lastNotificationAt;
+  Timer? _logTimer;
   final Clock _clock = const SystemClock();
 
   @override
@@ -38,10 +41,25 @@ class TrackingTaskHandler extends TaskHandler {
       return;
     }
 
+    final rawActivityType = await FlutterForegroundTask.getData<String>(
+      key: TrackingTaskProtocol.activityTypeKey,
+    );
+    final activityType = TrackingSession.normalizeActivityType(rawActivityType);
+    final rawOwnerUserId = await FlutterForegroundTask.getData<String>(
+      key: TrackingTaskProtocol.ownerUserIdKey,
+    );
+    final ownerUserId =
+        (rawOwnerUserId != null && rawOwnerUserId.trim().isNotEmpty)
+            ? rawOwnerUserId.trim()
+            : null;
+
     try {
       _database = openAppDatabase(File(path));
-      final repository = DriftTrackingRepository(_database!);
-      const location = GeolocatorTrackingSource();
+      final repository = DriftTrackingRepository(
+        _database!,
+        ownerUserIdProvider: () => ownerUserId,
+      );
+      const location = RealLocationSource();
       final access = await location.checkAccess();
       if (access != TrackingAccess.granted) {
         await _failStart(TrackingAccessException(access).message);
@@ -51,6 +69,8 @@ class TrackingTaskHandler extends TaskHandler {
       final recording = await openOrStartRecordingSession(
         repository: repository,
         clock: _clock,
+        activityType: activityType,
+        ownerUserId: ownerUserId,
       );
       final runtime = TrackingRuntime(
         recording: recording,
@@ -61,6 +81,7 @@ class TrackingTaskHandler extends TaskHandler {
       );
       _runtime = runtime;
       await runtime.start();
+      _startDebugLog();
       _sendStatus(TrackingTaskProtocol.startedType);
       await _updateNotification(force: true);
     } catch (error) {
@@ -72,6 +93,24 @@ class TrackingTaskHandler extends TaskHandler {
     _lastStatus = TrackingStatus.fromRuntimeUpdate(update);
     _sendStatus(TrackingTaskProtocol.updateType);
     unawaited(_updateNotification());
+  }
+
+  /// Log ringkas tiap 5 detik ke konsol (hanya build debug): hitungan fix
+  /// diterima/ditolak beserta alasannya, fix terakhir, dan umurnya.
+  void _startDebugLog() {
+    if (!kDebugMode) return;
+    _logTimer?.cancel();
+    _logTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      final diag = _lastStatus?.diagnostics;
+      if (diag == null || diag.received == 0) {
+        debugPrint('[GPS] belum ada fix dari penyedia lokasi');
+        return;
+      }
+      final at = diag.lastReceivedAtUtc;
+      final age =
+          at == null ? '-' : '${_clock.nowUtc().difference(at).inSeconds}';
+      debugPrint('[GPS] ${diag.summary()} umur=${age}s');
+    });
   }
 
   void _sendStatus(String type) {
@@ -108,7 +147,9 @@ class TrackingTaskHandler extends TaskHandler {
     }
     _lastNotificationAt = now;
     await FlutterForegroundTask.updateService(
-      notificationTitle: status.isPaused ? 'Rekaman dijeda' : 'Merekam pendakian',
+      notificationTitle: status.isPaused
+          ? 'Rekaman dijeda'
+          : (status.isJogging ? 'Merekam jogging' : 'Merekam pendakian'),
       notificationText: status.isPaused
           ? 'Jeda • ${_distanceText(status.distanceM)} • ${_durationText(status.elapsedSeconds)}'
           : '${_distanceText(status.distanceM)} • ${_durationText(status.elapsedSeconds)} • ${status.profile.name}',
@@ -184,6 +225,8 @@ class TrackingTaskHandler extends TaskHandler {
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    _logTimer?.cancel();
+    _logTimer = null;
     await _runtime?.suspend();
     await _database?.close();
     _database = null;

@@ -32,12 +32,16 @@ class SosTriggerController {
     }
   }
 
-  /// Panggil berkala (mis. tiap 100 ms) untuk memajukan state.
+  /// Panggil berkala (mis. tiap 50–100 ms) untuk memajukan state.
   SosTriggerState tick(DateTime now) {
     if (_state == SosTriggerState.holding &&
         now.difference(_holdStart!) >= holdDuration) {
-      _state = SosTriggerState.countdown;
-      _countdownStart = now;
+      if (countdownDuration <= Duration.zero) {
+        _state = SosTriggerState.triggered;
+      } else {
+        _state = SosTriggerState.countdown;
+        _countdownStart = now;
+      }
     } else if (_state == SosTriggerState.countdown &&
         now.difference(_countdownStart!) >= countdownDuration) {
       _state = SosTriggerState.triggered;

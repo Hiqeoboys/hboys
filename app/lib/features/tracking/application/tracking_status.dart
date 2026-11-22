@@ -1,4 +1,5 @@
 import '../../../infrastructure/power/power_profile_manager.dart';
+import '../domain/tracking_diagnostics.dart';
 import '../domain/tracking_session.dart';
 import 'tracking_runtime.dart';
 
@@ -20,6 +21,11 @@ class TrackingStatus {
     this.verticalSpeedMph,
     this.batteryPercent,
     this.isPaused = false,
+    this.stepCount,
+    this.kcalPerKg = 0,
+    this.lastValidFixAtUtc,
+    this.diagnostics,
+    this.activityType = TrackingSession.activityHiking,
   });
 
   final String sessionId;
@@ -38,8 +44,76 @@ class TrackingStatus {
   final int? batteryPercent;
   final bool isPaused;
 
+  /// Langkah sejak rekaman dimulai dari sensor langkah; `null` bila tidak ada.
+  /// Diisi di sisi UI, tidak dikirim dari layanan latar.
+  final int? stepCount;
+
+  /// Energi terkumpul per kg berat badan (ACSM). Kalikan dengan berat badan.
+  final double kcalPerKg;
+
+  /// Waktu jam dinding saat fix valid terakhir diterima. `null` bila belum
+  /// pernah ada fix valid (status "Mencari sinyal GPS").
+  final DateTime? lastValidFixAtUtc;
+
+  /// Hitungan diagnosa pipeline lokasi.
+  final TrackingDiagnostics? diagnostics;
+
+  /// Jenis aktivitas sesi: `'hiking'` atau `'jogging'`.
+  final String activityType;
+
+  bool get isJogging => activityType == TrackingSession.activityJogging;
+
+  bool get hasValidFix => lastValidFixAtUtc != null;
+
+  TrackingStatus copyWith({
+    String? sessionId,
+    TrackingSessionStatus? sessionStatus,
+    DateTime? startedAtUtc,
+    double? distanceM,
+    int? movingSeconds,
+    int? elapsedSeconds,
+    double? elevationGainM,
+    double? elevationLossM,
+    bool? isMoving,
+    int? pointCount,
+    PowerProfile? profile,
+    double? paceSecPerKm,
+    double? verticalSpeedMph,
+    int? batteryPercent,
+    bool? isPaused,
+    int? stepCount,
+    double? kcalPerKg,
+    DateTime? lastValidFixAtUtc,
+    TrackingDiagnostics? diagnostics,
+    String? activityType,
+  }) {
+    return TrackingStatus(
+      sessionId: sessionId ?? this.sessionId,
+      sessionStatus: sessionStatus ?? this.sessionStatus,
+      startedAtUtc: startedAtUtc ?? this.startedAtUtc,
+      distanceM: distanceM ?? this.distanceM,
+      movingSeconds: movingSeconds ?? this.movingSeconds,
+      elapsedSeconds: elapsedSeconds ?? this.elapsedSeconds,
+      elevationGainM: elevationGainM ?? this.elevationGainM,
+      elevationLossM: elevationLossM ?? this.elevationLossM,
+      isMoving: isMoving ?? this.isMoving,
+      pointCount: pointCount ?? this.pointCount,
+      profile: profile ?? this.profile,
+      paceSecPerKm: paceSecPerKm ?? this.paceSecPerKm,
+      verticalSpeedMph: verticalSpeedMph ?? this.verticalSpeedMph,
+      batteryPercent: batteryPercent ?? this.batteryPercent,
+      isPaused: isPaused ?? this.isPaused,
+      stepCount: stepCount ?? this.stepCount,
+      kcalPerKg: kcalPerKg ?? this.kcalPerKg,
+      lastValidFixAtUtc: lastValidFixAtUtc ?? this.lastValidFixAtUtc,
+      diagnostics: diagnostics ?? this.diagnostics,
+      activityType: activityType ?? this.activityType,
+    );
+  }
+
   factory TrackingStatus.fromRuntimeUpdate(TrackingRuntimeUpdate update) {
     final snapshot = update.snapshot;
+    final point = snapshot?.lastPoint;
     return TrackingStatus(
       sessionId: update.session.id,
       sessionStatus: update.session.status,
@@ -57,6 +131,12 @@ class TrackingStatus {
       verticalSpeedMph: snapshot?.verticalSpeedMph,
       batteryPercent: update.batteryPercent,
       isPaused: update.isPaused,
+      kcalPerKg: snapshot?.kcalPerKg ?? 0,
+      lastValidFixAtUtc: point == null
+          ? null
+          : (point.receivedAtUtc ?? point.timestampUtc),
+      diagnostics: update.diagnostics,
+      activityType: update.session.activityType,
     );
   }
 
@@ -77,6 +157,10 @@ class TrackingStatus {
         'verticalSpeedMph': verticalSpeedMph,
         'batteryPercent': batteryPercent,
         'isPaused': isPaused,
+        'kcalPerKg': kcalPerKg,
+        'lastValidFixAtUtc': lastValidFixAtUtc?.toUtc().toIso8601String(),
+        'diagnostics': diagnostics?.toMap(),
+        'activityType': activityType,
       };
 
   factory TrackingStatus.fromMap(Map<Object?, Object?> map) {
@@ -106,6 +190,8 @@ class TrackingStatus {
       orElse: () =>
           throw FormatException('Status sesi tidak dikenal: $statusName'),
     );
+    final fixAt = map['lastValidFixAtUtc'];
+    final diag = map['diagnostics'];
 
     return TrackingStatus(
       sessionId: string('sessionId'),
@@ -123,6 +209,13 @@ class TrackingStatus {
       verticalSpeedMph: optionalNumber('verticalSpeedMph')?.toDouble(),
       batteryPercent: optionalNumber('batteryPercent')?.toInt(),
       isPaused: map['isPaused'] == true,
+      kcalPerKg: optionalNumber('kcalPerKg')?.toDouble() ?? 0,
+      lastValidFixAtUtc:
+          fixAt is String ? DateTime.tryParse(fixAt)?.toUtc() : null,
+      diagnostics: diag is Map ? TrackingDiagnostics.fromMap(diag) : null,
+      activityType: TrackingSession.normalizeActivityType(
+        map['activityType'] as String?,
+      ),
     );
   }
 }

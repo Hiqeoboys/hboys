@@ -7,6 +7,7 @@ class Group {
     required this.ownerId,
     required this.createdAtUtc,
     this.mountain,
+    this.avatarUrl,
     this.keyVersion = 1,
   });
 
@@ -14,8 +15,25 @@ class Group {
   final String name;
   final String ownerId;
   final String? mountain;
+  final String? avatarUrl;
   final int keyVersion;
   final DateTime createdAtUtc;
+
+  Group copyWith({
+    String? name,
+    String? mountain,
+    String? avatarUrl,
+    int? keyVersion,
+  }) =>
+      Group(
+        id: id,
+        name: name ?? this.name,
+        ownerId: ownerId,
+        createdAtUtc: createdAtUtc,
+        mountain: mountain ?? this.mountain,
+        avatarUrl: avatarUrl ?? this.avatarUrl,
+        keyVersion: keyVersion ?? this.keyVersion,
+      );
 }
 
 /// Anggota rombongan seperti yang dikenal perangkat ini saat offline.

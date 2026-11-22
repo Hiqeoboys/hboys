@@ -31,12 +31,14 @@ class PlusController extends ChangeNotifier {
     required EntitlementLocalStore entitlementStore,
     required EntitlementVerifier verifier,
     required PlusBillingRepository billing,
+    AccountPlusCacheStore? accountPlusStore,
     Clock clock = const SystemClock(),
   })  : _configRepository = configRepository,
         _configStore = configStore,
         _entitlementStore = entitlementStore,
         _verifier = verifier,
         _billing = billing,
+        _accountPlusStore = accountPlusStore,
         _clock = clock;
 
   final PlusRemoteConfigRepository _configRepository;
@@ -44,10 +46,12 @@ class PlusController extends ChangeNotifier {
   final EntitlementLocalStore _entitlementStore;
   final EntitlementVerifier _verifier;
   final PlusBillingRepository _billing;
+  final AccountPlusCacheStore? _accountPlusStore;
   final Clock _clock;
 
   PlusRemoteConfig? _config;
   EntitlementPayload? _payload;
+  AccountPlusGrant? _accountGrant;
   PlusAccess _access = PlusAccess.free;
   DateTime? _lastSeenUtc;
   bool _loaded = false;
@@ -56,6 +60,7 @@ class PlusController extends ChangeNotifier {
 
   PlusAccess get access => _access;
   bool get hasPlus => _access.hasPlus;
+  bool get hasFullSocialAccess => _access.hasFullSocialAccess;
   bool get isWorking => _working;
   bool get isLoaded => _loaded;
   bool get configFetchFailed => _configFetchFailed;
@@ -109,12 +114,52 @@ class PlusController extends ChangeNotifier {
       // Token rusak atau plugin gagal: diperlakukan seperti pengguna gratis.
     }
     try {
+      _accountGrant = await _accountPlusStore?.read();
+    } catch (_) {
+      // Cache akun rusak diabaikan.
+    }
+    try {
       _lastSeenUtc = await _entitlementStore.readLastSeenUtc();
     } catch (_) {
       // Tanpa checkpoint, evaluasi tetap berjalan dari jam sekarang.
     }
     await _evaluateAndPersist();
     notifyListeners();
+  }
+
+  /// Menyinkronkan status Hiqeo Plus dari profil Supabase ke cache lokal agar
+  /// seluruh fitur Hiqeo Plus tetap dapat dipakai secara offline.
+  Future<void> syncAccountPlus({
+    required String userId,
+    required bool isPlus,
+    String? planId,
+    DateTime? expiresAtUtc,
+  }) async {
+    final grant = AccountPlusGrant(
+      userId: userId,
+      isPlus: isPlus,
+      planId: isPlus ? (planId ?? 'lifetime') : null,
+      expiresAtUtc: isPlus ? expiresAtUtc?.toUtc() : null,
+      syncedAtUtc: _clock.nowUtc(),
+    );
+    _accountGrant = grant;
+    try {
+      await _accountPlusStore?.write(grant);
+    } catch (_) {
+      // Tetap aktif di sesi ini walaupun tulis cache gagal.
+    }
+    final changed = await _evaluateAndPersist();
+    if (changed) notifyListeners();
+  }
+
+  /// Menghapus cache status Hiqeo Plus akun saat pengguna keluar/hapus akun.
+  Future<void> clearAccountPlus() async {
+    _accountGrant = null;
+    try {
+      await _accountPlusStore?.clear();
+    } catch (_) {}
+    final changed = await _evaluateAndPersist();
+    if (changed) notifyListeners();
   }
 
   /// Mengambil konfigurasi dari server bila cache belum ada atau sudah lewat
@@ -221,12 +266,31 @@ class PlusController extends ChangeNotifier {
 
   Future<bool> _evaluateAndPersist() async {
     final now = _effectiveNow;
-    final next = evaluatePlusAccess(
+    final graceDays =
+        _config?.effectiveGraceDays ?? PlusRemoteConfig.fallbackGraceDays;
+    var next = evaluatePlusAccess(
       payload: _payload,
       nowUtc: now,
-      graceDays:
-          _config?.effectiveGraceDays ?? PlusRemoteConfig.fallbackGraceDays,
+      graceDays: graceDays,
     );
+    final grant = _accountGrant;
+    if (!next.hasPlus && grant != null && grant.isPlus) {
+      final accountPayload = EntitlementPayload(
+        version: EntitlementPayload.currentVersion,
+        subject: grant.userId,
+        planId: grant.planId ?? 'lifetime',
+        issuedAtUtc: grant.syncedAtUtc,
+        expiresAtUtc: grant.expiresAtUtc,
+      );
+      final accountAccess = evaluatePlusAccess(
+        payload: accountPayload,
+        nowUtc: now,
+        graceDays: graceDays,
+      );
+      if (accountAccess.hasPlus || next.state == PlusAccessState.free) {
+        next = accountAccess;
+      }
+    }
     final changed = next != _access;
     _access = next;
     if (_lastSeenUtc == null || now.isAfter(_lastSeenUtc!)) {

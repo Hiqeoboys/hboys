@@ -8,7 +8,8 @@ import 'app_database.dart';
 
 const appDatabaseFileName = 'nama_app.sqlite';
 
-AppDatabase openAppDatabase(File file) => AppDatabase(NativeDatabase(file));
+AppDatabase openAppDatabase(File file) =>
+    AppDatabase(NativeDatabase.createInBackground(file));
 
 AppDatabase openInMemoryAppDatabase() => AppDatabase(NativeDatabase.memory());
 

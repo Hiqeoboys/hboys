@@ -10,8 +10,11 @@ import '../../../design/widgets/line_icons.dart';
 import '../../../infrastructure/database/app_database.dart';
 import '../../../infrastructure/database/database_connection.dart';
 import '../../../infrastructure/database/repositories/drift_tracking_repository.dart';
+import '../../map/domain/mountain_pack_data.dart';
 import '../../tracking/domain/tracking_repository.dart';
 import '../../tracking/domain/tracking_session.dart';
+import '../../trails/data/gpx_loader.dart';
+import '../../trails/domain/track_route.dart';
 import '../application/kartu_exporter.dart';
 import '../application/kartu_photo_picker.dart';
 import '../domain/kartu_data.dart';
@@ -134,7 +137,18 @@ class _KartuPageState extends State<KartuPage> {
         return;
       }
       final points = await repository.points(session.id);
-      final data = KartuData.fromSession(session, points);
+      List<TrackRoutePoint>? fallbackPoints;
+      final hasEnoughEle =
+          points.where((p) => p.altitudeM != null).length >= 2;
+      if (!session.isJogging && (!hasEnoughEle || points.length < 2)) {
+        fallbackPoints = await _resolveFallbackRoutePoints(session);
+      }
+      final data = KartuData.fromSession(
+        session,
+        points,
+        fallbackRoutePoints: fallbackPoints,
+        ensureFallback: true,
+      );
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -146,6 +160,39 @@ class _KartuPageState extends State<KartuPage> {
         _loading = false;
         _loadError = 'Data pendakian gagal dibaca dari HP ini.';
       });
+    }
+  }
+
+  Future<List<TrackRoutePoint>?> _resolveFallbackRoutePoints(
+    TrackingSession session,
+  ) async {
+    try {
+      final packs = MountainPackData.createDefaultPacks();
+      String? assetPath;
+      final trailId = session.trailId?.trim().toLowerCase();
+      final mountainName = session.mountainName?.trim().toLowerCase();
+      for (final pack in packs) {
+        for (final trail in pack.package.trails) {
+          if (trailId != null &&
+              trailId.isNotEmpty &&
+              trail.id.toLowerCase() == trailId) {
+            assetPath = trail.gpxAssetPath;
+            break;
+          }
+        }
+        if (assetPath != null) break;
+        if (mountainName != null &&
+            mountainName.isNotEmpty &&
+            pack.name.toLowerCase().contains(mountainName)) {
+          assetPath = pack.gpxAssetPath;
+          break;
+        }
+      }
+      if (assetPath == null || assetPath.isEmpty) return null;
+      final route = await GpxLoader.loadAsset(assetPath);
+      return route.points.length >= 2 ? route.points : null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -340,7 +387,7 @@ class _KartuPageState extends State<KartuPage> {
             const SizedBox(height: HiqeoSpacing.sm),
             Text(
               _loadError ??
-                  'Selesaikan pendakian di layar Lacak, lalu kembali ke sini '
+                  'Selesaikan pendakian di halaman Lacak, lalu kembali ke sini '
                       'untuk membuat kartu dari data yang tersimpan.',
               textAlign: TextAlign.center,
               style: muted,
@@ -415,7 +462,10 @@ class _KartuPageState extends State<KartuPage> {
                   key: const ValueKey('kartu-hide-endpoints'),
                   value: _hideEndpoints,
                   onChanged: enabled
-                      ? (value) => setState(() => _hideEndpoints = value)
+                      ? (value) {
+                          unawaited(HapticFeedback.selectionClick());
+                          setState(() => _hideEndpoints = value);
+                        }
                       : null,
                 ),
               ),
@@ -427,7 +477,7 @@ class _KartuPageState extends State<KartuPage> {
               Expanded(
                 child: _PanelButton(
                   key: const ValueKey('kartu-save'),
-                  label: 'Simpan PNG',
+                  label: 'Simpan gambar',
                   background: colors.secondary,
                   foreground: colors.textPrimary,
                   onTap: enabled && !_busy ? () => unawaited(_savePng()) : null,

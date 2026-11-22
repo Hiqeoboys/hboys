@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../design/background/app_background.dart';
+import '../../../design/background/page_background.dart';
+import '../../../design/widgets/hiqeo_back_button.dart';
+
 import '../../../design/glass/glass_surface.dart';
 import '../../../design/gooey/gooey_selector.dart';
 import '../../../design/motion/visual_effect_policy.dart';
@@ -9,6 +13,8 @@ import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/line_icons.dart';
+import '../../social/presentation/social_leaderboard_tab.dart'
+    show SocialLeaderboardTab;
 import '../application/plus_navigation.dart';
 import '../application/plus_scope.dart';
 import '../domain/leaderboard.dart';
@@ -175,7 +181,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
         _notify(
           delivered
               ? 'Laporan terkirim untuk ditinjau.'
-              : 'Laporan belum terkirim: server peninjauan belum tersedia.',
+              : 'Laporan belum dapat dikirim. Periksa koneksi internet lalu coba lagi.',
         );
       } else {
         final blocked = await _repository.block(entry.displayName);
@@ -184,8 +190,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
         _notify(
           blocked
               ? '${entry.displayName} diblokir dari papan.'
-              : '${entry.displayName} disembunyikan dari papan ini. '
-                  'Server belum tersedia.',
+              : '${entry.displayName} disembunyikan dari papan peringkat di perangkat ini.',
         );
       }
     } on LeaderboardUnavailable catch (error) {
@@ -202,6 +207,22 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.repository == null) {
+      return PageBackground(
+        page: AppBackgroundPage.grup,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: const HiqeoBackButton(inAppBar: true),
+            leadingWidth: HiqeoBackButton.appBarWidth,
+            title: const Text('Leaderboard'),
+          ),
+          body: const SocialLeaderboardTab(),
+        ),
+      );
+    }
     final plus = PlusScope.maybeOf(context);
     final enabled = plus?.leaderboardEnabled ?? false;
     final topBar = PlusTopBar(
@@ -215,8 +236,8 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           PlusEmptyState(
             icon: HiqeoIcons.trophy,
             title: 'Leaderboard belum tersedia',
-            message: 'Papan peringkat dirilis bertahap dan belum aktif di '
-                'versi ini.',
+            message: 'Papan peringkat sedang dibuka secara bertahap dan '
+                'segera hadir.',
           ),
         ],
       );
@@ -492,14 +513,19 @@ class _Reveal extends StatelessWidget {
       duration: Duration(milliseconds: total),
       curve: Interval(delay / total, 1, curve: Curves.easeOutCubic),
       child: child,
-      builder: (context, value, child) => Opacity(
-        key: ValueKey<String>('leaderboard-reveal-$index'),
-        opacity: value,
-        child: Transform.translate(
-          offset: Offset(0, 12 * (1 - value)),
-          child: child,
-        ),
-      ),
+      builder: (context, value, child) {
+        if (value >= 1.0) {
+          return child!;
+        }
+        return Opacity(
+          key: ValueKey<String>('leaderboard-reveal-$index'),
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 12 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
     );
   }
 }
@@ -536,6 +562,7 @@ class _Segmented<T> extends StatelessWidget {
         final width =
             (constraints.maxWidth - outer * 2 - gap * (count - 1)) / count;
         return GlassSurface(
+          tier: GlassTier.card,
           borderRadius: HiqeoRadius.pill,
           child: GooeySelector<T>(
             axis: Axis.horizontal,
@@ -971,6 +998,7 @@ class _GroupRow extends StatelessWidget {
               child: content,
             )
           : GlassSurface(
+              tier: GlassTier.card,
               borderRadius: HiqeoRadius.card,
               child: content,
             ),
@@ -1117,7 +1145,7 @@ class _PlusPromo extends StatelessWidget {
           const SizedBox(height: HiqeoSpacing.md),
           HiqeoButton(
             key: const ValueKey('leaderboard-plus-cta'),
-            label: 'Lihat HIQEO Plus',
+            label: 'Lihat Hiqeo Plus',
             onPressed: onTap,
           ),
         ],
@@ -1138,69 +1166,84 @@ class _OptionsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.all(HiqeoSpacing.md),
-        child: PlusCard(
-          radius: HiqeoRadius.hero,
-          padding: const EdgeInsets.all(HiqeoSpacing.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(entry.displayName, style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 2),
-              Text(
-                'Peringkat ${entry.rank} · '
-                '${leaderboardValueLabel(metric, entry.value)}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.textSecondary,
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        HiqeoSpacing.md,
+        0,
+        HiqeoSpacing.md,
+        HiqeoSpacing.md + safeBottom,
+      ),
+      child: GlassSurface(
+        tier: GlassTier.panel,
+        borderRadius: 28,
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colors.textSecondary.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(HiqeoRadius.pill),
                 ),
               ),
-              const SizedBox(height: HiqeoSpacing.lg),
-              HiqeoButton(
-                key: const ValueKey('leaderboard-option-report'),
-                label: 'Laporkan',
-                variant: HiqeoButtonVariant.secondary,
-                leading: HiqeoIcon(
-                  HiqeoIcons.warning,
-                  size: 16,
-                  color: colors.textPrimary,
-                ),
-                onPressed: () =>
-                    Navigator.of(context).pop(_ModerationAction.report),
+            ),
+            const SizedBox(height: 14),
+            Text(entry.displayName, style: theme.textTheme.headlineSmall),
+            const SizedBox(height: 2),
+            Text(
+              'Peringkat ${entry.rank} · '
+              '${leaderboardValueLabel(metric, entry.value)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.textSecondary,
               ),
-              const SizedBox(height: HiqeoSpacing.sm),
-              HiqeoButton(
-                key: const ValueKey('leaderboard-option-block'),
-                label: 'Blokir',
-                variant: HiqeoButtonVariant.secondary,
-                leading: HiqeoIcon(
-                  HiqeoIcons.lock,
-                  size: 16,
-                  color: colors.textPrimary,
-                ),
-                onPressed: () =>
-                    Navigator.of(context).pop(_ModerationAction.block),
+            ),
+            const SizedBox(height: HiqeoSpacing.lg),
+            HiqeoButton(
+              key: const ValueKey('leaderboard-option-report'),
+              label: 'Laporkan',
+              variant: HiqeoButtonVariant.secondary,
+              leading: HiqeoIcon(
+                HiqeoIcons.warning,
+                size: 16,
+                color: colors.textPrimary,
               ),
-              const SizedBox(height: HiqeoSpacing.sm),
-              Text(
-                'Laporan dan blokir belum terhubung ke server peninjauan pada '
-                'build ini.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.textSecondary,
-                ),
+              onPressed: () =>
+                  Navigator.of(context).pop(_ModerationAction.report),
+            ),
+            const SizedBox(height: HiqeoSpacing.sm),
+            HiqeoButton(
+              key: const ValueKey('leaderboard-option-block'),
+              label: 'Blokir',
+              variant: HiqeoButtonVariant.secondary,
+              leading: HiqeoIcon(
+                HiqeoIcons.lock,
+                size: 16,
+                color: colors.textPrimary,
               ),
-              Center(
-                child: TextButton(
-                  key: const ValueKey('leaderboard-option-cancel'),
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Batal'),
-                ),
+              onPressed: () =>
+                  Navigator.of(context).pop(_ModerationAction.block),
+            ),
+            const SizedBox(height: HiqeoSpacing.sm),
+            Text(
+              'Akun yang kamu blokir akan langsung disembunyikan dari papan '
+              'peringkat di perangkat ini.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.textSecondary,
               ),
-            ],
-          ),
+            ),
+            Center(
+              child: TextButton(
+                key: const ValueKey('leaderboard-option-cancel'),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Batal'),
+              ),
+            ),
+          ],
         ),
       ),
     );

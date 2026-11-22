@@ -5,24 +5,37 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nama_app/app/router.dart';
 import 'package:nama_app/design/widgets/hiqeo_nav_bar.dart';
+import 'package:nama_app/design/widgets/nav_bar_visibility.dart';
+import 'package:nama_app/features/splash/presentation/startup_gate_screen.dart';
 
 import '../support/hiqeo_app_harness.dart';
 
-const List<String> tabLabels = <String>['Beranda', 'Peta', 'Lacak', 'Grup', 'Profil'];
+const List<String> tabLabels = <String>[
+  'Beranda',
+  'Peta',
+  'Track',
+  'Grup',
+  'Profil',
+];
 
 Finder navLabel(String label) => find.descendant(
       of: find.byType(HiqeoNavBar),
-      matching: find.text(label),
+      matching: find.bySemanticsLabel(label),
     );
 
 void main() {
   late GoRouter router;
 
-  setUp(() => router = buildHiqeoRouter());
+  setUp(() {
+    NavBarVisibilityController.instance.reset();
+    router = buildHiqeoRouter();
+  });
+
+  tearDown(() => NavBarVisibilityController.instance.reset());
 
   testWidgets('mulai di splash, lalu kerangka lima tab tersedia', (tester) async {
     await tester.pumpWidget(buildHiqeoTestApp(router: router));
-    expect(find.text('Menyiapkan data lokal di HP'), findsOneWidget);
+    expect(find.byType(StartupGateScreen), findsOneWidget);
 
     router.go('/beranda');
     await tester.pumpAndSettle();
@@ -43,7 +56,7 @@ void main() {
     await tester.tap(navLabel('Peta'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Peta offline'), findsOneWidget);
+    expect(find.text('Pilih gunung untuk dibuka'), findsOneWidget);
     expect(
       router.routerDelegate.currentConfiguration.uri.path,
       '/peta',
@@ -52,6 +65,17 @@ void main() {
     expect(node.flagsCollection.isSelected, ui.Tristate.isTrue);
     final home = tester.getSemantics(navLabel('Beranda'));
     expect(home.flagsCollection.isSelected, isNot(ui.Tristate.isTrue));
+
+    await tester.tap(navLabel('Track'));
+    await tester.pumpAndSettle();
+    expect(
+      router.routerDelegate.currentConfiguration.uri.path,
+      '/lacak',
+    );
+    expect(
+      tester.getSemantics(navLabel('Track')).flagsCollection.isSelected,
+      ui.Tristate.isTrue,
+    );
     handle.dispose();
   });
 
@@ -89,11 +113,28 @@ void main() {
     await tester.pumpAndSettle();
     final before = tester.state(find.byType(HiqeoNavBar));
 
-    await tester.tap(navLabel('Lacak'));
+    await tester.tap(navLabel('Grup'));
     await tester.pumpAndSettle();
 
     expect(find.byType(HiqeoNavBar), findsOneWidget);
     expect(tester.state(find.byType(HiqeoNavBar)), same(before));
+  });
+
+  testWidgets('navbar sembunyi otomatis saat masuk ruang obrolan grup',
+      (tester) async {
+    await tester.pumpWidget(buildHiqeoTestApp(router: router));
+    router.go('/beranda');
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HiqeoNavBar), findsOneWidget);
+
+    NavBarVisibilityController.instance.setRoomChatOpen(true);
+    await tester.pumpAndSettle();
+    expect(find.byType(HiqeoNavBar), findsNothing);
+
+    NavBarVisibilityController.instance.setRoomChatOpen(false);
+    await tester.pumpAndSettle();
+    expect(find.byType(HiqeoNavBar), findsOneWidget);
   });
 
   testWidgets('isi tab baru memudar masuk 180 ms', (tester) async {

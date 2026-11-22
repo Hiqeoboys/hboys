@@ -3,8 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nama_app/infrastructure/database/app_database.dart';
 import 'package:nama_app/infrastructure/database/daos/chat_dao.dart';
 import 'package:nama_app/infrastructure/database/daos/group_dao.dart';
-import 'package:nama_app/infrastructure/database/daos/invitation_dao.dart';
-import 'package:nama_app/infrastructure/database/daos/outbox_dao.dart';
 import 'package:nama_app/infrastructure/database/daos/safety_dao.dart';
 import 'package:nama_app/infrastructure/database/daos/tracking_dao.dart';
 import 'package:nama_app/infrastructure/database/database_connection.dart';
@@ -31,23 +29,6 @@ MembersCompanion member(
       username: userId,
       role: Value(role),
       joinedAtUtc: joinedAtUtc ?? t0,
-    );
-
-InvitationsCompanion invitation(
-  String id, {
-  String groupId = 'g1',
-  String username = 'budi_99',
-  String status = 'pending',
-  DateTime? expiresAtUtc,
-}) =>
-    InvitationsCompanion.insert(
-      id: id,
-      groupId: groupId,
-      inviterId: 'owner_01',
-      inviteeUsername: username,
-      status: Value(status),
-      createdAtUtc: t0,
-      expiresAtUtc: expiresAtUtc ?? t0.add(const Duration(days: 7)),
     );
 
 MessagesCompanion message(
@@ -165,41 +146,6 @@ void main() {
       await dao.upsertGroup(groupRow('g1'));
       await expectLater(
         dao.upsertMember(member('g1', 'budi_99', role: 'leader')),
-        throwsA(isA<Exception>()),
-      );
-    });
-  });
-
-  group('InvitationDao', () {
-    test('pending hanya mengembalikan yang pending dan belum kedaluwarsa',
-        () async {
-      final dao = InvitationDao(db);
-      await dao.upsert(invitation('i1'));
-      await dao.upsert(invitation(
-        'i2',
-        username: 'ani_88',
-        expiresAtUtc: t0.subtract(const Duration(days: 1)),
-      ));
-      await dao.upsert(invitation('i3', status: 'accepted'));
-
-      final rows = await dao.pendingFor('budi_99', t0);
-      expect(rows.map((r) => r.id), ['i1']);
-    });
-
-    test('upsert memperbarui status undangan', () async {
-      final dao = InvitationDao(db);
-      await dao.upsert(invitation('i1'));
-      await dao.upsert(invitation('i1', status: 'accepted'));
-
-      expect((await dao.byId('i1'))!.status, 'accepted');
-    });
-
-    test('menolak undangan pending kedua untuk grup dan orang yang sama',
-        () async {
-      final dao = InvitationDao(db);
-      await dao.upsert(invitation('i1'));
-      await expectLater(
-        dao.upsert(invitation('i2')),
         throwsA(isA<Exception>()),
       );
     });
@@ -326,53 +272,6 @@ void main() {
       );
       await dao.deleteContact('c1');
       expect((await dao.contactsOf('u1')).map((c) => c.id), ['c3']);
-    });
-  });
-
-  group('OutboxDao', () {
-    Future<void> enqueue(
-      OutboxDao dao,
-      String id, {
-      int priority = 2,
-      DateTime? at,
-    }) =>
-        dao.enqueue(
-          messageId: id,
-          packet: Uint8List.fromList([1, 2, 3]),
-          priority: priority,
-          enqueuedAtUtc: at ?? t0,
-          nextAttemptAtUtc: at ?? t0,
-          repeatUntilAck: false,
-        );
-
-    test('idempoten dan berurutan menurut prioritas lalu usia', () async {
-      final dao = OutboxDao(db);
-      await enqueue(dao, 'teks:1', at: t0);
-      await enqueue(dao, 'sos:2', priority: 0, at: t0.add(const Duration(seconds: 1)));
-      await enqueue(dao, 'teks:1', priority: 0, at: t0);
-
-      final due = await dao.due(t0.add(const Duration(minutes: 1)));
-      expect(due.map((e) => e.messageId), ['sos:2', 'teks:1']);
-      expect(due.last.priority, 2, reason: 'enqueue kedua tidak menimpa');
-      expect(await dao.pendingCount(), 2);
-    });
-
-    test('attempt menaikkan hitungan dan menunda pengiriman berikutnya',
-        () async {
-      final dao = OutboxDao(db);
-      await enqueue(dao, 'teks:1');
-
-      await dao.recordAttempt('teks:1', t0.add(const Duration(seconds: 10)));
-      expect(await dao.due(t0.add(const Duration(seconds: 5))), isEmpty);
-      final due = await dao.due(t0.add(const Duration(seconds: 10)));
-      expect(due.single.attempts, 1);
-
-      await dao.recordAttempt('tidak_ada', t0);
-      expect(await dao.pendingCount(), 1);
-
-      expect(await dao.deleteById('teks:1'), 1);
-      expect(await dao.contains('teks:1'), isFalse);
-      expect(await dao.pendingCount(), 0);
     });
   });
 }

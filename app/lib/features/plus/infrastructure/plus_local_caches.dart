@@ -55,10 +55,7 @@ class InMemoryRouteWeatherCache implements RouteWeatherCache {
   }
 }
 
-/// Menyimpan pilihan cadangan dan kode pemulihan di perangkat.
-///
-/// Belum ada server: [CloudBackupState.connected] tetap false dan waktu
-/// cadangan terakhir tidak pernah diisi oleh implementasi ini.
+/// Menyimpan pilihan cadangan cloud dan stempel sinkronisasi di perangkat.
 class SharedPreferencesCloudBackupRepository implements CloudBackupRepository {
   SharedPreferencesCloudBackupRepository({
     this.deviceName = 'Perangkat ini',
@@ -95,7 +92,8 @@ class SharedPreferencesCloudBackupRepository implements CloudBackupRepository {
       }
     }
     final state = CloudBackupState(
-      autoBackup: false,
+      autoBackup: true,
+      wifiOnly: true,
       recoveryCode: _newRecoveryCode(),
       devices: <BackupDevice>[_currentDevice()],
       connected: false,
@@ -109,6 +107,33 @@ class SharedPreferencesCloudBackupRepository implements CloudBackupRepository {
     final preferences = await SharedPreferences.getInstance();
     final current = await load();
     final next = current.copyWith(autoBackup: enabled);
+    await _write(preferences, next);
+    return next;
+  }
+
+  @override
+  Future<CloudBackupState> setWifiOnly(bool wifiOnly) async {
+    final preferences = await SharedPreferences.getInstance();
+    final current = await load();
+    final next = current.copyWith(wifiOnly: wifiOnly);
+    await _write(preferences, next);
+    return next;
+  }
+
+  @override
+  Future<CloudBackupState> syncNow({bool ignoreWifiOnly = false}) => load();
+
+  Future<CloudBackupState> recordSyncSuccess(
+    DateTime atUtc, {
+    List<BackupDevice>? devices,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    final current = await load();
+    final next = current.copyWith(
+      connected: true,
+      lastBackupAtUtc: atUtc,
+      devices: devices ?? current.devices,
+    );
     await _write(preferences, next);
     return next;
   }
@@ -163,4 +188,15 @@ class InMemoryCloudBackupRepository implements CloudBackupRepository {
     writes++;
     return state;
   }
+
+  @override
+  Future<CloudBackupState> setWifiOnly(bool wifiOnly) async {
+    state = state.copyWith(wifiOnly: wifiOnly);
+    writes++;
+    return state;
+  }
+
+  @override
+  Future<CloudBackupState> syncNow({bool ignoreWifiOnly = false}) async =>
+      state;
 }

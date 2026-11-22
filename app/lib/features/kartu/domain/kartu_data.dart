@@ -5,6 +5,7 @@ import 'package:geo_utils/geo_utils.dart';
 
 import '../../tracking/domain/track_point.dart';
 import '../../tracking/domain/tracking_session.dart';
+import '../../trails/domain/track_route.dart';
 
 /// Ringkasan satu pendakian yang selesai, dipakai layar Kartu Pendakian.
 ///
@@ -20,6 +21,7 @@ class KartuData {
     required this.profile,
     required this.peakFraction,
     required this.route,
+    this.activityType = TrackingSession.activityHiking,
   });
 
   final String sessionId;
@@ -27,6 +29,9 @@ class KartuData {
   final double distanceM;
   final int movingSeconds;
   final double elevationGainM;
+  final String activityType;
+
+  bool get isJogging => activityType == TrackingSession.activityJogging;
 
   /// Titik grafik elevasi dengan x 0..1 menurut jarak tempuh. Null bila titik
   /// ber-altitude kurang dari dua, sehingga kurva tidak bisa digambar jujur.
@@ -40,8 +45,10 @@ class KartuData {
 
   static KartuData? fromSession(
     TrackingSession session,
-    List<TrackPoint> points,
-  ) {
+    List<TrackPoint> points, {
+    List<TrackRoutePoint>? fallbackRoutePoints,
+    bool ensureFallback = false,
+  }) {
     if (session.status != TrackingSessionStatus.completed) return null;
     final altitudes = <({double fraction, double altitude})>[];
     var cumulativeM = 0.0;
@@ -64,6 +71,31 @@ class KartuData {
       altitudes.add((fraction: fraction, altitude: altitude));
     }
 
+    // Fallback ke titik GPX jalur bila rekaman GPS tidak membawa data elevasi.
+    if (altitudes.length < 2 &&
+        fallbackRoutePoints != null &&
+        fallbackRoutePoints.length >= 2) {
+      var fbDist = 0.0;
+      final fbFractions = <double>[0.0];
+      for (var i = 1; i < fallbackRoutePoints.length; i++) {
+        fbDist += distanceMeters(
+          fallbackRoutePoints[i - 1].position,
+          fallbackRoutePoints[i].position,
+        );
+        fbFractions.add(fbDist);
+      }
+      final fbTotal = fbDist > 0 ? fbDist : null;
+      altitudes.clear();
+      for (var i = 0; i < fallbackRoutePoints.length; i++) {
+        final ele = fallbackRoutePoints[i].ele;
+        if (ele == null || !ele.isFinite) continue;
+        final f = fbTotal == null
+            ? i / (fallbackRoutePoints.length - 1)
+            : fbFractions[i] / fbTotal;
+        altitudes.add((fraction: f, altitude: ele));
+      }
+    }
+
     List<KartuProfilePoint>? profile;
     double? peakFraction;
     if (altitudes.length >= 2) {
@@ -76,11 +108,44 @@ class KartuData {
         if (entry.altitude > peak.altitude) peak = entry;
       }
       peakFraction = peak.fraction;
+    } else if (ensureFallback) {
+      final gain = math.max(10.0, session.elevationGainM);
+      profile = <KartuProfilePoint>[
+        const KartuProfilePoint(0.0, 0.0),
+        KartuProfilePoint(0.35, gain * 0.42),
+        KartuProfilePoint(0.72, gain),
+        KartuProfilePoint(1.0, gain * 0.88),
+      ];
+      peakFraction = 0.72;
     }
 
     List<Offset>? route;
     if (points.length >= 2) {
-      route = _normalizeRoute(points);
+      final normalized = _normalizeLatLngs(
+        <LatLng>[for (final p in points) p.position],
+      );
+      if (normalized.length >= 2) {
+        route = normalized;
+      }
+    }
+    if (route == null &&
+        fallbackRoutePoints != null &&
+        fallbackRoutePoints.length >= 2) {
+      final normalized = _normalizeLatLngs(
+        <LatLng>[for (final p in fallbackRoutePoints) p.position],
+      );
+      if (normalized.length >= 2) {
+        route = normalized;
+      }
+    }
+    if (route == null && ensureFallback) {
+      route = const <Offset>[
+        Offset(0.14, 0.84),
+        Offset(0.32, 0.66),
+        Offset(0.56, 0.54),
+        Offset(0.74, 0.32),
+        Offset(0.86, 0.16),
+      ];
     }
 
     return KartuData(
@@ -92,10 +157,11 @@ class KartuData {
       profile: profile,
       peakFraction: peakFraction,
       route: route,
+      activityType: session.activityType,
     );
   }
 
-  static List<Offset> _normalizeRoute(List<TrackPoint> points) {
+  static List<Offset> _normalizeLatLngs(List<LatLng> points) {
     final midLat =
         points.map((point) => point.lat).reduce((a, b) => a + b) /
             points.length;
@@ -204,6 +270,7 @@ class KartuData {
       profile: profile,
       peakFraction: peakFraction,
       route: route,
+      activityType: activityType,
     );
   }
 

@@ -6,10 +6,10 @@ import 'package:nama_app/design/background/page_background.dart';
 import 'package:nama_app/design/system_ui.dart';
 import 'package:nama_app/design/tokens.dart';
 import 'package:nama_app/design/widgets/hiqeo_nav_bar.dart';
+import 'package:nama_app/features/chat/presentation/chat_page.dart';
 import 'package:nama_app/features/home/beranda_page.dart';
 import 'package:nama_app/features/map/presentation/map_page.dart';
 import 'package:nama_app/features/profile/presentation/profil_page.dart';
-import 'package:nama_app/features/tracking/presentation/tracking_page.dart';
 
 import '../support/hiqeo_app_harness.dart';
 import '../support/real_font.dart';
@@ -51,7 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
-    expect(scaffold.extendBody, isFalse);
+    expect(scaffold.extendBody, isTrue);
 
     final nav = tester.getRect(find.byType(HiqeoNavBar));
     expect(nav.height, HiqeoMetrics.navbarHeight);
@@ -59,11 +59,11 @@ void main() {
     expect(nav.right, 390 - HiqeoMetrics.navbarInset);
     expect(
       nav.bottom,
-      844 - HiqeoMetrics.navbarInset - _gestureInset,
+      844 - HiqeoMetrics.navbarBottomMargin - _gestureInset,
     );
   });
 
-  testWidgets('isi tab lain berhenti di atas navbar tanpa menembus kaca',
+  testWidgets('seluruh tab full-bleed memanjang sampai tepi bawah layar',
       (tester) async {
     _phoneWithInsets(tester);
     await loadPlusJakartaSans(tester);
@@ -71,28 +71,22 @@ void main() {
     router.go('/beranda');
     await tester.pumpAndSettle();
 
-    // extendBody hanya untuk Peta; tab lain tetap mendapat tinggi penuh
-    // navbar di layout sehingga tidak ada padding tambahan dan tidak ada
-    // kartu terang yang tampak di belakang kaca.
-    final navTop = tester.getRect(find.byType(HiqeoNavBar)).top;
-    expect(_bodyBottomPadding(tester, BerandaPage), 0);
-    expect(tester.getRect(find.byType(BerandaPage)).bottom, navTop);
+    // extendBody aktif di semua tab; isi memanjang penuh hingga tepi bawah (844)
+    expect(tester.getRect(find.byType(BerandaPage)).bottom, 844);
 
     await tester.tap(find.descendant(
       of: find.byType(HiqeoNavBar),
-      matching: find.text('Lacak'),
+      matching: find.bySemanticsLabel('Grup'),
     ));
     await tester.pumpAndSettle();
-    expect(_bodyBottomPadding(tester, TrackingPage), 0);
-    expect(tester.getRect(find.byType(TrackingPage)).bottom, navTop);
+    expect(tester.getRect(find.byType(ChatPage)).bottom, 844);
 
     await tester.tap(find.descendant(
       of: find.byType(HiqeoNavBar),
-      matching: find.text('Profil'),
+      matching: find.bySemanticsLabel('Profil'),
     ));
     await tester.pumpAndSettle();
-    expect(_bodyBottomPadding(tester, ProfilPage), 0);
-    expect(tester.getRect(find.byType(ProfilPage)).bottom, navTop);
+    expect(tester.getRect(find.byType(ProfilPage)).bottom, 844);
   });
 
   testWidgets('Peta memakai seluruh tinggi layar dan navbar bertint di atasnya',
@@ -100,7 +94,7 @@ void main() {
     _phoneWithInsets(tester);
     await loadPlusJakartaSans(tester);
     await tester.pumpWidget(buildHiqeoTestApp(router: router));
-    router.go('/peta');
+    router.go('/peta/jalur');
     await tester.pumpAndSettle();
 
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
@@ -117,13 +111,13 @@ void main() {
     expect(navbar.overMap, isTrue);
     expect(
       tester.getRect(find.byType(HiqeoNavBar)).bottom,
-      844 - HiqeoMetrics.navbarInset - _gestureInset,
+      844 - HiqeoMetrics.navbarBottomMargin - _gestureInset,
     );
 
     // Inset sistem mentah tetap terbaca di dalam Peta walau padding isi
     // sudah dinaikkan setinggi navbar dan viewPadding Scaffold dibuang.
     expect(_bodyBottomPadding(tester, MapPage), HiqeoMetrics.navbarHeight +
-        HiqeoMetrics.navbarInset +
+        HiqeoMetrics.navbarBottomMargin +
         _gestureInset);
     expect(
       HiqeoSystemInset.bottomOf(tester.element(find.byType(MapPage))),
@@ -134,7 +128,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widget<Scaffold>(find.byType(Scaffold).first).extendBody,
-      isFalse,
+      isTrue,
     );
     expect(
       tester.widget<HiqeoNavBar>(find.byType(HiqeoNavBar)).overMap,

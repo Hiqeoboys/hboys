@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/brand/app_brand.dart';
 import '../../../../design/background/page_background.dart';
 import '../../../../design/glass/glass_surface.dart';
+import '../../../../design/glass/hiqeo_liquid_glass.dart';
 import '../../../../design/tokens.dart';
 import '../../../../design/typography.dart';
 import '../../../../design/widgets/line_icons.dart';
@@ -26,24 +27,11 @@ class PlusCircleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
-    return Semantics(
-      button: true,
-      label: label,
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Material(
-          color: colors.glassFillFallback,
-          shape: CircleBorder(side: BorderSide(color: colors.glassBorder)),
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onTap,
-            child: Center(
-              child: HiqeoIcon(icon, size: 20, color: colors.textPrimary),
-            ),
-          ),
-        ),
-      ),
+    return HiqeoGlassCircleButton(
+      semanticsLabel: label,
+      size: size,
+      onTap: onTap,
+      child: HiqeoIcon(icon, size: 20, color: colors.textPrimary),
     );
   }
 }
@@ -173,6 +161,7 @@ class PlusScrollPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
     return PageBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -193,9 +182,9 @@ class PlusScrollPage extends StatelessWidget {
                   physics: const ClampingScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(
                     HiqeoSpacing.lg,
-                    0,
+                    HiqeoSpacing.sm,
                     HiqeoSpacing.lg,
-                    HiqeoSpacing.xxl,
+                    HiqeoSpacing.xxl + HiqeoSpacing.sm,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -204,14 +193,22 @@ class PlusScrollPage extends StatelessWidget {
                 ),
               ),
               if (bottomBar != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    HiqeoSpacing.lg,
-                    HiqeoSpacing.sm,
-                    HiqeoSpacing.lg,
-                    HiqeoSpacing.md,
+                DecoratedBox(
+                  key: const ValueKey<String>('plus-sticky-bottom-bar'),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: colors.hairline, width: 1),
+                    ),
                   ),
-                  child: bottomBar,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      HiqeoSpacing.lg,
+                      HiqeoSpacing.md,
+                      HiqeoSpacing.lg,
+                      HiqeoSpacing.md,
+                    ),
+                    child: bottomBar,
+                  ),
                 ),
             ],
           ),
@@ -248,6 +245,7 @@ class PlusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassSurface(
+      tier: GlassTier.card,
       borderRadius: radius,
       padding: padding,
       child: child,

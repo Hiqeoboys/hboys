@@ -5,7 +5,6 @@ import 'package:mesh_protocol/mesh_protocol.dart';
 import 'package:nama_app/features/chat/domain/chat_message.dart';
 import 'package:nama_app/features/chat/domain/media_attachment.dart';
 import 'package:nama_app/features/groups/domain/group.dart';
-import 'package:nama_app/features/groups/domain/invitation.dart';
 import 'package:nama_app/features/safety/domain/emergency_contact.dart';
 import 'package:nama_app/features/safety/domain/sos_category.dart';
 import 'package:nama_app/features/safety/domain/sos_event.dart';
@@ -15,7 +14,6 @@ import 'package:nama_app/infrastructure/database/app_database.dart';
 import 'package:nama_app/infrastructure/database/database_connection.dart';
 import 'package:nama_app/infrastructure/database/repositories/drift_chat_repository.dart';
 import 'package:nama_app/infrastructure/database/repositories/drift_group_repository.dart';
-import 'package:nama_app/infrastructure/database/repositories/drift_invitation_repository.dart';
 import 'package:nama_app/infrastructure/database/repositories/drift_safety_repository.dart';
 import 'package:nama_app/infrastructure/database/repositories/drift_tracking_repository.dart';
 
@@ -77,36 +75,6 @@ void main() {
     await repo.deleteGroup('g1');
     expect(await repo.findGroup('g1'), isNull);
     expect(await repo.membersOf('g1'), isEmpty);
-  });
-
-  test('DriftInvitationRepository menormalkan username dan menyaring kedaluwarsa',
-      () async {
-    final repo = DriftInvitationRepository(db);
-    final invitation = Invitation(
-      id: 'i1',
-      groupId: 'g1',
-      inviterId: 'owner_01',
-      inviteeUsername: '  BuDi_99 ',
-      createdAtUtc: t0,
-      expiresAtUtc: t0.add(const Duration(days: 7)),
-    );
-    await repo.save(invitation);
-
-    final stored = await repo.findById('i1');
-    expect(stored!.inviteeUsername, 'budi_99');
-    expect(stored.status, InvitationStatus.pending);
-    expect((await repo.pendingFor('BUDI_99', t0)).single.id, 'i1');
-    expect(
-      await repo.pendingFor('budi_99', t0.add(const Duration(days: 8))),
-      isEmpty,
-    );
-
-    await repo.save(stored.accept(t0.add(const Duration(days: 1))));
-    expect(
-      (await repo.findById('i1'))!.status,
-      InvitationStatus.accepted,
-    );
-    expect(await repo.watchAll().first, hasLength(1));
   });
 
   test('DriftChatRepository menyimpan pesan dan media', () async {

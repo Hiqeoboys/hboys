@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../infrastructure/crypto/crypto_interfaces.dart';
+import '../../../infrastructure/crypto/flutter_secure_value_store.dart';
 import '../domain/leaderboard.dart';
 import '../domain/plus_remote_config.dart';
 import '../domain/plus_repositories.dart';
@@ -155,5 +157,154 @@ class InMemoryEntitlementLocalStore implements EntitlementLocalStore {
   @override
   Future<void> writeLastSeenUtc(DateTime value) async {
     lastSeenUtc = value;
+  }
+}
+
+class SharedPreferencesAccountPlusCacheStore implements AccountPlusCacheStore {
+  const SharedPreferencesAccountPlusCacheStore();
+
+  static const String key = 'plus_account_entitlement_v1';
+
+  @override
+  Future<AccountPlusGrant?> read() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(key);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return AccountPlusGrant.tryParse(jsonDecode(raw));
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> write(AccountPlusGrant grant) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(key, jsonEncode(grant.toJson()));
+  }
+
+  @override
+  Future<void> clear() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(key);
+  }
+}
+
+class InMemoryAccountPlusCacheStore implements AccountPlusCacheStore {
+  InMemoryAccountPlusCacheStore([this.grant]);
+
+  AccountPlusGrant? grant;
+  int writes = 0;
+
+  @override
+  Future<AccountPlusGrant?> read() async => grant;
+
+  @override
+  Future<void> write(AccountPlusGrant value) async {
+    grant = value;
+    writes++;
+  }
+
+  @override
+  Future<void> clear() async {
+    grant = null;
+  }
+}
+
+/// Keystore/Keychain-backed entitlement store with one-time SharedPreferences migration.
+class SecureEntitlementLocalStore implements EntitlementLocalStore {
+  const SecureEntitlementLocalStore({
+    SecretValueStore store = const FlutterSecureValueStore(),
+  }) : _store = store;
+
+  final SecretValueStore _store;
+
+  @override
+  Future<String?> readToken() async {
+    final token = await _store.read(SharedPreferencesEntitlementLocalStore.tokenKey);
+    if (token != null && token.isNotEmpty) return token;
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getString(SharedPreferencesEntitlementLocalStore.tokenKey);
+    if (legacy != null && legacy.isNotEmpty) {
+      await _store.write(SharedPreferencesEntitlementLocalStore.tokenKey, legacy);
+      await prefs.remove(SharedPreferencesEntitlementLocalStore.tokenKey);
+      return legacy;
+    }
+    return null;
+  }
+
+  @override
+  Future<void> writeToken(String token) =>
+      _store.write(SharedPreferencesEntitlementLocalStore.tokenKey, token);
+
+  @override
+  Future<void> clearToken() async {
+    await _store.delete(SharedPreferencesEntitlementLocalStore.tokenKey);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(SharedPreferencesEntitlementLocalStore.tokenKey);
+  }
+
+  @override
+  Future<DateTime?> readLastSeenUtc() async {
+    final raw = await _store.read(SharedPreferencesEntitlementLocalStore.lastSeenKey);
+    if (raw != null && raw.isNotEmpty) {
+      return DateTime.tryParse(raw)?.toUtc();
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getString(SharedPreferencesEntitlementLocalStore.lastSeenKey);
+    if (legacy != null && legacy.isNotEmpty) {
+      await _store.write(SharedPreferencesEntitlementLocalStore.lastSeenKey, legacy);
+      await prefs.remove(SharedPreferencesEntitlementLocalStore.lastSeenKey);
+      return DateTime.tryParse(legacy)?.toUtc();
+    }
+    return null;
+  }
+
+  @override
+  Future<void> writeLastSeenUtc(DateTime value) => _store.write(
+        SharedPreferencesEntitlementLocalStore.lastSeenKey,
+        value.toUtc().toIso8601String(),
+      );
+}
+
+/// Keystore/Keychain-backed account Plus cache with one-time SharedPreferences migration.
+class SecureAccountPlusCacheStore implements AccountPlusCacheStore {
+  const SecureAccountPlusCacheStore({
+    SecretValueStore store = const FlutterSecureValueStore(),
+  }) : _store = store;
+
+  final SecretValueStore _store;
+
+  @override
+  Future<AccountPlusGrant?> read() async {
+    var raw = await _store.read(SharedPreferencesAccountPlusCacheStore.key);
+    if (raw == null || raw.isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final legacy = prefs.getString(SharedPreferencesAccountPlusCacheStore.key);
+      if (legacy != null && legacy.isNotEmpty) {
+        await _store.write(SharedPreferencesAccountPlusCacheStore.key, legacy);
+        await prefs.remove(SharedPreferencesAccountPlusCacheStore.key);
+        raw = legacy;
+      }
+    }
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return AccountPlusGrant.tryParse(jsonDecode(raw));
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> write(AccountPlusGrant grant) => _store.write(
+        SharedPreferencesAccountPlusCacheStore.key,
+        jsonEncode(grant.toJson()),
+      );
+
+  @override
+  Future<void> clear() async {
+    await _store.delete(SharedPreferencesAccountPlusCacheStore.key);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(SharedPreferencesAccountPlusCacheStore.key);
   }
 }

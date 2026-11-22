@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../config/plans.dart';
+import '../../../design/glass/glass_surface.dart';
 import '../../../design/gooey/gooey_selector.dart';
 import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
@@ -9,6 +11,7 @@ import '../../../design/widgets/line_icons.dart';
 import '../application/plus_controller.dart';
 import '../application/plus_navigation.dart';
 import '../application/plus_scope.dart';
+import '../domain/plus_entitlement.dart';
 import '../domain/plus_plan.dart';
 import 'widgets/plus_widgets.dart';
 
@@ -19,7 +22,14 @@ import 'widgets/plus_widgets.dart';
 /// dari konfigurasi jarak jauh; bila konfigurasi belum ada, layar menyatakan
 /// belum tersedia dan tidak menampilkan harga karangan.
 class PaywallPage extends StatefulWidget {
-  const PaywallPage({super.key});
+  const PaywallPage({
+    super.key,
+    this.notice,
+    this.requireFullSocialPlan = false,
+  });
+
+  final String? notice;
+  final bool requireFullSocialPlan;
 
   @override
   State<PaywallPage> createState() => _PaywallPageState();
@@ -74,17 +84,35 @@ class _PaywallPageState extends State<PaywallPage> {
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(HiqeoSpacing.md),
-          child: PlusCard(
-            radius: HiqeoRadius.hero,
-            padding: const EdgeInsets.all(HiqeoSpacing.xl),
+      useSafeArea: true,
+      builder: (sheetContext) {
+        final safeBottom = MediaQuery.paddingOf(sheetContext).bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            HiqeoSpacing.md,
+            0,
+            HiqeoSpacing.md,
+            HiqeoSpacing.md + safeBottom,
+          ),
+          child: GlassSurface(
+            tier: GlassTier.panel,
+            borderRadius: 28,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colors.textSecondary.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(HiqeoRadius.pill),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Text(title, style: theme.textTheme.headlineSmall),
                 const SizedBox(height: HiqeoSpacing.sm),
                 Text(
@@ -97,44 +125,69 @@ class _PaywallPageState extends State<PaywallPage> {
                 HiqeoButton(
                   label: 'Tutup',
                   variant: HiqeoButtonVariant.secondary,
-                  onPressed: () => Navigator.of(context).maybePop(),
+                  onPressed: () => Navigator.of(sheetContext).maybePop(),
                 ),
               ],
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final plus = PlusScope.maybeOf(context);
-    final plans = plus?.plans ?? const <PlusPlan>[];
+    final allPlans = plus != null ? plus.plans : buildDefaultPlusPlans();
+    final hasPlus = plus?.hasPlus ?? false;
+    final hasFullSocial = plus?.hasFullSocialAccess ?? false;
+    final showSocialUpgrade =
+        widget.requireFullSocialPlan && hasPlus && !hasFullSocial;
+    final plans = showSocialUpgrade
+        ? allPlans
+            .where((p) => PlusAccess.isFullSocialPlan(p.id))
+            .toList(growable: false)
+        : allPlans;
     final selected = _selectedPlan(plans);
-    final active = plus?.hasPlus ?? false;
+    final active = hasPlus && !showSocialUpgrade;
     final busy = plus?.isWorking ?? false;
-    final hasConfig = plus?.hasConfig ?? false;
-    final canBuy = plus != null && !active && !busy && selected != null;
+    final canBuy = !active && !busy && selected != null;
+    final noticeText = widget.notice?.trim();
 
     return PlusScrollPage(
       topBar: PlusTopBar(
-        close: true,
+        close: false,
         lockup: true,
-        onBack: () => Navigator.of(context).maybePop(),
+        onBack: () => popPlusRoute(context),
       ),
       bottomBar: HiqeoButton(
         key: const ValueKey('paywall-cta'),
         label: active
             ? 'Kelola langganan'
-            : (!hasConfig
+            : (plans.isEmpty
                 ? 'Paket belum tersedia'
-                : (busy ? 'Memproses…' : 'Mulai berlangganan')),
+                : (busy ? 'Memproses…' : 'Berlangganan')),
         onPressed: active
             ? () => context.push(PlusRoutes.manage)
-            : (canBuy ? () => _purchase(plus, selected) : null),
+            : (canBuy
+                ? () {
+                    if (plus != null) {
+                      _purchase(plus, selected);
+                    } else {
+                      _showMessage('Pembayaran belum tersedia');
+                    }
+                  }
+                : null),
       ),
       children: <Widget>[
+        if (noticeText != null && noticeText.isNotEmpty) ...<Widget>[
+          PlusNotice(
+            key: const ValueKey<String>('paywall-custom-notice'),
+            icon: HiqeoIcons.lock,
+            text: noticeText,
+          ),
+          const SizedBox(height: HiqeoSpacing.lg),
+        ],
         Text(
           'Naik lebih siap,\npulang lebih tenang.',
           style: Theme.of(context).textTheme.displaySmall,
@@ -205,23 +258,26 @@ class _PaywallPageState extends State<PaywallPage> {
         const SizedBox(height: HiqeoSpacing.xl),
         _LegalLinks(
           enabled: !busy,
-          onRestore: plus == null ? null : () => _restore(plus),
+          onRestore: plus != null
+              ? () => _restore(plus)
+              : () => _showMessage('Pembayaran belum tersedia'),
           onTerms: () => _showLegal(
             'Syarat layanan',
-            'Dokumen syarat resmi belum disambungkan di build ini. '
-                'Pembelian di toko aplikasi tetap mengikuti syarat toko.',
+            'Penggunaan layanan dan pembelian Hiqeo Plus mengikuti ketentuan '
+                'aplikasi serta kebijakan toko aplikasi.',
           ),
           onPrivacy: () => _showLegal(
             'Kebijakan privasi',
-            'Data pendakian tersimpan di HP ini. Cadangan cloud belum aktif '
-                'pada tahap ini; tidak ada data yang dikirim ke server.',
+            'Data pendakian tersimpan di HP ini. Pelanggan Hiqeo Plus dapat '
+                'mengaktifkan cadangan cloud otomatis terenkripsi sesi agar '
+                'riwayat tetap aman saat berganti perangkat.',
           ),
         ),
         const SizedBox(height: HiqeoSpacing.lg),
         PlusNotice(
           icon: HiqeoIcons.lock,
-          text: 'Status Plus diverifikasi offline dari token bertanda tangan. '
-              'Tanpa sinyal, Plus tetap aktif sampai masa berlaku berakhir.',
+          text:
+              'Status Plus tetap aktif tanpa sinyal sampai masa berlakumu berakhir.',
         ),
       ],
     );
@@ -285,7 +341,7 @@ class _PlanCard extends StatelessWidget {
       colors.onPrimary.withValues(alpha: 0.78),
       coverage,
     )!;
-    final badge = plan.badge ?? (plan.id == 'annual' ? 'PALING PAS' : null);
+    final badge = plan.badge;
     final quota = plan.hasQuota
         ? 'Sisa ${plan.quotaRemaining} dari ${plan.quotaTotal}'
         : null;
@@ -333,10 +389,10 @@ class _PlanCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(HiqeoRadius.pill),
                         ),
                         child: Text(
-                          badge.toUpperCase(),
+                          badge,
                           style: HiqeoTypography.textTheme.labelSmall?.copyWith(
                             fontSize: 9,
-                            letterSpacing: 1,
+                            letterSpacing: 0.6,
                             color: foreground,
                           ),
                         ),
@@ -356,12 +412,16 @@ class _PlanCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: HiqeoSpacing.xs),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: Text(
-                        plan.periodLabel,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: secondary,
+                    Flexible(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          plan.periodLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: secondary,
+                          ),
                         ),
                       ),
                     ),
@@ -467,6 +527,20 @@ class _ActivePlanCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: HiqeoSpacing.md),
+          if (plus?.hasFullSocialAccess ?? false) ...<Widget>[
+            HiqeoButton(
+              label: 'Analitik lanjutan',
+              variant: HiqeoButtonVariant.secondary,
+              onPressed: () => context.push(PlusRoutes.analytics),
+            ),
+            const SizedBox(height: HiqeoSpacing.sm),
+            HiqeoButton(
+              label: 'Rekap tahunan',
+              variant: HiqeoButtonVariant.secondary,
+              onPressed: () => context.push(PlusRoutes.recap),
+            ),
+            const SizedBox(height: HiqeoSpacing.sm),
+          ],
           HiqeoButton(
             label: 'Buka kelola langganan',
             variant: HiqeoButtonVariant.secondary,
@@ -504,8 +578,8 @@ class _PlansUnavailable extends StatelessWidget {
           ),
           const SizedBox(height: HiqeoSpacing.xs),
           Text(
-            'Harga dan paket berasal dari konfigurasi server. Tidak ada '
-            'pembelian sebelum daftar paket tersedia.',
+            'Daftar paket sedang diperbarui. Sambungkan ke internet lalu coba '
+            'muat ulang.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: colors.textSecondary,
             ),

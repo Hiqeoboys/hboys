@@ -5,11 +5,19 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/utils/clock.dart';
 import '../../onboarding/permission_service.dart';
+import '../../../infrastructure/auth/active_account_scope.dart';
 import '../../../infrastructure/database/app_database.dart';
 import '../../../infrastructure/database/database_connection.dart';
 import '../../../infrastructure/database/repositories/drift_tracking_repository.dart';
+import '../../../infrastructure/location/location_source.dart';
+import '../../../infrastructure/supabase/supabase_services.dart';
+import '../../plus/domain/cloud_backup_bundle.dart';
+import '../../plus/infrastructure/supabase_cloud_backup_service.dart';
+import '../../preparation/application/packing_list_store.dart';
 import '../../../infrastructure/tracking/android_foreground_tracking_backend.dart';
 import '../../../infrastructure/tracking/ios_local_tracking_backend.dart';
+import '../../trails/data/gpx_loader.dart';
+import '../../trails/domain/track_route.dart';
 import '../domain/track_point.dart';
 import '../domain/tracking_repository.dart';
 import '../domain/tracking_session.dart';
@@ -47,8 +55,44 @@ class TrackingController extends ChangeNotifier {
   AppDatabase? _database;
   TrackingRepository? _repository;
   TrackingBackend? _backend;
+  TrackingBackend? _realBackend;
+  TrackingBackend? _simulationBackend;
   StreamSubscription<TrackingEvent>? _events;
   final Clock _clock = const SystemClock();
+
+  bool _simulationEnabled = false;
+  String _simulationRouteAsset = GpxLoader.defaultGpxAssetPath;
+  SimulatedLocationSource? _simulatedLocationSource;
+
+  String? _activeMountainName;
+  String? _activeTrailName;
+  String? _activeTrailId;
+  String _activeActivityType = TrackingSession.activityHiking;
+
+  String? get activeMountainName => _activeMountainName;
+  String? get activeTrailName => _activeTrailName;
+  String? get activeTrailId => _activeTrailId;
+  String get activeActivityType => _status?.activityType ?? _activeActivityType;
+  bool get isJoggingSession =>
+      activeActivityType == TrackingSession.activityJogging;
+
+  /// Menetapkan gunung & jalur yang sedang didaki agar tercatat di Riwayat
+  /// dan disinkronkan ke Supabase saat sesi selesai.
+  void setActiveRoute({
+    String? mountainName,
+    String? trailName,
+    String? trailId,
+  }) {
+    _activeActivityType = TrackingSession.activityHiking;
+    _activeMountainName = mountainName;
+    _activeTrailName = trailName;
+    _activeTrailId = trailId;
+  }
+
+  bool get simulationEnabled => kDebugMode && _simulationEnabled;
+  String get simulationRouteAsset => _simulationRouteAsset;
+  SimulatedLocationSource? get simulatedLocationSource =>
+      _simulatedLocationSource;
 
   TrackingPhase get phase => _phase;
   TrackingStatus? get status => _status;
@@ -65,6 +109,7 @@ class TrackingController extends ChangeNotifier {
       _phase == TrackingPhase.preparing ||
       _phase == TrackingPhase.stopping;
   bool get recoveryPending => _recoveryPending;
+  TrackingRepository? get repository => _repository;
 
   String? get currentSessionId => _status?.sessionId;
 
@@ -74,6 +119,19 @@ class TrackingController extends ChangeNotifier {
     final repository = _repository;
     if (sessionId == null || repository == null) return const [];
     return repository.points(sessionId);
+  }
+
+  /// Menghapus seluruh titik rekaman sesi aktif saat ini (mis. skenario teleport debug).
+  Future<void> clearCurrentTrackPoints() async {
+    final sessionId = _status?.sessionId;
+    final repository = _repository;
+    if (sessionId != null && repository != null) {
+      await repository.clearPoints(sessionId);
+    }
+    if (_backend is IosLocalTrackingBackend) {
+      (_backend as IosLocalTrackingBackend).clearCurrentPoints();
+    }
+    notifyListeners();
   }
 
   Future<TrackPoint?> latestRecordedPoint() async {
@@ -89,6 +147,12 @@ class TrackingController extends ChangeNotifier {
   }
 
   Future<void> _initializeOnce() async {
+    final sw = Stopwatch()..start();
+    void lap(String name) {
+      if (kDebugMode) {
+        debugPrint('INIT_LAP $name ${sw.elapsedMilliseconds}ms');
+      }
+    }
     _phase = TrackingPhase.initializing;
     notifyListeners();
     try {
@@ -96,10 +160,12 @@ class TrackingController extends ChangeNotifier {
         throw UnsupportedError('Pelacakan GPS hanya untuk Android/iOS.');
       }
       final file = await defaultAppDatabaseFile();
+      lap('db_file');
       _database = openAppDatabase(file);
       final repository = DriftTrackingRepository(_database!);
       _repository = repository;
       _permission = await const PermissionService().check();
+      lap('db_open+permission');
 
       final backend = Platform.isAndroid
           ? AndroidForegroundTrackingBackend(databasePath: file.path)
@@ -107,18 +173,23 @@ class TrackingController extends ChangeNotifier {
               repository: repository,
               clock: const SystemClock(),
             );
+      _realBackend = backend;
       _backend = backend;
       _events = backend.events.listen(_onEvent);
+      lap('backend');
 
       final active = await repository.findActiveSession();
+      lap('active_session');
       final running = await backend.isRunning();
+      lap('is_running');
       if (running) {
         _phase = TrackingPhase.preparing;
         await backend.requestStatus();
       } else if (active != null) {
+        _activeActivityType = active.activityType;
         _recoveryPending = true;
         if (_permission!.readyForBackground) {
-          await _startBackend(auto: true);
+          await _startBackend(auto: true, activityType: active.activityType);
         } else {
           _notice =
               'Sesi aktif ditemukan. Lengkapi izin "Selalu" agar rekaman dapat dilanjutkan.';
@@ -128,45 +199,239 @@ class TrackingController extends ChangeNotifier {
         _phase = TrackingPhase.idle;
       }
       _initialized = true;
+      lap('initialized');
     } catch (error) {
+      if (kDebugMode) {
+        debugPrint('TrackingController.initialize failed: $error');
+      }
+      _initializationFuture = null;
       _phase = TrackingPhase.error;
-      _error = 'Gagal menyiapkan rekaman: $error';
+      _error = 'Pelacakan di perangkat belum siap. Coba buka ulang halaman ini.';
     } finally {
       notifyListeners();
     }
   }
 
-  Future<bool> start() async {
+  @visibleForTesting
+  Future<bool> Function()? startOverride;
+
+  @visibleForTesting
+  void setRecordingForTesting({
+    bool recording = true,
+    TrackingStatus? status,
+  }) {
+    _phase = recording ? TrackingPhase.recording : TrackingPhase.idle;
+    _status = status;
+    _activeActivityType =
+        status?.activityType ?? TrackingSession.activityHiking;
+    notifyListeners();
+  }
+
+  Future<bool> start({
+    String activityType = TrackingSession.activityHiking,
+    bool allowForegroundOnly = false,
+  }) async {
+    final normalizedType = TrackingSession.normalizeActivityType(activityType);
+    _activeActivityType = normalizedType;
+    if (normalizedType == TrackingSession.activityJogging) {
+      _activeMountainName = null;
+      _activeTrailName = null;
+      _activeTrailId = null;
+    }
+    if (startOverride != null) return startOverride!();
     await initialize();
+    if (!_initialized) return false;
     if (isRecording || _phase == TrackingPhase.stopping) return false;
+    if (simulationEnabled) {
+      await _ensureSimulationBackendReady();
+      _simulatedLocationSource?.reset();
+      return _startBackend(activityType: normalizedType);
+    }
     final permission = await const PermissionService().check();
     _permission = permission;
-    if (!permission.readyForBackground) {
+    final hasAnyLocationPermission = permission.locationServiceEnabled &&
+        (permission.locationWhileInUse || permission.locationAlways);
+    final allowed = allowForegroundOnly
+        ? hasAnyLocationPermission
+        : permission.readyForBackground;
+    if (!allowed) {
       _notice =
           'Izin lokasi "Selalu", lokasi presisi, layanan lokasi, dan notifikasi perlu diaktifkan.';
       _phase = TrackingPhase.idle;
       notifyListeners();
       return false;
     }
-    return _startBackend();
+    return _startBackend(activityType: normalizedType);
   }
 
-  Future<bool> _startBackend({bool auto = false}) async {
+  /// Mengaktifkan atau menonaktifkan sumber lokasi simulasi (khusus `kDebugMode`).
+  Future<void> setSimulationEnabled(bool enabled) async {
+    if (!kDebugMode) return;
+    await initialize();
+    if (_simulationEnabled == enabled) return;
+    if (isRecording) {
+      await stop();
+    }
+    _simulationEnabled = enabled;
+    if (enabled) {
+      await _ensureSimulationBackendReady();
+      await _switchActiveBackend(_simulationBackend);
+    } else {
+      await _switchActiveBackend(_realBackend);
+    }
+    notifyListeners();
+  }
+
+  /// Memilih berkas jalur GPX untuk simulasi (khusus `kDebugMode`).
+  Future<void> setSimulationRouteAsset(String assetPath) async {
+    if (!kDebugMode) return;
+    _simulationRouteAsset = assetPath;
+    try {
+      final route = await GpxLoader.loadAsset(assetPath);
+      if (_simulatedLocationSource != null) {
+        _simulatedLocationSource!.setRoute(route);
+      } else {
+        _simulatedLocationSource = SimulatedLocationSource(route: route)
+          ..addListener(notifyListeners);
+      }
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('TrackingController.setSimulationRouteAsset failed: $error');
+      }
+      _error = 'Jalur simulasi tidak dapat dibuka.';
+    }
+    notifyListeners();
+  }
+
+  /// Skenario A: Posisikan di titik awal rute dan mulai merekam jejak.
+  Future<void> startSimulationAtBeginning() async {
+    if (!kDebugMode) return;
+    await _ensureSimulationBackendReady();
+    _simulatedLocationSource?.startAtBeginning();
+    if (!isRecording) {
+      await start();
+    }
+    notifyListeners();
+  }
+
+  /// Skenario B: Berjalan di jalur sejauh 400 m sambil merekam jejak.
+  Future<void> runSimulationWalk400m() async {
+    if (!kDebugMode) return;
+    await _ensureSimulationBackendReady();
+    if (!isRecording) {
+      await start();
+    }
+    _simulatedLocationSource?.walkRoute400m();
+    notifyListeners();
+  }
+
+  /// Skenario C: Menyimpang berbelok tegak lurus sejauh 150 m (jalur memutar),
+  /// tetap merekam jejak.
+  Future<void> runSimulationCurvedDeviation150m() async {
+    if (!kDebugMode) return;
+    await _ensureSimulationBackendReady();
+    if (!isRecording) {
+      await start();
+    }
+    _simulatedLocationSource?.startCurvedDeviation150m();
+    notifyListeners();
+  }
+
+  /// Skenario D: Teleport 100 m dari jalur sambil menghapus jejak rekaman
+  /// untuk menguji mode petunjuk garis lurus.
+  Future<void> runSimulationTeleport100m() async {
+    if (!kDebugMode) return;
+    await _ensureSimulationBackendReady();
+    await _simulatedLocationSource?.teleportWithoutTrack100m(
+      onClearTrack: clearCurrentTrackPoints,
+    );
+    notifyListeners();
+  }
+
+  /// Skenario E: Berjalan mengikuti arahan kembali ke jalur sampai terdeteksi
+  /// sudah kembali.
+  Future<void> runSimulationWalkBack() async {
+    if (!kDebugMode) return;
+    await _ensureSimulationBackendReady();
+    _simulatedLocationSource?.walkBackToTrail();
+    notifyListeners();
+  }
+
+  /// Memicu sinyal GPS buruk (akurasi 40 m selama 20 detik).
+  void triggerSimulationPoorSignal() {
+    if (!kDebugMode) return;
+    _simulatedLocationSource?.triggerPoorSignal();
+  }
+
+  /// Jeda atau lanjut simulasi.
+  void toggleSimulationPause() {
+    if (!kDebugMode) return;
+    _simulatedLocationSource?.togglePauseSimulation();
+  }
+
+  /// Reset posisi dan seluruh skenario simulasi.
+  void resetSimulation() {
+    if (!kDebugMode) return;
+    _simulatedLocationSource?.reset();
+  }
+
+  Future<void> _ensureSimulationBackendReady() async {
+    if (_simulatedLocationSource == null) {
+      TrackRoute route;
+      try {
+        route = await GpxLoader.loadAsset(_simulationRouteAsset);
+      } catch (_) {
+        route = TrackRoute.fromPoints(
+          id: 'fallback',
+          name: 'Jalur Simulasi',
+          points: const <TrackRoutePoint>[],
+        );
+      }
+      _simulatedLocationSource = SimulatedLocationSource(route: route)
+        ..addListener(notifyListeners);
+    }
+    if (_simulationBackend == null && _repository != null) {
+      _simulationBackend = IosLocalTrackingBackend(
+        repository: _repository!,
+        clock: _clock,
+        locationSource: _simulatedLocationSource!,
+      );
+    }
+  }
+
+  Future<void> _switchActiveBackend(TrackingBackend? next) async {
+    if (next == null || _backend == next) return;
+    await _events?.cancel();
+    _backend = next;
+    _events = next.events.listen(_onEvent);
+  }
+
+  Future<bool> _startBackend({
+    bool auto = false,
+    String? activityType,
+  }) async {
     final backend = _backend;
     if (backend == null) return false;
+    final resolvedType = TrackingSession.normalizeActivityType(
+      activityType ?? _activeActivityType,
+    );
+    _activeActivityType = resolvedType;
     _error = null;
     _phase = TrackingPhase.preparing;
     notifyListeners();
     try {
-      await backend.start();
+      await backend.start(activityType: resolvedType);
       _recoveryPending = false;
       if (auto) {
         _notice = 'Melanjutkan sesi yang belum selesai...';
       }
       return true;
     } catch (error) {
+      if (kDebugMode) {
+        debugPrint('TrackingController._startBackend failed: $error');
+      }
       _phase = TrackingPhase.error;
-      _error = 'Gagal memulai rekaman: $error';
+      _error = 'Rekaman belum bisa dimulai. Pastikan GPS aktif lalu coba lagi.';
       notifyListeners();
       return false;
     }
@@ -181,7 +446,10 @@ class TrackingController extends ChangeNotifier {
         _phase = TrackingPhase.paused;
       }
     } catch (error) {
-      _error = 'Gagal menjeda rekaman: $error';
+      if (kDebugMode) {
+        debugPrint('TrackingController.pause failed: $error');
+      }
+      _error = 'Rekaman belum bisa dijeda. Coba lagi.';
     }
     notifyListeners();
   }
@@ -195,20 +463,47 @@ class TrackingController extends ChangeNotifier {
         _phase = TrackingPhase.recording;
       }
     } catch (error) {
-      _error = 'Gagal melanjutkan rekaman: $error';
+      if (kDebugMode) {
+        debugPrint('TrackingController.resume failed: $error');
+      }
+      _error = 'Rekaman belum bisa dilanjutkan. Coba lagi.';
     }
     notifyListeners();
   }
 
-  Future<void> stop() async {
+  Future<void> stop({
+    bool reachedSummit = false,
+    String? mountainName,
+    String? trailName,
+  }) async {
     final backend = _backend;
     if (backend == null) return;
     if (_phase == TrackingPhase.stopping) return;
     _phase = TrackingPhase.stopping;
     notifyListeners();
+    final sessionIdBeforeStop = _status?.sessionId;
+    final resolvedActivity = activeActivityType;
+    final isJogging = resolvedActivity == TrackingSession.activityJogging;
+    final resolvedReachedSummit = isJogging ? false : reachedSummit;
+    final resolvedMountain = isJogging ? null : (mountainName ?? _activeMountainName);
+    final resolvedTrail = isJogging ? null : (trailName ?? _activeTrailName);
     try {
       final result = await backend.stop();
-      final closedOrphan = await _closeActiveSessionIfAny();
+      final closedOrphan = await _closeActiveSessionIfAny(
+        reachedSummit: resolvedReachedSummit,
+        mountainName: resolvedMountain,
+        trailName: resolvedTrail,
+        activityType: resolvedActivity,
+      );
+      if (sessionIdBeforeStop != null) {
+        await _persistCompletionMetadata(
+          sessionId: sessionIdBeforeStop,
+          reachedSummit: resolvedReachedSummit,
+          mountainName: resolvedMountain,
+          trailName: resolvedTrail,
+          activityType: resolvedActivity,
+        );
+      }
       _phase = TrackingPhase.finished;
       final notes = <String>[
         if (result.warning != null) result.warning!,
@@ -218,43 +513,126 @@ class TrackingController extends ChangeNotifier {
       ];
       _notice = notes.isEmpty ? null : notes.join(' ');
       if (_status?.sessionStatus == TrackingSessionStatus.active) {
-        _status = TrackingStatus(
-          sessionId: _status!.sessionId,
+        _status = _status!.copyWith(
           sessionStatus: TrackingSessionStatus.completed,
-          startedAtUtc: _status!.startedAtUtc,
-          distanceM: _status!.distanceM,
-          movingSeconds: _status!.movingSeconds,
-          elapsedSeconds: _status!.elapsedSeconds,
-          elevationGainM: _status!.elevationGainM,
-          elevationLossM: _status!.elevationLossM,
           isMoving: false,
-          pointCount: _status!.pointCount,
-          profile: _status!.profile,
-          paceSecPerKm: _status!.paceSecPerKm,
-          verticalSpeedMph: _status!.verticalSpeedMph,
-          batteryPercent: _status!.batteryPercent,
           isPaused: false,
         );
       }
+      if (!isJogging) {
+        // Otomatis reset Packing List ke Tahap 1 & status persiapan Beranda
+        // segera setelah sesi pendakian berakhir (baik sampai puncak maupun berhenti manual).
+        unawaited(PackingListStore.instance.clearAll());
+        unawaited(GroupHikePlanStore.instance.completeAndResetAfterHike());
+      }
+      DriftTrackingRepository.notifyExternalChange();
     } catch (error) {
+      if (kDebugMode) {
+        debugPrint('TrackingController.stop failed: $error');
+      }
       _phase = TrackingPhase.error;
-      _error = 'Gagal menghentikan rekaman: $error';
+      _error = 'Rekaman belum bisa dihentikan dengan aman. Coba lagi.';
     }
     notifyListeners();
   }
 
-  Future<bool> _closeActiveSessionIfAny() async {
+  Future<bool> _closeActiveSessionIfAny({
+    bool reachedSummit = false,
+    String? mountainName,
+    String? trailName,
+    String? activityType,
+  }) async {
     final repository = _repository;
     if (repository == null) return false;
     final active = await repository.findActiveSession();
     if (active == null) return false;
-    await repository.saveSession(
-      active.copyWith(
-        endedAtUtc: _clock.nowUtc(),
-        status: TrackingSessionStatus.completed,
-      ),
+    final resolvedType = TrackingSession.normalizeActivityType(
+      activityType ?? active.activityType,
     );
+    final isJogging = resolvedType == TrackingSession.activityJogging;
+    final completed = active.copyWith(
+      endedAtUtc: _clock.nowUtc(),
+      status: TrackingSessionStatus.completed,
+      reachedSummit: isJogging ? false : reachedSummit,
+      mountainName: isJogging ? null : (mountainName ?? active.mountainName),
+      trailName: isJogging ? null : (trailName ?? active.trailName),
+      trailId: isJogging ? null : (_activeTrailId ?? active.trailId),
+      activityType: resolvedType,
+      ownerUserId: active.ownerUserId ?? ActiveAccountScope.currentUserId(),
+    );
+    await repository.saveSession(completed);
+    unawaited(_syncSessionToSupabase(completed));
     return true;
+  }
+
+  Future<void> _persistCompletionMetadata({
+    required String sessionId,
+    required bool reachedSummit,
+    String? mountainName,
+    String? trailName,
+    String? activityType,
+  }) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final existing = await repository.findSession(sessionId);
+    if (existing == null) return;
+    final resolvedType = TrackingSession.normalizeActivityType(
+      activityType ?? existing.activityType,
+    );
+    final isJogging = resolvedType == TrackingSession.activityJogging;
+    final updated = existing.copyWith(
+      status: TrackingSessionStatus.completed,
+      endedAtUtc: existing.endedAtUtc ?? _clock.nowUtc(),
+      reachedSummit: isJogging ? false : (reachedSummit || existing.reachedSummit),
+      mountainName: isJogging ? null : (mountainName ?? existing.mountainName),
+      trailName: isJogging ? null : (trailName ?? existing.trailName),
+      trailId: isJogging ? null : (_activeTrailId ?? existing.trailId),
+      activityType: resolvedType,
+      ownerUserId: existing.ownerUserId ?? ActiveAccountScope.currentUserId(),
+    );
+    await repository.saveSession(updated);
+    unawaited(_syncSessionToSupabase(updated));
+  }
+
+  Future<void> _syncSessionToSupabase(TrackingSession session) async {
+    try {
+      final client = SupabaseServices.clientOrNull;
+      final user = client?.auth.currentUser;
+      if (client == null || user == null) return;
+      final repo = _repository;
+      String? routePolylineB64;
+      if (repo != null) {
+        final pts = await repo.points(session.id);
+        routePolylineB64 = encodeSimplifiedRoutePolyline(pts)?.gzipBase64;
+      }
+      await client.from('hike_sessions').upsert(<String, dynamic>{
+        'id': session.id,
+        'user_id': user.id,
+        'activity_type': session.activityType,
+        'mountain_name': session.isJogging
+            ? null
+            : (session.mountainName ?? session.trailId ?? 'Pendakian'),
+        'trail_name': session.isJogging ? null : session.trailName,
+        'started_at': session.startedAtUtc.toUtc().toIso8601String(),
+        'ended_at': (session.endedAtUtc ?? _clock.nowUtc())
+            .toUtc()
+            .toIso8601String(),
+        'distance_m': session.distanceM,
+        'elevation_gain_m': session.elevationGainM,
+        'elevation_loss_m': session.elevationLossM,
+        'moving_seconds': session.movingSeconds,
+        'reached_summit': session.isJogging ? false : session.reachedSummit,
+        if (routePolylineB64 != null) 'route_polyline_b64': routePolylineB64,
+      });
+      if (repo != null) {
+        unawaited(
+          SupabaseCloudBackupService.instance
+              .backupSingleSessionIfAllowed(session, repo),
+        );
+      }
+    } catch (_) {
+      // Tetap aman secara offline: riwayat lokal selalu tersedia di SQLite.
+    }
   }
 
   /// Dipanggil setelah halaman onboarding ditutup atau aplikasi kembali aktif.
@@ -302,14 +680,20 @@ class TrackingController extends ChangeNotifier {
     switch (event) {
       case TrackingProgressEvent(:final status):
         _status = status;
-        _phase = status.sessionStatus == TrackingSessionStatus.completed
+        final completed =
+            status.sessionStatus == TrackingSessionStatus.completed;
+        _phase = completed
             ? TrackingPhase.finished
             : (status.isPaused ? TrackingPhase.paused : TrackingPhase.recording);
         _error = null;
+        if (completed) {
+          DriftTrackingRepository.notifyExternalChange();
+        }
       case TrackingStoppedEvent(:final status, :final warning):
         if (status != null) _status = status;
         _phase = TrackingPhase.finished;
         _notice = warning;
+        DriftTrackingRepository.notifyExternalChange();
       case TrackingFailureEvent(:final message, :final fatal):
         _error = message;
         _phase = fatal ? TrackingPhase.error : _phase;
@@ -325,6 +709,23 @@ class TrackingController extends ChangeNotifier {
       // Pesan kegagalan utama sudah ditampilkan; kegagalan pembersihan tidak
       // boleh menutupinya.
     }
+  }
+
+  /// Membersihkan status tampilan sesi selesai di memori saat akun berganti.
+  void resetForAccountChange() {
+    if (isRecording) return;
+    _status = null;
+    _activeMountainName = null;
+    _activeTrailName = null;
+    _activeTrailId = null;
+    _activeActivityType = TrackingSession.activityHiking;
+    _recoveryPending = false;
+    _error = null;
+    _notice = null;
+    if (_initialized) {
+      _phase = TrackingPhase.idle;
+    }
+    notifyListeners();
   }
 
   @override

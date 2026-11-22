@@ -106,9 +106,13 @@ class OfflineDownloadController extends ChangeNotifier {
       _estimate = estimate;
       _phase = OfflineDownloadPhase.estimated;
     } catch (error) {
+      if (kDebugMode) {
+        debugPrint('OfflineDownloadController.estimate failed: $error');
+      }
       if (_disposed || generation != _generation) return;
       _phase = OfflineDownloadPhase.error;
-      _error = 'Gagal memperkirakan unduhan: $error';
+      _error =
+          'Ukuran unduhan belum bisa dihitung. Periksa koneksi lalu coba lagi.';
     }
     notifyListeners();
   }
@@ -117,7 +121,9 @@ class OfflineDownloadController extends ChangeNotifier {
     final package = _package;
     final plan = _plan;
     if (_disposed || package == null || plan == null) return;
-    if (!plan.canDownload || isBusy || _phase == OfflineDownloadPhase.downloaded) {
+    if (!plan.canDownload ||
+        isBusy ||
+        _phase == OfflineDownloadPhase.downloaded) {
       return;
     }
 
@@ -131,9 +137,14 @@ class OfflineDownloadController extends ChangeNotifier {
         if (_disposed || generation != _generation) return;
         _estimate = estimate;
       } catch (error) {
+        if (kDebugMode) {
+          debugPrint(
+              'OfflineDownloadController.download estimate failed: $error');
+        }
         if (_disposed || generation != _generation) return;
         _phase = OfflineDownloadPhase.error;
-        _error = 'Gagal memperkirakan unduhan: $error';
+        _error =
+            'Ukuran unduhan belum bisa dihitung. Periksa koneksi lalu coba lagi.';
         notifyListeners();
         return;
       }
@@ -156,9 +167,13 @@ class OfflineDownloadController extends ChangeNotifier {
       notifyListeners();
       await refreshStatus();
     } catch (error) {
+      if (kDebugMode) {
+        debugPrint('OfflineDownloadController.download failed: $error');
+      }
       if (_disposed || generation != _generation) return;
       _phase = OfflineDownloadPhase.error;
-      _error = 'Unduhan gagal: $error';
+      _error =
+          'Unduhan terhenti. Periksa koneksi internet dan ruang penyimpanan.';
       notifyListeners();
     }
   }

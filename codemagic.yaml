@@ -21,7 +21,7 @@ workflows:
             echo "PERINGATAN: RNMAPBOX_MAPS_DOWNLOAD_TOKEN belum diisi di Codemagic."
           fi
 
-      - name: Decode GoogleService-Info.plist
+      - name: Decode GoogleService-Info.plist & .env
         script: |
           if [ -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" ]; then
             if [ -d "ios/Runner" ]; then
@@ -33,6 +33,13 @@ workflows:
           else
             echo "ERROR: GOOGLE_SERVICE_INFO_PLIST_BASE64 belum disetel di Codemagic!"
             exit 1
+          fi
+          if [ -n "$ENV_FILE_BASE64" ]; then
+            echo "$ENV_FILE_BASE64" | base64 --decode > .env
+            echo "File .env berhasil didekode."
+          elif [ ! -f ".env" ]; then
+            touch .env
+            echo "PERINGATAN: ENV_FILE_BASE64 kosong, dibuat .env kosong agar asset Flutter tetap valid."
           fi
 
       - name: Install dependensi Flutter & CocoaPods

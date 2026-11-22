@@ -14,8 +14,10 @@ class EmergencyContact {
     this.channel = EmergencyContactChannel.sms,
     this.consentStatus = EmergencyContactConsentStatus.pending,
     this.consentAtUtc,
+    this.linkedUserId,
+    this.linkedUsername,
   }) {
-    if (!_e164Pattern.hasMatch(phoneE164)) {
+    if (!isHiqeoAccount && !_e164Pattern.hasMatch(phoneE164)) {
       throw ArgumentError.value(
         phoneE164,
         'phoneE164',
@@ -32,4 +34,29 @@ class EmergencyContact {
   final EmergencyContactConsentStatus consentStatus;
   final DateTime? consentAtUtc;
   final DateTime createdAtUtc;
+  final String? linkedUserId;
+  final String? linkedUsername;
+
+  bool get isHiqeoAccount =>
+      linkedUserId != null && linkedUserId!.trim().isNotEmpty;
+
+  bool get isActive => consentStatus == EmergencyContactConsentStatus.granted;
+
+  EmergencyContact copyWith({
+    String? name,
+    EmergencyContactConsentStatus? consentStatus,
+    DateTime? consentAtUtc,
+  }) =>
+      EmergencyContact(
+        id: id,
+        userId: userId,
+        name: name ?? this.name,
+        phoneE164: phoneE164,
+        createdAtUtc: createdAtUtc,
+        channel: channel,
+        consentStatus: consentStatus ?? this.consentStatus,
+        consentAtUtc: consentAtUtc ?? this.consentAtUtc,
+        linkedUserId: linkedUserId,
+        linkedUsername: linkedUsername,
+      );
 }

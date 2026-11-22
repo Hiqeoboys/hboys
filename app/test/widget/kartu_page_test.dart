@@ -54,6 +54,9 @@ class _FakeTrackingRepository implements TrackingRepository {
   Future<void> addPoint(String sessionId, TrackPoint point) async {}
 
   @override
+  Future<void> clearPoints(String sessionId) async {}
+
+  @override
   Future<TrackPoint?> latestPoint(String sessionId) async => null;
 }
 

@@ -52,7 +52,7 @@ void main() {
     expect(find.text('Hiqeo Plus Tahunan'), findsOneWidget);
     expect(find.text('Founding Member'), findsOneWidget);
     expect(find.text('Sisa 87 dari 500'), findsOneWidget);
-    expect(find.text('Mulai berlangganan'), findsOneWidget);
+    expect(find.text('Berlangganan'), findsOneWidget);
     expect(controller.hasPlus, isFalse);
 
     await tester.ensureVisible(find.text('Founding Member'));
@@ -110,7 +110,7 @@ void main() {
     expect(find.text('Paket sedang dimuat'), findsOneWidget);
     expect(find.textContaining('Harga dan paket berasal dari konfigurasi'),
         findsOneWidget);
-    expect(find.text('Mulai berlangganan'), findsNothing);
+    expect(find.text('Berlangganan'), findsNothing);
 
     await tester.ensureVisible(find.text('Coba lagi'));
     await tester.pumpAndSettle();

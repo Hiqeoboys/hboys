@@ -261,7 +261,205 @@ class AppDatabase extends _$AppDatabase {
           // koneksi lain sedang menulis.
           await customStatement('PRAGMA busy_timeout = 5000');
           await customStatement('PRAGMA journal_mode = WAL');
+          await customStatement('PRAGMA synchronous = NORMAL');
           await customStatement('PRAGMA foreign_keys = ON');
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS local_group_messages (
+              client_msg_id TEXT PRIMARY KEY,
+              group_id TEXT NOT NULL,
+              sender_id TEXT NOT NULL,
+              sender_name TEXT NOT NULL,
+              message_type TEXT NOT NULL CHECK (message_type IN ('text', 'audio')),
+              content TEXT,
+              local_audio_path TEXT,
+              audio_url TEXT,
+              audio_duration_sec INTEGER,
+              key_version INTEGER NOT NULL DEFAULT 1,
+              origin_transport TEXT NOT NULL CHECK (origin_transport IN ('online', 'wifi_direct', 'ble_mesh')),
+              sync_status TEXT NOT NULL DEFAULT 'pending' CHECK (sync_status IN ('pending', 'sent')),
+              client_created_at INTEGER NOT NULL
+            )
+          ''');
+          await customStatement('''
+            CREATE INDEX IF NOT EXISTS idx_local_group_messages_group_time
+            ON local_group_messages (group_id, client_created_at ASC)
+          ''');
+          final localMsgCols =
+              await customSelect('PRAGMA table_info(local_group_messages)').get();
+          final existingMsgColNames = localMsgCols
+              .map((row) => row.read<String>('name'))
+              .toSet();
+          if (!existingMsgColNames.contains('is_deleted')) {
+            await customStatement(
+              'ALTER TABLE local_group_messages ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0',
+            );
+          }
+          if (!existingMsgColNames.contains('deleted_at')) {
+            await customStatement(
+              'ALTER TABLE local_group_messages ADD COLUMN deleted_at INTEGER',
+            );
+          }
+          if (!existingMsgColNames.contains('is_cancelled')) {
+            await customStatement(
+              'ALTER TABLE local_group_messages ADD COLUMN is_cancelled INTEGER NOT NULL DEFAULT 0',
+            );
+          }
+          if (!existingMsgColNames.contains('cancelled_at')) {
+            await customStatement(
+              'ALTER TABLE local_group_messages ADD COLUMN cancelled_at INTEGER',
+            );
+          }
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS cached_public_profiles (
+              user_id TEXT PRIMARY KEY,
+              username TEXT,
+              full_name TEXT,
+              avatar_url TEXT,
+              last_seen_at TEXT,
+              updated_at INTEGER NOT NULL
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS local_member_locations (
+              group_id TEXT NOT NULL,
+              user_id TEXT NOT NULL,
+              display_name TEXT NOT NULL,
+              latitude REAL NOT NULL,
+              longitude REAL NOT NULL,
+              altitude_mdpl INTEGER,
+              battery_percent INTEGER,
+              accuracy_m INTEGER,
+              source_transport TEXT NOT NULL CHECK (source_transport IN ('online', 'wifi_direct', 'ble_mesh')),
+              sync_status TEXT NOT NULL DEFAULT 'pending' CHECK (sync_status IN ('pending', 'sent')),
+              recorded_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (group_id, user_id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS cached_user_profiles (
+              user_id TEXT PRIMARY KEY,
+              username TEXT,
+              display_name TEXT,
+              avatar_url TEXT,
+              local_avatar_path TEXT,
+              email TEXT,
+              public_key TEXT,
+              username_changed_at TEXT,
+              is_profile_complete INTEGER NOT NULL DEFAULT 0,
+              is_plus INTEGER NOT NULL DEFAULT 0,
+              plus_plan_id TEXT,
+              plus_expires_at TEXT,
+              updated_at INTEGER NOT NULL
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS cached_remote_groups (
+              owner_user_id TEXT NOT NULL,
+              group_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              group_owner_id TEXT NOT NULL,
+              mountain TEXT,
+              avatar_url TEXT,
+              key_version INTEGER NOT NULL DEFAULT 1,
+              role TEXT NOT NULL,
+              member_count INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL,
+              joined_at TEXT,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (owner_user_id, group_id)
+            )
+          ''');
+          final cachedGroupCols =
+              await customSelect('PRAGMA table_info(cached_remote_groups)').get();
+          final existingCachedGroupColNames = cachedGroupCols
+              .map((row) => row.read<String>('name'))
+              .toSet();
+          if (!existingCachedGroupColNames.contains('avatar_url')) {
+            await customStatement(
+              'ALTER TABLE cached_remote_groups ADD COLUMN avatar_url TEXT',
+            );
+          }
+          if (!existingCachedGroupColNames.contains('joined_at')) {
+            await customStatement(
+              'ALTER TABLE cached_remote_groups ADD COLUMN joined_at TEXT',
+            );
+          }
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS cached_group_members (
+              group_id TEXT NOT NULL,
+              user_id TEXT NOT NULL,
+              username TEXT NOT NULL,
+              display_name TEXT,
+              avatar_url TEXT,
+              role TEXT NOT NULL,
+              public_key TEXT NOT NULL,
+              joined_at TEXT NOT NULL,
+              last_seen_at TEXT,
+              PRIMARY KEY (group_id, user_id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS cached_invitations (
+              owner_user_id TEXT NOT NULL,
+              invitation_id TEXT NOT NULL,
+              group_id TEXT NOT NULL,
+              group_name TEXT NOT NULL,
+              inviter_username TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              expires_at TEXT NOT NULL,
+              PRIMARY KEY (owner_user_id, invitation_id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS session_metadata (
+              session_id TEXT PRIMARY KEY,
+              reached_summit INTEGER NOT NULL DEFAULT 0,
+              mountain_name TEXT,
+              trail_name TEXT,
+              activity_type TEXT NOT NULL DEFAULT 'hiking',
+              owner_user_id TEXT
+            )
+          ''');
+          final metaCols = await customSelect('PRAGMA table_info(session_metadata)').get();
+          final metaColNames = <String>{
+            for (final row in metaCols) row.read<String>('name'),
+          };
+          if (!metaColNames.contains('activity_type')) {
+            await customStatement(
+              "ALTER TABLE session_metadata ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'hiking'",
+            );
+          }
+          if (!metaColNames.contains('owner_user_id')) {
+            try {
+              await customStatement(
+                'ALTER TABLE session_metadata ADD COLUMN owner_user_id TEXT',
+              );
+            } catch (_) {}
+          }
+          try {
+            await customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_session_metadata_owner ON session_metadata (owner_user_id)',
+            );
+          } catch (_) {}
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS local_mesh_acks (
+              client_msg_id TEXT PRIMARY KEY,
+              acked_at INTEGER NOT NULL
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS local_hiqeo_emergency_contacts (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              contact_user_id TEXT NOT NULL,
+              contact_username TEXT NOT NULL,
+              display_name TEXT NOT NULL,
+              consent_status TEXT NOT NULL DEFAULT 'pending',
+              consent_at_utc INTEGER,
+              created_at_utc INTEGER NOT NULL
+            )
+          ''');
         },
       );
 }

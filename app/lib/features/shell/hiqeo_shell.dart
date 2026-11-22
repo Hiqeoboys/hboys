@@ -3,23 +3,39 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../design/background/app_background.dart';
 import '../../design/background/page_background.dart';
 import '../../design/motion/visual_effect_policy.dart';
 import '../../design/system_ui.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/hiqeo_nav_bar.dart';
 import '../../design/widgets/line_icons.dart';
+import '../../design/widgets/nav_bar_visibility.dart';
+import '../../infrastructure/notifications/fcm_notification_service.dart';
+import '../../infrastructure/notifications/push_notification_overlay.dart';
+import '../../infrastructure/offgrid/global_off_grid_outbox_service.dart';
 import '../../infrastructure/power/power_profile_controller.dart';
+import '../../infrastructure/supabase/supabase_services.dart';
+import '../auth/application/account_controller.dart';
+import '../notifications/data/user_notifications_service.dart';
+import '../preparation/application/packing_list_store.dart';
+import '../safety/application/emergency_contact_sync_service.dart';
+import '../social/data/friends_service.dart';
+import '../social/data/social_unread_store.dart';
+import '../tracking/application/tracking_controller.dart';
 
-/// Kerangka lima tab (Beranda, Peta, Lacak, Grup, Profil).
+/// Kerangka lima tab (Beranda, Peta, Track, Grup, Profil).
 ///
 /// Layar di luar tab — Splash, Siap Naik, SOS, Kartu Pendakian — berada di
-/// rute terpisah sehingga tidak menampilkan navigasi bawah.
+/// rute terpisah sehingga tidak menampilkan navigasi bawah. Navbar juga
+/// disembunyikan halus (turun 90 dp + fade 300 ms) saat masuk ke Ruang Obrolan
+/// atau saat memulai tracking rute pada peta.
 class HiqeoShell extends StatefulWidget {
   const HiqeoShell({
     super.key,
     required this.navigationShell,
     this.powerController,
+    this.accountController,
   });
 
   final StatefulNavigationShell navigationShell;
@@ -27,18 +43,37 @@ class HiqeoShell extends StatefulWidget {
   /// Disuntikkan untuk uji; produksi membaca baterai perangkat.
   final PowerProfileController? powerController;
 
+  /// Disuntikkan untuk uji; produksi memakai controller akun bersama.
+  final AccountController? accountController;
+
   static final List<HiqeoNavBarItem> navItems = <HiqeoNavBarItem>[
     HiqeoNavBarItem(label: 'Beranda', icon: HiqeoIcons.home, route: '/beranda'),
     HiqeoNavBarItem(label: 'Peta', icon: HiqeoIcons.map, route: '/peta'),
-    HiqeoNavBarItem(label: 'Lacak', icon: HiqeoIcons.activity, route: '/lacak'),
-    HiqeoNavBarItem(label: 'Grup', icon: HiqeoIcons.group, route: '/grup'),
+    HiqeoNavBarItem(
+      label: 'Track',
+      icon: HiqeoIcons.activity,
+      route: '/lacak',
+    ),
+    HiqeoNavBarItem(label: 'Sosial', icon: HiqeoIcons.group, route: '/grup'),
     HiqeoNavBarItem(label: 'Profil', icon: HiqeoIcons.user, route: '/profil'),
   ];
 
   /// Indeks cabang Peta. Peta digambar penuh di bawah navbar (edge-to-edge),
   /// sehingga hanya tab ini yang mematikan blob latar dan memakai kaca
-  /// bertint di atas peta.
+  /// bertint rapat di atas peta.
   static const int mapBranchIndex = 1;
+
+  /// Indeks cabang Grup (untuk lencana undangan & navigasi cepat banner in-app).
+  static const int groupBranchIndex = 3;
+
+  static AppBackgroundPage _pageForBranch(int index) => switch (index) {
+        0 => AppBackgroundPage.beranda,
+        1 => AppBackgroundPage.petaPenuh,
+        2 => AppBackgroundPage.track,
+        3 => AppBackgroundPage.grup,
+        4 => AppBackgroundPage.profil,
+        _ => AppBackgroundPage.beranda,
+      };
 
   @override
   State<HiqeoShell> createState() => _HiqeoShellState();
@@ -49,6 +84,12 @@ class _HiqeoShellState extends State<HiqeoShell> {
 
   late final PowerProfileController _power =
       widget.powerController ?? PowerProfileController();
+  final NavBarVisibilityController _visibility =
+      NavBarVisibilityController.instance;
+  final TrackingController _tracking = TrackingController.instance;
+
+  AccountController? _account;
+  StreamSubscription<InAppPushNotification>? _fcmTapSub;
 
   @override
   void initState() {
@@ -56,10 +97,61 @@ class _HiqeoShellState extends State<HiqeoShell> {
     if (widget.powerController == null) {
       unawaited(_power.refresh());
     }
+    _account =
+        widget.accountController ?? SupabaseServices.sharedAccountController;
+    FriendsService.instance.ensureRealtimeSubscribed();
+    EmergencyContactSyncService.instance.ensureRealtimeSubscribed();
+    UserNotificationsService.instance.ensureRealtimeSubscribed();
+    GlobalOffGridOutboxService.instance.start();
+    unawaited(UserNotificationsService.instance.loadNotifications());
+    GroupHikePlanStore.instance.ensureRealtimeSubscribed(
+      groupNamesById: <String, String>{
+        if (_account != null)
+          for (final g in _account!.groups) g.group.id: g.group.name,
+      },
+    );
+    _fcmTapSub = FcmNotificationService.instance.onNotificationTap.listen((
+      notif,
+    ) {
+      if (!mounted || PushNotificationOverlayHost.isActiveIn(context)) return;
+      _navigateFromPush(notif);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || PushNotificationOverlayHost.isActiveIn(context)) return;
+      final initialPush =
+          FcmNotificationService.instance.takePendingInitialTap();
+      if (initialPush != null) _navigateFromPush(initialPush);
+    });
+  }
+
+  void _navigateFromPush(InAppPushNotification notif) {
+    if (!mounted) return;
+    _visibility.reset();
+    final router = GoRouter.maybeOf(context);
+    if (router != null) {
+      dispatchPushNavigation(router, notif, dialogContext: context);
+      return;
+    }
+    switch (notif.route) {
+      case '/teman':
+        context.push('/teman');
+      case '/sos':
+        context.push('/sos');
+      case '/siap-naik':
+        context.push('/siap-naik');
+      case '/profil':
+        widget.navigationShell.goBranch(4);
+      case '/grup':
+        unawaited(SocialUnreadStore.instance.refresh());
+        widget.navigationShell.goBranch(HiqeoShell.groupBranchIndex);
+      default:
+        widget.navigationShell.goBranch(0);
+    }
   }
 
   @override
   void dispose() {
+    unawaited(_fcmTapSub?.cancel());
     if (widget.powerController == null) {
       _power.dispose();
     }
@@ -70,6 +162,12 @@ class _HiqeoShellState extends State<HiqeoShell> {
   Widget build(BuildContext context) {
     final index = widget.navigationShell.currentIndex;
     final systemInset = MediaQuery.paddingOf(context).bottom;
+    final account = _account;
+    final listenables = <Listenable>[
+      _visibility,
+      _tracking,
+      if (account != null) account,
+    ];
     return ListenableBuilder(
       listenable: _power,
       builder: (context, child) => VisualEffectPolicyScope(
@@ -82,40 +180,185 @@ class _HiqeoShellState extends State<HiqeoShell> {
       ),
       child: HiqeoSystemInset(
         bottom: systemInset,
-        child: PageBackground(
-          // Peta digambar penuh tanpa blob latar; tab lain tetap memakai blob.
-          showBlobs: index != HiqeoShell.mapBranchIndex,
-          child: Scaffold(
-            // Hanya Peta yang memanjang sampai tepi bawah layar. Tab lain
-            // menata navbar di luar isi supaya kartu/tombol terang tidak
-            // tampak menembus kaca dan menyatu dengan blob.
-            extendBody: index == HiqeoShell.mapBranchIndex,
-            backgroundColor: Colors.transparent,
-            body: _TabFade(
-              index: index,
-              child: widget.navigationShell,
-            ),
-            bottomNavigationBar: Padding(
-              padding: EdgeInsets.fromLTRB(
-                HiqeoMetrics.navbarInset,
-                0,
-                HiqeoMetrics.navbarInset,
-                HiqeoMetrics.navbarInset + systemInset,
+        child: ListenableBuilder(
+          listenable: Listenable.merge(listenables),
+          builder: (context, bodyChild) {
+            final isOnRouteMap = _visibility.onRouteScreen;
+            final hideNavBar = _visibility.isHidden ||
+                (index == HiqeoShell.mapBranchIndex &&
+                    isOnRouteMap &&
+                    _tracking.isRecording);
+            final pendingInvites = account?.pendingInvitationCount ?? 0;
+            final badgeCounts = pendingInvites > 0
+                ? <int, int>{HiqeoShell.groupBranchIndex: pendingInvites}
+                : const <int, int>{};
+            return PageBackground(
+              // Peta rute aktif digambar penuh tanpa aura latar; tab lain & daftar peta memakai aura.
+              showBlobs: !isOnRouteMap,
+              page: HiqeoShell._pageForBranch(index),
+              child: Scaffold(
+                extendBody: true,
+                extendBodyBehindAppBar: true,
+                backgroundColor: Colors.transparent,
+                body: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    Builder(
+                      builder: (context) {
+                        final mediaQuery = MediaQuery.of(context);
+                        final keyboardOpen = mediaQuery.viewInsets.bottom > 0;
+                        final bodyBottomPadding = keyboardOpen
+                            ? 0.0
+                            : (hideNavBar
+                                ? systemInset
+                                : HiqeoMetrics.navbarHeight +
+                                    HiqeoMetrics.navbarBottomMargin +
+                                    systemInset);
+                        return MediaQuery(
+                          data: mediaQuery.copyWith(
+                            padding: mediaQuery.padding.copyWith(
+                              bottom: bodyBottomPadding,
+                            ),
+                          ),
+                          child: bodyChild!,
+                        );
+                      },
+                    ),
+                    Positioned(
+                      left: HiqeoMetrics.navbarInset,
+                      right: HiqeoMetrics.navbarInset,
+                      bottom: HiqeoMetrics.navbarBottomMargin + systemInset,
+                      child: _AnimatedNavBarOverlay(
+                        hidden: hideNavBar,
+                        currentIndex: index,
+                        overMap: isOnRouteMap,
+                        badgeCounts: badgeCounts,
+                        onTap: (target) {
+                          if (target == HiqeoShell.groupBranchIndex) {
+                            unawaited(SocialUnreadStore.instance.refresh());
+                          }
+                          if (target == index) return;
+                          widget.navigationShell.goBranch(target);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: HiqeoNavBar(
-                currentIndex: index,
-                items: HiqeoShell.navItems,
-                overMap: index == HiqeoShell.mapBranchIndex,
-                onTap: (target) {
-                  // Tab yang sudah aktif tidak memicu animasi apa pun.
-                  if (target == index) return;
-                  widget.navigationShell.goBranch(target);
-                },
-              ),
-            ),
+            );
+          },
+          child: _TabFade(
+            index: index,
+            child: widget.navigationShell,
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Animasi turun 90 dp + fade (300 ms, Cubic(0.4, 0, 0.2, 1)) untuk menyembunyikan
+/// navbar saat tracking aktif atau di ruang obrolan, lalu mengeluarkannya dari
+/// hit-test.
+///
+/// Pada posisi diam tampil (`value == 0`), navbar dirender langsung TANPA
+/// pembungkus [Opacity] agar [BackdropFilter] tidak terganggu saveLayer.
+class _AnimatedNavBarOverlay extends StatefulWidget {
+  const _AnimatedNavBarOverlay({
+    required this.hidden,
+    required this.currentIndex,
+    required this.overMap,
+    this.badgeCounts = const <int, int>{},
+    required this.onTap,
+  });
+
+  final bool hidden;
+  final int currentIndex;
+  final bool overMap;
+  final Map<int, int> badgeCounts;
+  final ValueChanged<int> onTap;
+
+  @override
+  State<_AnimatedNavBarOverlay> createState() => _AnimatedNavBarOverlayState();
+}
+
+class _AnimatedNavBarOverlayState extends State<_AnimatedNavBarOverlay>
+    with SingleTickerProviderStateMixin {
+  static const Duration _duration = Duration(milliseconds: 300);
+  static const Curve _curve = Cubic(0.4, 0.0, 0.2, 1.0);
+  static const double _slideDownDp = 90.0;
+
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _duration,
+      value: widget.hidden ? 1.0 : 0.0,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedNavBarOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hidden == widget.hidden) return;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context) ||
+        VisualEffectPolicyScope.of(context).reduceMotion;
+    if (reduceMotion) {
+      _controller.value = widget.hidden ? 1.0 : 0.0;
+    } else if (widget.hidden) {
+      _controller.animateTo(1.0, duration: _duration, curve: _curve);
+    } else {
+      _controller.animateTo(0.0, duration: _duration, curve: _curve);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final t = _controller.value;
+        if (t >= 1.0 && widget.hidden) {
+          return const SizedBox.shrink();
+        }
+        final isTransitioning = t > 0.0;
+        final navBar = HiqeoNavBar(
+          currentIndex: widget.currentIndex,
+          items: HiqeoShell.navItems,
+          overMap: widget.overMap,
+          badgeCounts: widget.badgeCounts,
+          // Hindari BackdropFilter di dalam Opacity selama transisi 300 ms.
+          blurEnabledOverride: isTransitioning ? false : null,
+          onTap: widget.onTap,
+        );
+
+        if (!isTransitioning && !widget.hidden) {
+          return navBar;
+        }
+
+        return IgnorePointer(
+          ignoring: widget.hidden || isTransitioning,
+          child: ExcludeSemantics(
+            excluding: widget.hidden,
+            child: Transform.translate(
+              offset: Offset(0, _slideDownDp * t),
+              child: Opacity(
+                opacity: (1.0 - t).clamp(0.0, 1.0),
+                child: navBar,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

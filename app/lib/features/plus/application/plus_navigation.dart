@@ -1,24 +1,45 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:geo_utils/geo_utils.dart';
 import 'package:go_router/go_router.dart';
 
-/// Rute yang dibuka dari Peta atau Siap Naik.
-///
-/// Titik hanya tersedia saat rute dipilih di Peta. Dari Siap Naik, nama
-/// gunung tetap dibawa meskipun jalur belum terunduh supaya layar bisa
-/// menjelaskan apa yang kurang, bukan menampilkan angka karangan.
+import '../presentation/paywall_page.dart';
+
+/// Konteks gunung dan jalur yang dibawa ke layar Cuaca Rute dan Estimasi.
 class PlusRouteContext {
   const PlusRouteContext({
     required this.name,
     this.points = const <LatLng>[],
     this.trailId,
+    this.mountainId,
+    this.trailName,
+    this.gpxAssetPath,
+    this.distanceM,
+    this.elevationGainM,
+    this.basecampElevationM,
+    this.summitElevationM,
+    this.basecampCoord,
+    this.summitCoord,
   });
 
   final String name;
   final List<LatLng> points;
   final String? trailId;
+  final String? mountainId;
+  final String? trailName;
+  final String? gpxAssetPath;
+  final double? distanceM;
+  final double? elevationGainM;
+  final double? basecampElevationM;
+  final double? summitElevationM;
+  final LatLng? basecampCoord;
+  final LatLng? summitCoord;
 
   bool get hasPath => points.length >= 2;
+
+  bool get hasCalculatorMetadata =>
+      mountainId != null ||
+      gpxAssetPath != null ||
+      (distanceM != null && distanceM! >= 100);
 }
 
 abstract final class PlusRoutes {
@@ -37,14 +58,65 @@ abstract final class PlusRoutes {
       '$paywall?next=${Uri.encodeQueryComponent(next)}';
 }
 
-void openPlusWeather(BuildContext context, String routeName) {
-  context.push(PlusRoutes.weatherFor(routeName));
+bool _isImperativeRoute(BuildContext context) =>
+    ModalRoute.of(context)?.settings is! Page<dynamic>;
+
+class PlusPaywallArgs {
+  const PlusPaywallArgs({
+    this.notice,
+    this.requireFullSocialPlan = false,
+  });
+
+  final String? notice;
+  final bool requireFullSocialPlan;
+}
+
+void openPlusWeather(
+  BuildContext context,
+  String routeName, {
+  PlusRouteContext? route,
+}) {
+  context.push(PlusRoutes.weatherFor(routeName), extra: route);
 }
 
 void openPlusEstimate(BuildContext context, PlusRouteContext route) {
   context.push(PlusRoutes.estimate, extra: route);
 }
 
-void openPlusPaywall(BuildContext context) {
-  context.push(PlusRoutes.paywall);
+void openPlusPaywall(
+  BuildContext context, {
+  String? notice,
+  bool requireFullSocialPlan = false,
+}) {
+  final args = (notice != null || requireFullSocialPlan)
+      ? PlusPaywallArgs(
+          notice: notice,
+          requireFullSocialPlan: requireFullSocialPlan,
+        )
+      : null;
+  final router = GoRouter.maybeOf(context);
+  if (router != null && !_isImperativeRoute(context)) {
+    router.push(PlusRoutes.paywall, extra: args);
+    return;
+  }
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => PaywallPage(
+        notice: notice,
+        requireFullSocialPlan: requireFullSocialPlan,
+      ),
+    ),
+  );
+}
+
+void popPlusRoute(BuildContext context) {
+  final navigator = Navigator.of(context);
+  if (navigator.canPop()) {
+    navigator.maybePop();
+    return;
+  }
+  final router = GoRouter.maybeOf(context);
+  if (router != null && router.canPop()) {
+    router.pop();
+  }
 }

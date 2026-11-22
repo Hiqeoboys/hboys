@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 
 import 'crypto_interfaces.dart';
+import 'crypto_isolate_worker.dart';
 
 /// Identitas perangkat X25519 dan pembungkusan kunci grup.
 ///
@@ -17,6 +18,7 @@ class CryptographyIdentityService implements IdentityService, GroupKeyService {
     AesGcm? cipher,
     Hkdf? hkdf,
   })  : _store = store,
+        _useIsolate = keyExchange == null && cipher == null && hkdf == null,
         _x25519 = keyExchange ?? X25519(),
         _cipher = cipher ?? AesGcm.with256bits(),
         _hkdf = hkdf ?? Hkdf(hmac: Hmac.sha256(), outputLength: 32);
@@ -29,17 +31,28 @@ class CryptographyIdentityService implements IdentityService, GroupKeyService {
   static const String _wrapLabel = 'nama.group-key-wrap.v1';
 
   final SecretValueStore _store;
+  final bool _useIsolate;
   final X25519 _x25519;
   final AesGcm _cipher;
   final Hkdf _hkdf;
 
   Future<SimpleKeyPair>? _keyPair;
+  Future<Uint8List>? _seedFuture;
+  Future<Uint8List>? _publicKeyFuture;
 
   @override
   Future<Uint8List> publicKey() async {
+    if (_useIsolate) {
+      return _publicKeyFuture ??= _loadPublicKeyInIsolate();
+    }
     final pair = await _loadOrCreateKeyPair();
     final public = await pair.extractPublicKey();
     return Uint8List.fromList(public.bytes);
+  }
+
+  Future<Uint8List> _loadPublicKeyInIsolate() async {
+    final seed = await _loadOrCreateSeed();
+    return isolateExtractX25519PublicKey(seed);
   }
 
   @override
@@ -54,6 +67,13 @@ class CryptographyIdentityService implements IdentityService, GroupKeyService {
     required Uint8List memberPublicKey,
     required Uint8List associatedData,
   }) async {
+    if (_useIsolate) {
+      return isolateWrapGroupKeyForMember(
+        groupKey: groupKey,
+        memberPublicKey: memberPublicKey,
+        associatedData: associatedData,
+      );
+    }
     if (groupKey.length != _groupKeyLength) {
       throw ArgumentError.value(
         groupKey.length,
@@ -109,11 +129,49 @@ class CryptographyIdentityService implements IdentityService, GroupKeyService {
     return output;
   }
 
+  /// Wraps a group key for multiple recipients in one background isolate batch.
+  Future<List<Map<String, Object>>> wrapForMembersBatch({
+    required Uint8List groupKey,
+    required List<Map<String, Object>> recipients,
+    required Uint8List associatedData,
+  }) async {
+    if (_useIsolate) {
+      return isolateWrapGroupKeyBatch(
+        groupKey: groupKey,
+        recipients: recipients,
+        associatedData: associatedData,
+      );
+    }
+    final result = <Map<String, Object>>[];
+    for (final item in recipients) {
+      final userId = item['userId'] as String;
+      final publicKey = item['publicKey'] as Uint8List;
+      final wrappedKey = await wrapForMember(
+        groupKey: groupKey,
+        memberPublicKey: publicKey,
+        associatedData: associatedData,
+      );
+      result.add(<String, Object>{
+        'userId': userId,
+        'wrappedKey': wrappedKey,
+      });
+    }
+    return result;
+  }
+
   @override
   Future<Uint8List> unwrap({
     required Uint8List wrappedKey,
     required Uint8List associatedData,
   }) async {
+    if (_useIsolate) {
+      final seed = await _loadOrCreateSeed();
+      return isolateUnwrapGroupKey(
+        privateSeed: seed,
+        wrappedKey: wrappedKey,
+        associatedData: associatedData,
+      );
+    }
     final nonceLength = _cipher.nonceLength;
     const macLength = 16;
     final minimum =
@@ -178,6 +236,34 @@ class CryptographyIdentityService implements IdentityService, GroupKeyService {
       nonce: ephemeralPublic,
       info: info,
     );
+  }
+
+  Future<Uint8List> _loadOrCreateSeed() {
+    return _seedFuture ??= _loadOrCreateSeedOnce();
+  }
+
+  Future<Uint8List> _loadOrCreateSeedOnce() async {
+    final stored = await _store.read(_privateKeyStorageKey);
+    if (stored != null) {
+      try {
+        final bytes = base64Decode(stored);
+        if (bytes.length == 32) {
+          return Uint8List.fromList(bytes);
+        }
+      } on FormatException {
+        // Nilai rusak dihapus dan diganti; kunci lama tidak bisa dipulihkan.
+      }
+      await _store.delete(_privateKeyStorageKey);
+    }
+    final generated = await isolateGenerateX25519KeyPair();
+    final seed = generated['seed']!;
+    final publicKey = generated['publicKey']!;
+    _publicKeyFuture = Future<Uint8List>.value(publicKey);
+    await _store.write(
+      _privateKeyStorageKey,
+      base64Encode(seed),
+    );
+    return seed;
   }
 
   Future<SimpleKeyPair> _loadOrCreateKeyPair() {

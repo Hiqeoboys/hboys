@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/brand/app_brand.dart';
 import '../../../core/constants/emergency_numbers.dart';
@@ -17,7 +18,11 @@ import '../../../infrastructure/database/app_database.dart';
 import '../../../infrastructure/database/database_connection.dart';
 import '../../../infrastructure/database/repositories/drift_safety_repository.dart';
 import '../../../infrastructure/power/power_profile_manager.dart';
+import '../../chat/domain/group_chat_models.dart';
+import '../application/sos_action_service.dart';
 import '../application/sos_location.dart';
+import '../application/sos_offline_queue_service.dart';
+import '../application/sos_sms_service.dart';
 import '../domain/safety_repository.dart';
 import '../domain/sos_category.dart';
 import '../domain/sos_event.dart';
@@ -27,23 +32,37 @@ import 'slide_to_call.dart';
 
 const double _ringSize = 188;
 
+/// Konstanta tunggal untuk menampilkan petunjuk sekali pakai
+/// "Tahan cincin untuk mengaktifkan" di bawah cincin SOS pada pembukaan pertama.
+const bool kShowSosHoldHint = false;
+
+const String _kSosHoldHintSeenKey = 'hiqeo_sos_hold_hint_seen_v1';
+
 /// Layar SOS selalu memakai palet terbalik (biru gelap), tidak mengikuti tema
-/// aplikasi. Hanya penyimpanan lokal yang diklaim; jalur kirim ke anggota,
-/// server, dan kontak darurat belum ada sehingga barisnya tetap kosong.
+/// aplikasi. Tahan 3 detik langsung memicu senter Morse, sirene volume penuh,
+/// penyimpanan lokal, 1 UPSERT `sos_events`, pesan grup/Hiqeo Mesh, dan SMS.
 class SosPage extends StatefulWidget {
   const SosPage({
     super.key,
     this.repository,
     this.locationProvider = const DeviceSosLocationProvider(),
     this.dialer = const MethodChannelPhoneDialer(),
+    this.actionRunner,
+    this.smsSender,
+    this.offlineQueue,
     this.clock = const SystemClock(),
+    this.showHoldHint = kShowSosHoldHint,
   });
 
   /// Disuntikkan untuk uji; produksi membuka basis data perangkat.
   final SafetyRepository? repository;
   final SosLocationProvider locationProvider;
   final PhoneDialer dialer;
+  final SosActionRunner? actionRunner;
+  final SosSmsSender? smsSender;
+  final SosOfflineQueueService? offlineQueue;
   final Clock clock;
+  final bool showHoldHint;
 
   @override
   State<SosPage> createState() => _SosPageState();
@@ -53,8 +72,15 @@ class _SosPageState extends State<SosPage> {
   static final DeviceTier _deviceTier = VisualEffectPolicy.probeDeviceTier();
 
   late final SosTriggerController _trigger = SosTriggerController(
-    countdownDuration: const Duration(seconds: 3),
+    holdDuration: const Duration(seconds: 3),
+    countdownDuration: Duration.zero,
   );
+  late final SosActionRunner _actionRunner =
+      widget.actionRunner ?? DeviceSosActionRunner();
+  late final SosSmsSender _smsSender =
+      widget.smsSender ?? const MethodChannelSosSmsSender();
+  late final SosOfflineQueueService _offlineQueue =
+      widget.offlineQueue ?? SosOfflineQueueService.instance;
   late final Future<SafetyRepository?> _repositoryFuture;
 
   AppDatabase? _database;
@@ -63,6 +89,8 @@ class _SosPageState extends State<SosPage> {
   SosStatusTracker _tracker = SosStatusTracker();
   SosCategory _category = SosCategory.other;
   SosEvent? _savedEvent;
+  SosDispatchOutcome? _sosOutcome;
+  String? _activeSosUuid;
   bool _cancelRequested = false;
   bool _cancelling = false;
   bool _saving = false;
@@ -72,24 +100,97 @@ class _SosPageState extends State<SosPage> {
   DateTime? _holdStarted;
   Future<SosFix?>? _fixFuture;
   Timer? _ticker;
+  bool _smsSupported = false;
+  bool _smsGranted = true;
 
   /// Kunci trek geser yang sedang dipakai, supaya hanya satu yang aktif.
   String? _activeSlider;
+  bool _showFirstTimeHint = false;
 
   @override
   void initState() {
     super.initState();
+    _offlineQueue.addListener(_onQueueChanged);
+    unawaited(_offlineQueue.load());
     final injected = widget.repository;
     if (injected != null) {
       _repositoryFuture = Future<SafetyRepository?>.value(injected);
     } else {
       _repositoryFuture = _openRepository();
     }
+    if (widget.showHoldHint) {
+      unawaited(_loadHoldHintSeen());
+    }
+    unawaited(_initSmsPermissionState());
+  }
+
+  void _onQueueChanged() {
+    if (!mounted) return;
+    final activeId = _activeSosUuid;
+    if (activeId != null && _offlineQueue.wasSynced(activeId)) {
+      _tracker.mark(SosDeliveryStage.forwardedToServer);
+    }
+    setState(() {});
+  }
+
+  Future<void> _initSmsPermissionState() async {
+    if (!_smsSender.isSupported) return;
+    final granted = await _smsSender.hasPermission();
+    if (!mounted) return;
+    setState(() {
+      _smsSupported = true;
+      _smsGranted = granted;
+    });
+    if (!granted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final approved = await promptEmergencySmsPermission(
+          context,
+          sender: _smsSender,
+          onlyOncePerInstall: true,
+        );
+        if (mounted) {
+          setState(() => _smsGranted = approved);
+        }
+      });
+    }
+  }
+
+  Future<void> _requestSmsPermissionFromChip() async {
+    final approved = await promptEmergencySmsPermission(
+      context,
+      sender: _smsSender,
+    );
+    if (!mounted) return;
+    setState(() => _smsGranted = approved);
+  }
+
+  Future<void> _loadHoldHintSeen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seen = prefs.getBool(_kSosHoldHintSeenKey) ?? false;
+      if (!seen && mounted) {
+        setState(() => _showFirstTimeHint = true);
+        await prefs.setBool(_kSosHoldHintSeenKey, true);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _showFirstTimeHint = true);
+    }
   }
 
   @override
   void dispose() {
+    _offlineQueue.removeListener(_onQueueChanged);
     _ticker?.cancel();
+    if (_active ||
+        _sosOutcome?.flashlightActive == true ||
+        _sosOutcome?.sirenActive == true) {
+      unawaited(
+        _actionRunner.deactivate(
+          remoteSosId: _sosOutcome?.remoteSosId ?? _activeSosUuid,
+        ),
+      );
+    }
     final database = _database;
     if (database != null) unawaited(database.close());
     super.dispose();
@@ -124,7 +225,7 @@ class _SosPageState extends State<SosPage> {
 
   void _ensureTicker() {
     _ticker ??= Timer.periodic(
-      const Duration(milliseconds: 100),
+      const Duration(milliseconds: 50),
       (_) => _onTick(),
     );
   }
@@ -139,8 +240,9 @@ class _SosPageState extends State<SosPage> {
     final before = _trigger.state;
     final after = _trigger.tick(now);
     if (before == SosTriggerState.holding &&
-        after == SosTriggerState.countdown) {
-      _beginCountdown(now);
+        (after == SosTriggerState.countdown ||
+            after == SosTriggerState.triggered)) {
+      _activateSos(now);
     }
     if (after == SosTriggerState.holding ||
         after == SosTriggerState.countdown) {
@@ -164,9 +266,13 @@ class _SosPageState extends State<SosPage> {
     _saveNotice = null;
     _notice = null;
     _savedEvent = null;
+    _sosOutcome = null;
+    _activeSosUuid = null;
     _tracker = SosStatusTracker();
     _category = SosCategory.other;
     _holdStarted = now;
+    _showFirstTimeHint = false;
+    unawaited(HapticFeedback.mediumImpact());
     _fixFuture = widget.locationProvider.locate();
     _trigger.holdStarted(now);
     _ensureTicker();
@@ -180,12 +286,16 @@ class _SosPageState extends State<SosPage> {
     if (mounted) setState(() {});
   }
 
-  void _beginCountdown(DateTime now) {
+  void _activateSos(DateTime now) {
+    unawaited(HapticFeedback.heavyImpact());
     _saving = true;
     _saveNotice = null;
+    final sosUuid = generateUuidV4();
+    _activeSosUuid = sosUuid;
     unawaited(
-      _saveEvent(
+      _dispatchAndPersistSos(
         token: _token,
+        sosUuid: sosUuid,
         fix: _fixFuture,
         category: _category,
         startedAt: now,
@@ -193,8 +303,9 @@ class _SosPageState extends State<SosPage> {
     );
   }
 
-  Future<void> _saveEvent({
+  Future<void> _dispatchAndPersistSos({
     required Object? token,
+    required String sosUuid,
     required Future<SosFix?>? fix,
     required SosCategory category,
     required DateTime startedAt,
@@ -207,60 +318,100 @@ class _SosPageState extends State<SosPage> {
       located = null;
     }
     if (!mounted || token != _token) return;
-
-    if (located == null) {
-      setState(() {
-        _saving = false;
-        _saveNotice =
-            'Lokasi GPS belum tersedia. SOS tidak tersimpan di HP. Coba lagi saat sinyal GPS didapat.';
-      });
-      return;
-    }
-    if (repository == null) {
-      setState(() {
-        _saving = false;
-        _saveNotice = 'Penyimpanan lokal belum siap. SOS tidak tersimpan di HP.';
-      });
-      return;
-    }
     if (_cancelRequested) {
       setState(() => _saving = false);
       return;
     }
 
-    final event = SosEvent(
-      id: 'sos-${startedAt.microsecondsSinceEpoch}',
-      authorId: 'perangkat-lokal',
-      category: category,
-      lat: located.lat,
-      lon: located.lon,
-      accuracyM: located.accuracyM,
-      createdAtUtc: startedAt,
-      receivedAtUtc: widget.clock.nowUtc(),
-    );
-    try {
-      await repository.saveSosEvent(event);
-    } catch (_) {
-      if (!mounted || token != _token) return;
-      setState(() {
-        _saving = false;
-        _saveNotice = 'SOS gagal disimpan di HP. Coba lagi.';
-      });
+    // Jalankan aksi perangkat keras & jaringan (senter Morse, sirene volume
+    // maksimal, 1 UPSERT sos_events, pesan grup/Mesh, SMS darurat) bersamaan
+    // dengan penyimpanan lokal SQLite.
+    final actionFuture = _actionRunner
+        .activate(
+          sosUuid: sosUuid,
+          fix: located,
+          category: category,
+          triggeredAtUtc: startedAt,
+          safetyRepository: repository,
+        )
+        .catchError((Object _) => const SosDispatchOutcome());
+
+    SosEvent? savedEvent;
+    String? localNotice;
+    if (located == null) {
+      localNotice =
+          'Lokasi GPS belum tersedia. Senter & sirene SOS tetap aktif; koordinat belum tersimpan di HP.';
+    } else if (repository == null) {
+      localNotice =
+          'Penyimpanan lokal belum siap. Senter & sirene SOS tetap aktif.';
+    } else {
+      final candidate = SosEvent(
+        id: sosUuid,
+        authorId: 'perangkat-lokal',
+        category: category,
+        lat: located.lat,
+        lon: located.lon,
+        accuracyM: located.accuracyM,
+        createdAtUtc: startedAt,
+        receivedAtUtc: widget.clock.nowUtc(),
+      );
+      try {
+        await repository.saveSosEvent(candidate);
+        savedEvent = candidate;
+      } catch (_) {
+        localNotice = 'SOS gagal disimpan di HP. Coba lagi.';
+      }
+    }
+
+    final outcome = await actionFuture;
+
+    if (!mounted || token != _token) {
+      if (outcome.flashlightActive || outcome.sirenActive) {
+        unawaited(
+          _actionRunner.deactivate(
+            remoteSosId: outcome.remoteSosId ?? sosUuid,
+          ),
+        );
+      }
       return;
     }
-    if (!mounted || token != _token) return;
-
-    _tracker.mark(SosDeliveryStage.savedLocally);
-    setState(() {
-      _savedEvent = event;
-      _saving = false;
-      _saveNotice = null;
-    });
 
     if (_cancelRequested) {
-      await _cancelPersisted(event);
-    } else if (_category != event.category) {
-      await _persistCategory(event, _category);
+      unawaited(
+        _actionRunner.deactivate(remoteSosId: outcome.remoteSosId ?? sosUuid),
+      );
+      if (savedEvent != null) {
+        await _cancelPersisted(savedEvent);
+      }
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
+
+    if (savedEvent != null) {
+      _tracker.mark(SosDeliveryStage.savedLocally);
+    }
+    if (outcome.sentGroupMessage || outcome.sentMeshBroadcast) {
+      _tracker.mark(SosDeliveryStage.sentToPeers, peers: 1);
+    }
+    if (outcome.savedRemoteUpsert || _offlineQueue.wasSynced(sosUuid)) {
+      _tracker.mark(SosDeliveryStage.forwardedToServer);
+    }
+    if (outcome.notifiedEmergencyContacts ||
+        outcome.sentDirectSms ||
+        outcome.openedOfflineSms ||
+        outcome.whatsappAutoSent) {
+      _tracker.mark(SosDeliveryStage.deliveredToEmergencyContact);
+    }
+
+    setState(() {
+      _savedEvent = savedEvent;
+      _sosOutcome = outcome;
+      _saving = false;
+      _saveNotice = localNotice;
+    });
+
+    if (savedEvent != null && _category != savedEvent.category) {
+      await _persistCategory(savedEvent, _category);
     }
   }
 
@@ -270,6 +421,14 @@ class _SosPageState extends State<SosPage> {
     _stopTicker();
     _cancelRequested = true;
     setState(() => _cancelling = true);
+    final remoteId = _sosOutcome?.remoteSosId ?? _activeSosUuid;
+    if (remoteId != null) {
+      unawaited(_offlineQueue.markCancelled(remoteId, widget.clock.nowUtc()));
+    }
+    try {
+      await _actionRunner.deactivate(remoteSosId: remoteId);
+    } catch (_) {}
+    _sosOutcome = null;
     final event = _savedEvent;
     if (event != null) await _cancelPersisted(event);
     if (mounted) setState(() => _cancelling = false);
@@ -363,6 +522,8 @@ class _SosPageState extends State<SosPage> {
     _saveNotice = null;
     _notice = null;
     _savedEvent = null;
+    _sosOutcome = null;
+    _activeSosUuid = null;
     _tracker = SosStatusTracker();
     _category = SosCategory.other;
     _holdStarted = null;
@@ -378,7 +539,7 @@ class _SosPageState extends State<SosPage> {
     _beginHold();
     final startedAt = widget.clock.nowUtc().add(_trigger.holdDuration);
     _trigger.tick(startedAt);
-    _beginCountdown(startedAt);
+    _activateSos(startedAt);
     if (mounted) setState(() {});
   }
 
@@ -413,10 +574,9 @@ class _SosPageState extends State<SosPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Batalkan SOS?'),
+        title: const Text('Matikan SOS?'),
         content: const Text(
-          'SOS yang sedang berjalan akan ditandai batal di HP ini. '
-          'Tidak ada pesan yang terkirim ke siapa pun.',
+          'Senter Morse, sirene darurat, dan status SOS aktif akan dimatikan.',
         ),
         actions: <Widget>[
           TextButton(
@@ -425,7 +585,7 @@ class _SosPageState extends State<SosPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Batalkan SOS'),
+            child: const Text('Matikan SOS'),
           ),
         ],
       ),
@@ -481,9 +641,7 @@ class _SosPageState extends State<SosPage> {
         final remaining = _trigger.countdownRemaining(now) ?? Duration.zero;
         final total = _trigger.countdownDuration.inMilliseconds;
         if (total <= 0) return 0;
-        return (remaining.inMilliseconds / total)
-            .clamp(0.0, 1.0)
-            .toDouble();
+        return (remaining.inMilliseconds / total).clamp(0.0, 1.0).toDouble();
       case SosTriggerState.triggered:
       case SosTriggerState.cancelled:
         return 1;
@@ -498,41 +656,41 @@ class _SosPageState extends State<SosPage> {
   }
 
   String _headerHint() => switch (_state) {
-        SosTriggerState.idle => 'Tekan-tahan 3 detik untuk memulai',
+        SosTriggerState.idle => '',
         SosTriggerState.holding => 'Tetap tahan hingga lingkaran penuh',
-        SosTriggerState.countdown ||
-        SosTriggerState.triggered =>
-          'Tekan-tahan 3 detik telah terpenuhi',
-        SosTriggerState.cancelled => 'SOS dibatalkan',
+        SosTriggerState.countdown => 'Tekan-tahan 3 detik telah terpenuhi',
+        SosTriggerState.triggered => 'SOS aktif',
+        SosTriggerState.cancelled => 'SOS dimatikan',
       };
 
   String _copyText() => switch (_state) {
-        SosTriggerState.idle =>
-          'SOS hanya tersimpan di HP ini. Tidak ada pengiriman otomatis.',
-        SosTriggerState.holding => 'Lepas untuk membatalkan.',
+        SosTriggerState.idle => 'Tekan dan tahan 3 detik',
+        SosTriggerState.holding =>
+          'Tetap tahan hingga penuh. Lepas untuk membatalkan.',
         SosTriggerState.countdown => _saving
-            ? 'Mencari lokasi GPS sebelum menyimpan…'
-            : (_saveNotice ?? 'SOS disimpan otomatis, kecuali dibatalkan.'),
+            ? 'Mengaktifkan SOS…'
+            : (_saveNotice ?? 'SOS aktif.'),
         SosTriggerState.triggered => _saving
-            ? 'SOS aktif. Menunggu lokasi GPS untuk disimpan.'
+            ? 'Mengaktifkan SOS, senter Morse & sirene…'
             : (_saveNotice ??
-                'SOS tersimpan di HP. Tidak ada pengiriman otomatis ke anggota atau kontak darurat.'),
+                'SOS aktif. Senter Morse, sirene, dan peringatan darurat sedang berjalan.'),
         SosTriggerState.cancelled => _cancelling
-            ? 'Menandai SOS batal di HP…'
+            ? 'Mematikan SOS…'
             : (_notice ??
                 (_savedEvent != null
-                    ? 'SOS dibatalkan. Data lokal ditandai batal; tidak ada pesan terkirim.'
-                    : 'SOS dibatalkan sebelum tersimpan. Tidak ada data yang dikirim.')),
+                    ? 'SOS dimatikan. Senter, sirene, dan status darurat telah dihentikan.'
+                    : 'SOS dimatikan.')),
       };
 
   String _ringSemantics() => switch (_state) {
         SosTriggerState.idle =>
-          'Tombol SOS. Tekan-tahan 3 detik untuk memulai.',
+          'Tombol SOS. Tekan dan tahan 3 detik untuk mengaktifkan.',
         SosTriggerState.holding => 'Tetap tahan. Lepas untuk membatalkan.',
         SosTriggerState.countdown =>
-          'Hitung mundur SOS ${_countdownSeconds() ?? 0} detik. Tombol batal tersedia.',
-        SosTriggerState.triggered => 'SOS aktif di perangkat ini.',
-        SosTriggerState.cancelled => 'SOS dibatalkan.',
+          'Hitung mundur SOS ${_countdownSeconds() ?? 0} detik. Tombol matikan tersedia.',
+        SosTriggerState.triggered =>
+          'SOS aktif. Senter Morse dan sirene darurat sedang menyala.',
+        SosTriggerState.cancelled => 'SOS dimatikan.',
       };
 
   @override
@@ -579,6 +737,20 @@ class _SosPageState extends State<SosPage> {
                                 _header(theme, colors),
                                 const SizedBox(height: 20),
                                 Center(child: _ring(theme, colors)),
+                                if (_showFirstTimeHint &&
+                                    _state == SosTriggerState.idle) ...<Widget>[
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'Tahan cincin untuk mengaktifkan',
+                                    key: const ValueKey<String>(
+                                      'sos-first-time-hint',
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colors.textSecondary,
+                                    ),
+                                  ),
+                                ],
                                 const SizedBox(height: HiqeoSpacing.lg),
                                 Text(
                                   _copyText(),
@@ -590,7 +762,38 @@ class _SosPageState extends State<SosPage> {
                                     height: 1.4,
                                   ),
                                 ),
-                                if (_repositoryError != null && !_active) ...<Widget>[
+                                if (_smsSupported &&
+                                    !_smsGranted &&
+                                    !_active) ...<Widget>[
+                                  const SizedBox(height: HiqeoSpacing.md),
+                                  Center(
+                                    child: OutlinedButton.icon(
+                                      key: const ValueKey<String>(
+                                        'sos-enable-sms-pill',
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: colors.textPrimary,
+                                        side: BorderSide(
+                                          color: colors.warning
+                                              .withValues(alpha: 0.65),
+                                        ),
+                                        shape: const StadiumBorder(),
+                                      ),
+                                      onPressed: () => unawaited(
+                                        _requestSmsPermissionFromChip(),
+                                      ),
+                                      icon: const Icon(
+                                        Icons.sms_outlined,
+                                        size: 18,
+                                      ),
+                                      label: const Text(
+                                        'Aktifkan SMS darurat otomatis',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                if (_repositoryError != null &&
+                                    !_active) ...<Widget>[
                                   const SizedBox(height: HiqeoSpacing.sm),
                                   Text(
                                     _repositoryError!,
@@ -601,10 +804,38 @@ class _SosPageState extends State<SosPage> {
                                   ),
                                 ],
                                 if (_active) ...<Widget>[
+                                  if (_sosOutcome?.flashlightActive == true ||
+                                      _sosOutcome?.sirenActive == true) ...<Widget>[
+                                    const SizedBox(height: HiqeoSpacing.md),
+                                    Wrap(
+                                      alignment: WrapAlignment.center,
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: <Widget>[
+                                        if (_sosOutcome?.flashlightActive ==
+                                            true)
+                                          const _HardwareBadge(
+                                            key: ValueKey(
+                                              'sos-hardware-flashlight',
+                                            ),
+                                            icon: Icons.flashlight_on_rounded,
+                                            label: 'Senter Morse SOS',
+                                          ),
+                                        if (_sosOutcome?.sirenActive == true)
+                                          const _HardwareBadge(
+                                            key: ValueKey(
+                                              'sos-hardware-siren',
+                                            ),
+                                            icon: Icons.volume_up_rounded,
+                                            label: 'Sirene aktif',
+                                          ),
+                                      ],
+                                    ),
+                                  ],
                                   const SizedBox(height: HiqeoSpacing.lg),
                                   _SosPillButton(
                                     key: const ValueKey('sos-cancel'),
-                                    label: 'Batal, saya aman',
+                                    label: 'Matikan SOS',
                                     onTap: () => unawaited(_cancel()),
                                   ),
                                   const SizedBox(height: HiqeoSpacing.lg),
@@ -612,7 +843,8 @@ class _SosPageState extends State<SosPage> {
                                   const SizedBox(height: 20),
                                   _ladder(theme, colors),
                                 ],
-                                if (_state == SosTriggerState.cancelled) ...<Widget>[
+                                if (_state ==
+                                    SosTriggerState.cancelled) ...<Widget>[
                                   const SizedBox(height: HiqeoSpacing.lg),
                                   _SosPillButton(
                                     key: const ValueKey('sos-reset'),
@@ -640,6 +872,7 @@ class _SosPageState extends State<SosPage> {
   }
 
   Widget _header(ThemeData theme, HiqeoColors colors) {
+    final hint = _headerHint();
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
@@ -649,16 +882,18 @@ class _SosPageState extends State<SosPage> {
           label: 'Tutup',
           onTap: _cancelling ? null : () => unawaited(_requestClose()),
         ),
-        const SizedBox(width: HiqeoSpacing.lg),
-        Expanded(
-          child: Text(
-            _headerHint(),
-            textAlign: TextAlign.right,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.textSecondary,
+        if (hint.isNotEmpty) ...<Widget>[
+          const SizedBox(width: HiqeoSpacing.lg),
+          Expanded(
+            child: Text(
+              hint,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.textSecondary,
+              ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -685,7 +920,12 @@ class _SosPageState extends State<SosPage> {
               painter: _SosRingPainter(
                 progress: _ringProgress(),
                 trackColor: colors.textSecondary.withValues(alpha: 0.45),
-                arcColor: colors.textPrimary,
+                arcColor: _state == SosTriggerState.triggered
+                    ? colors.warning
+                    : colors.textPrimary,
+                fillColor: _state == SosTriggerState.triggered
+                    ? colors.warning.withValues(alpha: 0.34)
+                    : colors.warning.withValues(alpha: 0.24),
               ),
               child: Center(child: _ringCenter(theme, colors)),
             ),
@@ -702,9 +942,7 @@ class _SosPageState extends State<SosPage> {
       height: 1,
     );
     return switch (_state) {
-      SosTriggerState.idle ||
-      SosTriggerState.holding =>
-        Text(
+      SosTriggerState.idle || SosTriggerState.holding => Text(
           'SOS',
           style: base?.copyWith(fontSize: 44, letterSpacing: -1),
         ),
@@ -743,16 +981,61 @@ class _SosPageState extends State<SosPage> {
   }
 
   Widget _ladder(ThemeData theme, HiqeoColors colors) {
+    final outcome = _sosOutcome;
+    final activeId = _activeSosUuid;
     final saved = _tracker.reached(SosDeliveryStage.savedLocally);
-    final delivered = _tracker.reached(SosDeliveryStage.sentToPeers) ||
-        _tracker.reached(SosDeliveryStage.acknowledgedByMember) ||
-        _tracker.reached(SosDeliveryStage.forwardedToServer) ||
+    final syncedFromQueue =
+        activeId != null && _offlineQueue.wasSynced(activeId);
+    final waitingInternetSync = !syncedFromQueue &&
+        (outcome?.queuedForServerSync == true ||
+            (activeId != null && _offlineQueue.isPending(activeId)));
+
+    final serverReached =
+        _tracker.reached(SosDeliveryStage.forwardedToServer) || syncedFromQueue;
+    final contactReached =
         _tracker.reached(SosDeliveryStage.deliveredToEmergencyContact);
+
+    final peerLabel = outcome?.sentMeshBroadcast == true &&
+            outcome?.sentGroupMessage != true
+        ? 'Disiarkan via Hiqeo Mesh (offline)'
+        : (outcome?.sentGroupMessage == true && outcome?.sentMeshBroadcast == true
+            ? 'Terkirim ke chat grup & Hiqeo Mesh'
+            : (outcome?.sentGroupMessage == true
+                ? 'Terkirim ke ruang obrolan grup'
+                : 'Pesan grup / Hiqeo Mesh'));
+
+    final serverLabel = serverReached
+        ? 'Terkirim ke server & kontak Hiqeo'
+        : (waitingInternetSync
+            ? 'Menunggu sinyal internet untuk sinkronisasi server'
+            : 'Diteruskan ke server');
+
+    final String contactLabel;
+    if (outcome?.sentDirectSms == true && outcome?.whatsappAutoSent == true) {
+      contactLabel = 'SMS Darurat & WhatsApp terkirim otomatis';
+    } else if (outcome?.sentDirectSms == true) {
+      contactLabel = 'SMS Darurat terkirim otomatis';
+    } else if (outcome?.openedOfflineSms == true) {
+      contactLabel = 'Draft SMS darurat dibuka otomatis';
+    } else if (outcome?.whatsappAutoSent == true) {
+      contactLabel = 'Pesan WhatsApp & kontak darurat terkirim otomatis';
+    } else if (outcome?.smsPermissionDenied == true &&
+        outcome?.hasPhoneEmergencyContacts == true) {
+      contactLabel = 'Izin SMS darurat otomatis belum diaktifkan';
+    } else {
+      contactLabel = 'Pesan sampai ke kontak darurat';
+    }
+
+    final anyExternalDelivery =
+        _tracker.reached(SosDeliveryStage.sentToPeers) ||
+            serverReached ||
+            contactReached;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          'Status pengiriman, ditampilkan apa adanya',
+          'Status pengiriman',
           style: theme.textTheme.bodySmall?.copyWith(
             color: colors.textSecondary,
           ),
@@ -765,26 +1048,32 @@ class _SosPageState extends State<SosPage> {
         ),
         _LadderRow(
           key: const ValueKey('sos-stage-sentToPeers'),
-          label: 'Diterima ${_tracker.peerCount} anggota',
+          label: peerLabel,
           reached: _tracker.reached(SosDeliveryStage.sentToPeers),
         ),
         _LadderRow(
           key: const ValueKey('sos-stage-forwardedToServer'),
-          label: 'Diteruskan ke server',
-          reached: _tracker.reached(SosDeliveryStage.forwardedToServer),
+          label: serverLabel,
+          reached: serverReached,
+          pending: waitingInternetSync && !serverReached,
         ),
         _LadderRow(
           key: const ValueKey('sos-stage-deliveredToContact'),
-          label: 'Pesan sampai ke kontak darurat',
-          reached: _tracker.reached(
-            SosDeliveryStage.deliveredToEmergencyContact,
-          ),
+          label: contactLabel,
+          reached: contactReached,
         ),
-        if (saved && !delivered) ...<Widget>[
+        if (saved && waitingInternetSync && !serverReached) ...<Widget>[
           const SizedBox(height: HiqeoSpacing.sm),
           Text(
-            'Hanya penyimpanan lokal yang terjadi. Pengiriman ke anggota, '
-            'server, dan kontak darurat belum aktif.',
+            'SOS akan otomatis dikirim ke server begitu sinyal internet kembali tersedia.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+        ] else if (saved && !anyExternalDelivery) ...<Widget>[
+          const SizedBox(height: HiqeoSpacing.sm),
+          Text(
+            'Mode offline / tanpa grup aktif: senter Morse & sirene tetap bekerja 100% di HP ini.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: colors.textSecondary,
             ),
@@ -880,16 +1169,57 @@ const List<_CategoryOption> _categoryOptions = <_CategoryOption>[
   _CategoryOption(SosCategory.weather, 'CUACA'),
 ];
 
+class _HardwareBadge extends StatelessWidget {
+  const _HardwareBadge({
+    super.key,
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.warning.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(HiqeoRadius.pill),
+        border: Border.all(color: colors.warning.withValues(alpha: 0.55)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 15, color: colors.textPrimary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: colors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SosRingPainter extends CustomPainter {
   const _SosRingPainter({
     required this.progress,
     required this.trackColor,
     required this.arcColor,
+    required this.fillColor,
   });
 
   final double progress;
   final Color trackColor;
   final Color arcColor;
+  final Color fillColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -903,6 +1233,13 @@ class _SosRingPainter extends CustomPainter {
     canvas.drawCircle(center, radius, track);
     final clamped = progress.clamp(0.0, 1.0).toDouble();
     if (clamped <= 0) return;
+    final fillRadius = (radius - stroke / 2) * clamped;
+    if (fillRadius > 0) {
+      final fill = Paint()
+        ..style = PaintingStyle.fill
+        ..color = fillColor;
+      canvas.drawCircle(center, fillRadius, fill);
+    }
     final arc = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
@@ -921,7 +1258,8 @@ class _SosRingPainter extends CustomPainter {
   bool shouldRepaint(_SosRingPainter oldDelegate) =>
       oldDelegate.progress != progress ||
       oldDelegate.trackColor != trackColor ||
-      oldDelegate.arcColor != arcColor;
+      oldDelegate.arcColor != arcColor ||
+      oldDelegate.fillColor != fillColor;
 }
 
 class _CategoryChip extends StatelessWidget {
@@ -966,9 +1304,8 @@ class _CategoryChip extends StatelessWidget {
               child: Text(
                 label,
                 style: theme.textTheme.labelLarge?.copyWith(
-                  color: selected
-                      ? HiqeoColors.light.surface
-                      : colors.textPrimary,
+                  color:
+                      selected ? HiqeoColors.light.surface : colors.textPrimary,
                   letterSpacing: 0.4,
                 ),
               ),
@@ -1028,18 +1365,21 @@ class _LadderRow extends StatelessWidget {
     super.key,
     required this.label,
     required this.reached,
+    this.pending = false,
   });
 
   final String label;
   final bool reached;
+  final bool pending;
 
   @override
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
+    final semanticSuffix = reached ? 'sudah' : (pending ? 'menunggu' : 'belum');
     return Semantics(
       container: true,
-      label: '$label: ${reached ? 'sudah' : 'belum'}',
+      label: '$label: $semanticSuffix',
       child: ExcludeSemantics(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
@@ -1054,9 +1394,14 @@ class _LadderRow extends StatelessWidget {
                         shape: BoxShape.circle,
                       )
                     : BoxDecoration(
+                        color: pending
+                            ? colors.warning.withValues(alpha: 0.22)
+                            : Colors.transparent,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: colors.textSecondary.withValues(alpha: 0.6),
+                          color: pending
+                              ? colors.warning
+                              : colors.textSecondary.withValues(alpha: 0.6),
                           width: 1.5,
                         ),
                       ),
@@ -1069,15 +1414,24 @@ class _LadderRow extends StatelessWidget {
                           color: HiqeoColors.light.textPrimary,
                         ),
                       )
-                    : null,
+                    : (pending
+                        ? Center(
+                            child: Icon(
+                              Icons.schedule_rounded,
+                              size: 13,
+                              color: colors.warning,
+                            ),
+                          )
+                        : null),
               ),
               const SizedBox(width: HiqeoSpacing.md),
               Expanded(
                 child: Text(
                   label,
                   style: theme.textTheme.bodyLarge?.copyWith(
-                    color:
-                        reached ? colors.textPrimary : colors.textSecondary,
+                    color: (reached || pending)
+                        ? colors.textPrimary
+                        : colors.textSecondary,
                   ),
                 ),
               ),

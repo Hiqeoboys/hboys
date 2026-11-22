@@ -1,18 +1,28 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/groups/domain/group.dart';
 import '../../features/groups/domain/group_remote_service.dart';
 import '../../features/groups/domain/invitation.dart';
+import '../storage/media_url_normalizer.dart';
 
-class SupabaseGroupRemoteService implements GroupRemoteService {
+class SupabaseGroupRemoteService
+    implements
+        GroupRemoteService,
+        GroupMemberCountProvider,
+        GroupMissingKeyProvider,
+        GroupAvatarUpdater {
   SupabaseGroupRemoteService(this._client);
 
   final SupabaseClient _client;
 
+  static const Duration _timeout = Duration(seconds: 9);
+
   @override
   Future<List<RemoteGroup>> myGroups() async {
     try {
-      final data = await _client.rpc('my_groups');
+      final data = await _client.rpc('my_groups').timeout(_timeout);
       return _rows(data).map(_remoteGroupFromMap).toList(growable: false);
     } on PostgrestException catch (error) {
       throw _groupError(error);
@@ -29,9 +39,10 @@ class SupabaseGroupRemoteService implements GroupRemoteService {
         'create_group',
         params: {
           'p_name': name.trim(),
-          'p_mountain': mountain?.trim().isEmpty ?? true ? null : mountain!.trim(),
+          'p_mountain':
+              mountain?.trim().isEmpty ?? true ? null : mountain!.trim(),
         },
-      );
+      ).timeout(_timeout);
       final rows = _rows(data);
       if (rows.isEmpty) {
         throw const GroupOperationException(
@@ -57,7 +68,7 @@ class SupabaseGroupRemoteService implements GroupRemoteService {
           'p_group_id': groupId,
           'p_username': username,
         },
-      );
+      ).timeout(_timeout);
     } on PostgrestException catch (error) {
       throw _groupError(error);
     }
@@ -68,7 +79,8 @@ class SupabaseGroupRemoteService implements GroupRemoteService {
     DateTime nowUtc,
   ) async {
     try {
-      final data = await _client.rpc('my_pending_invitations');
+      final data =
+          await _client.rpc('my_pending_invitations').timeout(_timeout);
       return _rows(data)
           .map((row) => _invitationFromMap(row, nowUtc))
           .toList(growable: false);
@@ -90,7 +102,7 @@ class SupabaseGroupRemoteService implements GroupRemoteService {
           'p_invitation_id': invitationId,
           'p_accept': accept,
         },
-      );
+      ).timeout(_timeout);
       return _statusFromValue(data, nowUtc);
     } on PostgrestException catch (error) {
       throw _groupError(error);
@@ -101,13 +113,81 @@ class SupabaseGroupRemoteService implements GroupRemoteService {
   Future<List<MemberDirectoryEntry>> membersOf(String groupId) async {
     try {
       final data = await _client.rpc(
-        'group_members_directory',
+        'group_members_detail',
         params: {'p_group_id': groupId},
-      );
+      ).timeout(_timeout);
       return _rows(data).map(_memberFromMap).toList(growable: false);
     } on PostgrestException catch (error) {
+      final msg = '${error.message} ${error.details ?? ''}';
+      if (msg.contains('group_members_detail') || error.code == 'PGRST202') {
+        try {
+          final fallback = await _client.rpc(
+            'group_members_directory',
+            params: {'p_group_id': groupId},
+          ).timeout(_timeout);
+          return _rows(fallback).map(_memberFromMap).toList(growable: false);
+        } on PostgrestException catch (fallbackError) {
+          throw _groupError(fallbackError);
+        }
+      }
       throw _groupError(error);
     }
+  }
+
+  @override
+  Future<List<MemberDirectoryEntry>> membersMissingGroupKey({
+    required String groupId,
+    int? keyVersion,
+  }) async {
+    try {
+      final data = await _client.rpc(
+        'group_members_missing_key',
+        params: {
+          'p_group_id': groupId,
+          if (keyVersion != null) 'p_key_version': keyVersion,
+        },
+      ).timeout(_timeout);
+      return _rows(data).map(_memberFromMap).toList(growable: false);
+    } on PostgrestException catch (error) {
+      final msg = '${error.message} ${error.details ?? ''}';
+      if (error.code == 'PGRST202' ||
+          error.code == '42883' ||
+          msg.contains('group_members_missing_key')) {
+        return const <MemberDirectoryEntry>[];
+      }
+      throw _groupError(error);
+    }
+  }
+
+  @override
+  Future<Map<String, int>> fetchMemberCounts(List<String> groupIds) async {
+    if (groupIds.isEmpty) return const <String, int>{};
+    final counts = <String, int>{};
+    try {
+      final rows = await _client
+          .from('group_members')
+          .select('group_id, user_id')
+          .inFilter('group_id', groupIds)
+          .timeout(_timeout);
+      for (final row in _rows(rows)) {
+        final gid = row['group_id'] as String?;
+        if (gid == null || gid.isEmpty) continue;
+        counts[gid] = (counts[gid] ?? 0) + 1;
+      }
+      if (counts.isNotEmpty) return counts;
+    } catch (_) {
+      // Jatuh ke RPC membersOf per grup jika kebijakan RLS langsung belum diperbarui.
+    }
+
+    for (final gid in groupIds) {
+      try {
+        final members = await membersOf(gid);
+        if (members.isNotEmpty) {
+          counts[gid] = members.length;
+        }
+      } catch (_) {}
+    }
+    return counts;
   }
 
   @override
@@ -131,7 +211,7 @@ class SupabaseGroupRemoteService implements GroupRemoteService {
               )
               .toList(growable: false),
         },
-      );
+      ).timeout(_timeout);
     } on PostgrestException catch (error) {
       throw _groupError(error);
     }
@@ -148,7 +228,8 @@ class SupabaseGroupRemoteService implements GroupRemoteService {
           .select('wrapped_key')
           .eq('group_id', groupId)
           .eq('key_version', keyVersion)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_timeout);
       return row?['wrapped_key'] as String?;
     } on PostgrestException catch (error) {
       throw _groupError(error);
@@ -167,23 +248,135 @@ class SupabaseGroupRemoteService implements GroupRemoteService {
           'p_group_id': groupId,
           'p_user_id': userId,
         },
-      );
+      ).timeout(_timeout);
     } on PostgrestException catch (error) {
       throw _groupError(error);
     }
   }
 
-  RemoteGroup _remoteGroupFromMap(Map<String, dynamic> row) => RemoteGroup(
-        group: Group(
-          id: row['id'] as String,
-          name: row['name'] as String,
-          ownerId: row['owner_id'] as String,
-          mountain: row['mountain'] as String?,
-          keyVersion: (row['key_version'] as num).toInt(),
-          createdAtUtc: _utc(row['created_at']),
-        ),
-        role: _role(row['role'] as String?),
-      );
+  @override
+  Future<void> deleteGroup(String groupId) async {
+    try {
+      await _client.rpc(
+        'delete_group',
+        params: {'p_group_id': groupId},
+      ).timeout(_timeout);
+    } on PostgrestException catch (error) {
+      final msg = '${error.message} ${error.details ?? ''}';
+      if (error.code == 'PGRST202' || msg.contains('delete_group')) {
+        try {
+          await _client
+              .from('groups')
+              .delete()
+              .eq('id', groupId)
+              .timeout(_timeout);
+        } on PostgrestException catch (fallbackError) {
+          throw _groupError(fallbackError);
+        }
+      } else {
+        throw _groupError(error);
+      }
+    }
+    unawaited(_cleanupGroupVoiceStorageBestEffort(groupId));
+  }
+
+  Future<void> _cleanupGroupVoiceStorageBestEffort(String groupId) async {
+    for (final bucketName in const <String>[
+      'chat-voice-notes',
+      'group-voice'
+    ]) {
+      try {
+        final bucket = _client.storage.from(bucketName);
+        final objects = await bucket.list(path: groupId).timeout(_timeout);
+        final paths = objects
+            .map((o) => o.name)
+            .where((name) => name.isNotEmpty)
+            .map((name) => '$groupId/$name')
+            .toList(growable: false);
+        if (paths.isNotEmpty) {
+          await bucket.remove(paths).timeout(_timeout);
+        }
+      } catch (_) {
+        // Best-effort Storage API cleanup; never roll back DB deletion.
+      }
+    }
+  }
+
+  @override
+  Future<void> leaveGroup(String groupId) async {
+    try {
+      await _client.rpc(
+        'leave_group',
+        params: {'p_group_id': groupId},
+      ).timeout(_timeout);
+    } on PostgrestException catch (error) {
+      final msg = '${error.message} ${error.details ?? ''}';
+      if (error.code == 'PGRST202' || msg.contains('leave_group')) {
+        final uid = _client.auth.currentUser?.id;
+        if (uid != null) {
+          try {
+            await _client
+                .from('group_members')
+                .delete()
+                .eq('group_id', groupId)
+                .eq('user_id', uid)
+                .timeout(_timeout);
+            return;
+          } on PostgrestException catch (fallbackError) {
+            throw _groupError(fallbackError);
+          }
+        }
+      }
+      throw _groupError(error);
+    }
+  }
+
+  @override
+  Future<void> updateGroupAvatar({
+    required String groupId,
+    required String avatarUrl,
+  }) async {
+    try {
+      await _client.rpc(
+        'update_group_avatar',
+        params: <String, dynamic>{
+          'p_group_id': groupId,
+          'p_avatar_url': avatarUrl,
+        },
+      ).timeout(_timeout);
+    } on PostgrestException catch (error) {
+      final msg = '${error.message} ${error.details ?? ''}';
+      if (error.code == 'PGRST202' ||
+          error.code == '42883' ||
+          msg.contains('update_group_avatar')) {
+        await _client
+            .from('groups')
+            .update(<String, dynamic>{'avatar_url': avatarUrl})
+            .eq('id', groupId)
+            .timeout(_timeout);
+      } else {
+        throw _groupError(error);
+      }
+    }
+  }
+
+  RemoteGroup _remoteGroupFromMap(Map<String, dynamic> row) {
+    final rawJoined = row['joined_at']?.toString();
+    return RemoteGroup(
+      group: Group(
+        id: row['id'] as String,
+        name: row['name'] as String,
+        ownerId: row['owner_id'] as String,
+        mountain: row['mountain'] as String?,
+        avatarUrl: MediaUrlNormalizer.normalize(row['avatar_url'] as String?),
+        keyVersion: (row['key_version'] as num).toInt(),
+        createdAtUtc: _utc(row['created_at']),
+      ),
+      role: _role(row['role'] as String?),
+      joinedAtUtc:
+          rawJoined != null ? DateTime.tryParse(rawJoined)?.toUtc() : null,
+    );
+  }
 
   IncomingInvitation _invitationFromMap(
     Map<String, dynamic> row,
@@ -199,14 +392,20 @@ class SupabaseGroupRemoteService implements GroupRemoteService {
     );
   }
 
-  MemberDirectoryEntry _memberFromMap(Map<String, dynamic> row) =>
-      MemberDirectoryEntry(
-        userId: row['user_id'] as String,
-        username: row['username'] as String,
-        role: _role(row['role'] as String?),
-        publicKeyBase64: row['public_key'] as String,
-        joinedAtUtc: _utc(row['joined_at']),
-      );
+  MemberDirectoryEntry _memberFromMap(Map<String, dynamic> row) {
+    final rawLastSeen = row['last_seen_at'] as String?;
+    return MemberDirectoryEntry(
+      userId: row['user_id'] as String,
+      username: (row['username'] as String?) ?? '',
+      displayName: row['full_name'] as String?,
+      avatarUrl: row['avatar_url'] as String?,
+      role: _role(row['role'] as String?),
+      publicKeyBase64: (row['public_key'] as String?) ?? '',
+      joinedAtUtc: _utc(row['joined_at']),
+      lastSeenAtUtc:
+          rawLastSeen != null ? DateTime.tryParse(rawLastSeen)?.toUtc() : null,
+    );
+  }
 
   GroupRole _role(String? value) => switch (value) {
         'owner' => GroupRole.owner,

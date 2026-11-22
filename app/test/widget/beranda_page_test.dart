@@ -15,19 +15,16 @@ import 'package:nama_app/features/home/expandable_features_card.dart';
 import 'package:nama_app/features/tracking/domain/track_point.dart';
 import 'package:nama_app/features/tracking/domain/tracking_repository.dart';
 import 'package:nama_app/features/tracking/domain/tracking_session.dart';
+import 'package:nama_app/infrastructure/database/repositories/drift_tracking_repository.dart';
 
 import '../support/account_fakes.dart';
 import '../support/real_font.dart';
 
 const List<String> _featureTitles = <String>[
-  'Pelacakan',
-  'Peta offline',
-  'Jalur terverifikasi',
-  'Kompas',
-  'Grup chat',
-  'Lokasi terakhir',
-  'Kartu pendakian',
+  'Hiqeo Plus',
   'SOS',
+  'Peta offline',
+  'Kontak darurat',
 ];
 
 final DateTime _tripStartUtc = DateTime(2026, 10, 30, 7, 12).toUtc();
@@ -36,15 +33,15 @@ class _FakeTrackingRepository implements TrackingRepository {
   _FakeTrackingRepository({
     List<TrackingSession> sessions = const <TrackingSession>[],
     Map<String, List<TrackPoint>> points = const <String, List<TrackPoint>>{},
-  })  : _sessions = sessions,
-        _points = points;
+  })  : _sessions = List<TrackingSession>.of(sessions),
+        _points = Map<String, List<TrackPoint>>.of(points);
 
   final List<TrackingSession> _sessions;
   final Map<String, List<TrackPoint>> _points;
 
   @override
   Stream<List<TrackingSession>> watchSessions() =>
-      Stream<List<TrackingSession>>.value(_sessions);
+      Stream<List<TrackingSession>>.value(List<TrackingSession>.of(_sessions));
 
   @override
   Future<List<TrackPoint>> points(String sessionId) async =>
@@ -62,16 +59,37 @@ class _FakeTrackingRepository implements TrackingRepository {
   Future<TrackingSession?> findActiveSession() async => null;
 
   @override
-  Future<void> saveSession(TrackingSession session) async {}
+  Future<void> saveSession(TrackingSession session) async {
+    final idx = _sessions.indexWhere((s) => s.id == session.id);
+    if (idx >= 0) {
+      _sessions[idx] = session;
+    } else {
+      _sessions.add(session);
+    }
+    DriftTrackingRepository.notifyExternalChange();
+  }
 
   @override
-  Future<void> deleteSession(String id) async {}
+  Future<void> deleteSession(String id) async {
+    _sessions.removeWhere((s) => s.id == id);
+    DriftTrackingRepository.notifyExternalChange();
+  }
 
   @override
-  Future<void> addPoint(String sessionId, TrackPoint point) async {}
+  Future<void> addPoint(String sessionId, TrackPoint point) async {
+    (_points[sessionId] ??= <TrackPoint>[]).add(point);
+  }
 
   @override
-  Future<TrackPoint?> latestPoint(String sessionId) async => null;
+  Future<void> clearPoints(String sessionId) async {
+    _points.remove(sessionId);
+  }
+
+  @override
+  Future<TrackPoint?> latestPoint(String sessionId) async {
+    final list = _points[sessionId];
+    return (list == null || list.isEmpty) ? null : list.last;
+  }
 }
 
 class _FixedAccount extends AccountController {
@@ -207,6 +225,7 @@ GoRouter _router({
         ),
       ),
       GoRoute(path: '/lacak', builder: (_, __) => destination('Tujuan Lacak')),
+      GoRoute(path: '/plus', builder: (_, __) => destination('Tujuan Plus')),
       GoRoute(path: '/peta', builder: (_, __) => destination('Tujuan Peta')),
       GoRoute(path: '/grup', builder: (_, __) => destination('Tujuan Grup')),
       GoRoute(
@@ -254,9 +273,9 @@ void main() {
     expect(find.text('Selamat pagi'), findsOneWidget);
     expect(find.text('Halo, Pendaki'), findsOneWidget);
     expect(find.text('Belum ada pendakian'), findsOneWidget);
-    expect(find.text('Semua fitur'), findsOneWidget);
+    expect(find.text('Fitur utama'), findsOneWidget);
     expect(find.text('Belum ada riwayat pendakian'), findsOneWidget);
-    // Revisi Beranda: grid "Semua fitur" mulai tertutup, jadi judul kartu
+    // Revisi Beranda: grid "Fitur Utama" mulai tertutup, jadi judul kartu
     // belum ada di pohon sampai tombolnya diketuk.
     for (final title in _featureTitles) {
       expect(find.text(title), findsNothing, reason: 'kartu $title bocor');
@@ -319,16 +338,26 @@ void main() {
     await tester.pumpAndSettle();
     await _openFeatures(tester);
 
-    await tester.tap(find.text('Pelacakan'));
+    await tester.tap(find.text('Peta offline'));
     await tester.pumpAndSettle();
     expect(
       router.routeInformationProvider.value.uri.path,
-      '/lacak',
+      '/peta',
+    );
+    expect(
+      router.routeInformationProvider.value.uri.queryParameters['filter'],
+      'terunduh',
     );
 
     router.go('/beranda');
     await tester.pumpAndSettle();
     await _openFeatures(tester);
+    await tester.tap(find.text('Hiqeo Plus'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tujuan Plus'), findsOneWidget);
+
+    router.pop();
+    await tester.pumpAndSettle();
     await tester.tap(find.text('SOS'));
     await tester.pumpAndSettle();
     expect(find.text('Tujuan SOS'), findsOneWidget);
@@ -355,13 +384,21 @@ void main() {
     await _openFeatures(tester);
 
     final node = tester.getSemantics(
-      find.bySemanticsLabel('SOS. Tekan-tahan 3 detik'),
+      find.bySemanticsLabel('SOS'),
     );
     expect(node.flagsCollection.isButton, isTrue);
     final card = tester.getSemantics(
-      find.bySemanticsLabel('Kartu pendakian. Foto dan ringkasan'),
+      find.bySemanticsLabel('Hiqeo Plus'),
     );
     expect(card.flagsCollection.isButton, isTrue);
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Peta offline')).flagsCollection.isButton,
+      isTrue,
+    );
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Kontak darurat')).flagsCollection.isButton,
+      isTrue,
+    );
     handle.dispose();
   });
 
@@ -482,6 +519,7 @@ void main() {
         theme: hiqeoLightTheme,
         routerConfig: router,
         builder: (context, child) => Scaffold(
+          extendBody: true,
           body: child,
           // Tinggi navigasi bawah yang dipakai shell saat ini: 64 + 16.
           bottomNavigationBar: const SizedBox(height: 80),
@@ -491,7 +529,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('PENDAKIAN TERAKHIR'), findsOneWidget);
-    expect(find.text('Semua fitur'), findsOneWidget);
+    expect(find.text('Fitur utama'), findsOneWidget);
     expect(find.byType(ExpandableFeaturesCard), findsOneWidget);
     final position =
         tester.state<ScrollableState>(find.byType(Scrollable)).position;
@@ -500,5 +538,39 @@ void main() {
       0,
       reason: 'kartu tertutup harus muat tanpa gulir di 844 px',
     );
+  });
+
+  testWidgets(
+      '4A: kartu Pendakian terakhir langsung diperbarui saat sesi selesai disimpan tanpa menutup aplikasi',
+      (tester) async {
+    _setTallPhone(tester);
+    final account = _guestAccount();
+    addTearDown(account.dispose);
+    final repository = _FakeTrackingRepository();
+    final router = _router(account: account, repository: repository);
+
+    await tester.pumpWidget(
+      MaterialApp.router(theme: hiqeoLightTheme, routerConfig: router),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Belum ada riwayat pendakian'), findsOneWidget);
+
+    final completedSession = _session(
+      id: 'sesi-baru',
+      distanceM: 12840,
+      movingSeconds: 25920,
+      elevationGainM: 1140,
+    );
+    for (final pt in _points()) {
+      await repository.addPoint(completedSession.id, pt);
+    }
+    await repository.saveSession(completedSession);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Belum ada riwayat pendakian'), findsNothing);
+    expect(find.text('Pendakian 30 Okt 2026'), findsOneWidget);
+    expect(find.text('12,8 km'), findsOneWidget);
+    expect(find.text('+1.140 m'), findsOneWidget);
   });
 }

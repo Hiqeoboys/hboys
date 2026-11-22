@@ -3,22 +3,40 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../design/glass/hiqeo_liquid_glass.dart';
+import '../../design/layout.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../../design/widgets/hiqeo_button.dart';
 import '../../design/widgets/line_icons.dart';
+import '../../infrastructure/auth/active_account_scope.dart';
 import '../../infrastructure/database/app_database.dart';
 import '../../infrastructure/database/database_connection.dart';
 import '../../infrastructure/database/repositories/drift_tracking_repository.dart';
 import '../../infrastructure/supabase/supabase_services.dart';
 import '../auth/application/account_controller.dart';
 import '../groups/application/group_key_manager.dart';
-import '../groups/application/group_selection.dart';
 import '../kartu/domain/kartu_data.dart';
+import '../notifications/data/user_notifications_service.dart';
+import '../plus/application/plus_navigation.dart';
+import '../plus/application/plus_scope.dart';
+import '../preparation/application/packing_list_store.dart';
+import '../profile/domain/profile_summary.dart';
+import '../safety/domain/safety_repository.dart';
+import '../safety/presentation/emergency_contacts_sheet.dart';
 import '../tracking/domain/tracking_repository.dart';
 import '../tracking/domain/tracking_session.dart';
 import 'expandable_features_card.dart';
 import 'last_trip_summary_card.dart';
+
+/// Pilihan set fitur untuk grid 2x2 "Fitur Utama" di Beranda.
+///
+/// - [standard]: Hiqeo Plus, SOS, Peta offline, Kontak darurat.
+/// - [withPreparation]: mengganti Kontak darurat dengan Persiapan pendakian.
+enum HomeFeatureSet { standard, withPreparation }
+
+/// Konstanta tunggal pemilih set fitur utama Beranda.
+const HomeFeatureSet kHomeFeatureSet = HomeFeatureSet.standard;
 
 /// Sapaan menurut jam lokal perangkat (bukan waktu domain).
 String greetingForHour(int hour) {
@@ -50,7 +68,11 @@ class BerandaPage extends StatefulWidget {
     super.key,
     this.accountController,
     this.repository,
+    this.safetyRepository,
+    this.groupHikePlanStore,
+    this.notificationsService,
     this.now,
+    this.featureSet = kHomeFeatureSet,
   });
 
   /// Disuntikkan untuk uji; produksi memakai layanan Supabase yang tersedia.
@@ -58,7 +80,69 @@ class BerandaPage extends StatefulWidget {
 
   /// Disuntikkan untuk uji; produksi membuka basis data perangkat.
   final TrackingRepository? repository;
+
+  /// Disuntikkan untuk uji sheet Kontak darurat langsung dari Beranda.
+  final SafetyRepository? safetyRepository;
+
+  /// Disuntikkan untuk uji; produksi memakai [GroupHikePlanStore.instance].
+  final GroupHikePlanStore? groupHikePlanStore;
+
+  /// Disuntikkan untuk uji; produksi memakai [UserNotificationsService.instance].
+  final UserNotificationsService? notificationsService;
+
   final DateTime Function()? now;
+  final HomeFeatureSet featureSet;
+
+  static ({TrackingSession? session, KartuData? data})? _preloadedLastTrip;
+
+  /// Memuat sesi selesai terakhir dari DB lokal saat startup agar kartu
+  /// "Pendakian Terakhir" langsung terisi pada frame pertama tanpa layout shift.
+  static Future<void> preloadLastTrip({TrackingRepository? repository}) async {
+    AppDatabase? ownedDb;
+    try {
+      var repo = repository;
+      if (repo == null) {
+        final file = await defaultAppDatabaseFile();
+        ownedDb = openAppDatabase(file);
+        repo = DriftTrackingRepository(ownedDb);
+      }
+      final sessions = await repo.watchSessions().first;
+      final completed = sessions
+          .where(isMeaningfulCompletedSession)
+          .toList()
+        ..sort((a, b) => b.startedAtUtc.compareTo(a.startedAtUtc));
+      if (completed.isEmpty) {
+        _preloadedLastTrip = (session: null, data: null);
+        return;
+      }
+      final latest = completed.first;
+      final points = await repo.points(latest.id);
+      _preloadedLastTrip = (
+        session: latest,
+        data: KartuData.fromSession(latest, points),
+      );
+    } catch (_) {
+      // Biarkan _watchSummary() di Beranda menangani fallback saat DB belum siap.
+    } finally {
+      if (ownedDb != null) {
+        DriftTrackingRepository.unregisterDatabase(ownedDb);
+        await ownedDb.close();
+      }
+    }
+  }
+
+  static void clearAccountCaches() {
+    _preloadedLastTrip = null;
+  }
+
+  @visibleForTesting
+  static void setPreloadedLastTripForTesting({
+    TrackingSession? session,
+    KartuData? data,
+  }) {
+    _preloadedLastTrip =
+        session == null && data == null ? null : (session: session, data: data);
+  }
 
   @override
   State<BerandaPage> createState() => _BerandaPageState();
@@ -67,9 +151,12 @@ class BerandaPage extends StatefulWidget {
 class _BerandaPageState extends State<BerandaPage> {
   late final AccountController _account;
   late final bool _ownsAccount;
+  late final GroupHikePlanStore _planStore;
+  late final UserNotificationsService _notifications;
   late final DateTime Function() _now;
 
   AppDatabase? _database;
+  TrackingRepository? _activeRepository;
   StreamSubscription<List<TrackingSession>>? _sessions;
   TrackingSession? _summarySession;
   KartuData? _summary;
@@ -78,20 +165,67 @@ class _BerandaPageState extends State<BerandaPage> {
   @override
   void initState() {
     super.initState();
-    _ownsAccount = widget.accountController == null;
-    _account = widget.accountController ?? SupabaseServices.createAccountController();
+    final shared = widget.accountController == null
+        ? SupabaseServices.sharedAccountController
+        : null;
+    _ownsAccount = widget.accountController == null && shared == null;
+    _account = widget.accountController ??
+        shared ??
+        SupabaseServices.createAccountController();
     _account.initialize();
+    _planStore = widget.groupHikePlanStore ?? GroupHikePlanStore.instance;
+    unawaited(_planStore.load());
+    _notifications =
+        widget.notificationsService ?? UserNotificationsService.instance;
+    unawaited(_notifications.loadBadgeSeenState());
     _now = widget.now ?? DateTime.now;
+    if (widget.repository == null) {
+      final preloaded = BerandaPage._preloadedLastTrip;
+      if (preloaded != null) {
+        _summarySession = preloaded.session;
+        _summary = preloaded.data;
+      }
+    }
+    DriftTrackingRepository.historyRevision.addListener(_onHistoryRevisionChanged);
+    ActiveAccountScope.activeUserId.addListener(_onActiveAccountChanged);
     unawaited(_watchSummary());
   }
 
   @override
   void dispose() {
+    ActiveAccountScope.activeUserId.removeListener(_onActiveAccountChanged);
+    DriftTrackingRepository.historyRevision
+        .removeListener(_onHistoryRevisionChanged);
     unawaited(_sessions?.cancel());
     final database = _database;
-    if (database != null) unawaited(database.close());
+    if (database != null) {
+      DriftTrackingRepository.unregisterDatabase(database);
+      unawaited(database.close());
+    }
     if (_ownsAccount) _account.dispose();
     super.dispose();
+  }
+
+  void _onActiveAccountChanged() {
+    if (!mounted) return;
+    setState(() {
+      _summarySession = null;
+      _summary = null;
+      _summaryError = null;
+    });
+    _onHistoryRevisionChanged();
+  }
+
+  void _onHistoryRevisionChanged() {
+    final repo = _activeRepository;
+    if (repo == null || !mounted) return;
+    unawaited(() async {
+      try {
+        final sessions = await repo.watchSessions().first;
+        if (!mounted) return;
+        await _applySessions(repo, sessions);
+      } catch (_) {}
+    }());
   }
 
   Future<TrackingRepository?> _repository() async {
@@ -122,6 +256,7 @@ class _BerandaPageState extends State<BerandaPage> {
       );
       return;
     }
+    _activeRepository = repository;
     _sessions = repository.watchSessions().listen(
       (sessions) => unawaited(_applySessions(repository, sessions)),
       onError: (Object _) {
@@ -138,7 +273,7 @@ class _BerandaPageState extends State<BerandaPage> {
     List<TrackingSession> sessions,
   ) async {
     final completed = sessions
-        .where((session) => session.status == TrackingSessionStatus.completed)
+        .where(isMeaningfulCompletedSession)
         .toList()
       ..sort((a, b) => b.startedAtUtc.compareTo(a.startedAtUtc));
     if (completed.isEmpty) {
@@ -151,7 +286,14 @@ class _BerandaPageState extends State<BerandaPage> {
       return;
     }
     final session = completed.first;
-    if (session.id == _summarySession?.id && _summary != null) return;
+    if (session.id == _summarySession?.id &&
+        session.endedAtUtc == _summarySession?.endedAtUtc &&
+        session.distanceM == _summarySession?.distanceM &&
+        session.movingSeconds == _summarySession?.movingSeconds &&
+        session.elevationGainM == _summarySession?.elevationGainM &&
+        _summary != null) {
+      return;
+    }
     try {
       final points = await repository.points(session.id);
       final data = KartuData.fromSession(session, points);
@@ -169,9 +311,12 @@ class _BerandaPageState extends State<BerandaPage> {
     }
   }
 
-  /// Nama gunung hanya disebut bila sesi memang tertaut grup yang dikenal.
+  /// Nama gunung dari metadata sesi lokal terlebih dahulu, lalu grup terkait.
   String? _mountainOf(TrackingSession? session) {
-    final groupId = session?.groupId;
+    if (session == null || session.isJogging) return null;
+    final direct = session.mountainName?.trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+    final groupId = session.groupId;
     if (groupId == null) return null;
     for (final remote in _account.groups) {
       if (remote.group.id == groupId) {
@@ -181,116 +326,161 @@ class _BerandaPageState extends State<BerandaPage> {
     return null;
   }
 
-  List<FeatureEntry> _features(BuildContext context) => <FeatureEntry>[
-        FeatureEntry(
-          icon: HiqeoIcons.activity,
-          title: 'Pelacakan',
-          subtitle: 'Jarak, pace, elevasi',
-          onTap: () => context.go('/lacak'),
-        ),
-        FeatureEntry(
-          icon: HiqeoIcons.map,
-          title: 'Peta offline',
-          subtitle: 'Topografi per gunung',
-          onTap: () => context.go('/peta'),
-        ),
-        FeatureEntry(
-          icon: HiqeoIcons.trail,
-          title: 'Jalur terverifikasi',
-          subtitle: 'Pos, air, area bahaya',
-          onTap: () => context.go('/peta'),
-        ),
-        FeatureEntry(
-          icon: HiqeoIcons.compass,
-          title: 'Kompas',
-          subtitle: 'Bearing dan jarak',
-          onTap: () => context.go('/peta'),
-        ),
-        FeatureEntry(
-          icon: HiqeoIcons.group,
-          title: 'Grup chat',
-          subtitle: 'Teks, suara, gambar',
-          onTap: () => context.go('/grup'),
-        ),
-        FeatureEntry(
-          icon: HiqeoIcons.pin,
-          title: 'Lokasi terakhir',
-          subtitle: 'Posisi tiap anggota',
-          onTap: () => context.go('/grup'),
-        ),
-        FeatureEntry(
-          icon: HiqeoIcons.image,
-          title: 'Kartu pendakian',
-          subtitle: 'Foto dan ringkasan',
-          onTap: () => context.push('/kartu'),
-        ),
-        FeatureEntry(
-          icon: HiqeoIcons.warning,
-          title: 'SOS',
-          subtitle: 'Tekan-tahan 3 detik',
-          onTap: () => context.push('/sos'),
-          emphasis: true,
-        ),
-      ];
+  List<FeatureEntry> _features(BuildContext context) {
+    final fourthTile = widget.featureSet == HomeFeatureSet.withPreparation
+        ? FeatureEntry(
+            tileKey: const ValueKey<String>('home-feature-persiapan'),
+            icon: HiqeoIcons.compass,
+            title: 'Persiapan pendakian',
+            onTap: () => context.push('/siap-naik'),
+          )
+        : FeatureEntry(
+            tileKey: const ValueKey<String>('home-feature-kontak-darurat'),
+            icon: HiqeoIcons.phone,
+            title: 'Kontak darurat',
+            onTap: () => unawaited(
+              openDeviceEmergencyContactsSheet(
+                context,
+                userId: _account.user?.id,
+                safetyRepository: widget.safetyRepository,
+              ),
+            ),
+          );
+
+    return <FeatureEntry>[
+      // Kiri atas: Hiqeo Plus
+      FeatureEntry(
+        tileKey: const ValueKey<String>('home-feature-plus'),
+        icon: HiqeoIcons.mountain,
+        title: 'Hiqeo Plus',
+        onTap: () {
+          final plus = PlusScope.maybeOf(context);
+          final hasPlus = plus?.hasPlus ?? false;
+          final everPurchased = plus?.access.planId != null;
+          if (hasPlus || everPurchased) {
+            context.push(PlusRoutes.manage);
+          } else {
+            openPlusPaywall(context);
+          }
+        },
+      ),
+      // Kanan atas: SOS (kartu krem)
+      FeatureEntry(
+        tileKey: const ValueKey<String>('home-feature-sos'),
+        icon: HiqeoIcons.warning,
+        title: 'SOS',
+        onTap: () => context.push('/sos'),
+        emphasis: true,
+      ),
+      // Kiri bawah: Panduan Keselamatan & P3K (100% offline)
+      FeatureEntry(
+        tileKey: const ValueKey<String>('home-feature-p3k'),
+        icon: HiqeoIcons.firstAid,
+        title: 'Panduan keselamatan & P3K',
+        onTap: () => context.push('/p3k'),
+      ),
+      // Kanan bawah: Kontak darurat (atau Persiapan pendakian via kHomeFeatureSet)
+      fourthTile,
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
     final sessionId = _summarySession?.id;
     return SafeArea(
       bottom: false,
       child: ListenableBuilder(
-        listenable: _account,
+        listenable: Listenable.merge(
+          <Listenable>[_account, _planStore, _notifications],
+        ),
         builder: (context, _) {
-          final next = nextHikeOf(_account.groups);
-          final keyStatus =
-              next == null ? null : _account.keyStatusFor(next.group.id);
+          final groupPlan = _planStore.activePlan;
+          final soloPlan = _planStore.soloPlan;
+          final showGroupPlan =
+              groupPlan != null && groupPlan.hasOtherMemberReady;
+          final heroTitle = showGroupPlan
+              ? groupPlan.mountainName
+              : (soloPlan != null
+                  ? soloPlan.mountainName
+                  : 'Belum ada pendakian');
+          final heroMeta = showGroupPlan
+              ? '${groupPlan.readyCount} dari ${groupPlan.memberCount} anggota siap · ${groupPlan.groupName}'
+              : (soloPlan != null
+                  ? 'Pendakian solo'
+                  : 'Pilih gunung dan atur persiapan sebelum berangkat');
           final profile = _account.profile;
+          final greetingName = profile?.fullName?.trim().isNotEmpty == true
+              ? profile!.fullName!.trim()
+              : (_account.user?.displayName?.trim().isNotEmpty == true
+                  ? _account.user!.displayName!.trim()
+                  : (profile?.username?.trim().isNotEmpty == true
+                      ? profile!.username!.trim()
+                      : 'Pendaki'));
           return ListView(
             padding: EdgeInsets.fromLTRB(
               HiqeoSpacing.lg,
               HiqeoSpacing.xl,
               HiqeoSpacing.lg,
-              HiqeoSpacing.xl + bottomInset,
+              AppLayout.bottomInset(context),
             ),
             children: <Widget>[
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: <Widget>[
-                  Text(
-                    greetingForHour(_now().hour),
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: colors.textSecondary),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          greetingForHour(_now().hour),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colors.brightness == Brightness.dark
+                                ? colors.textPrimary.withValues(alpha: 0.90)
+                                : colors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: HiqeoSpacing.xs),
+                        Text(
+                          'Halo, $greetingName',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.displaySmall,
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: HiqeoSpacing.xs),
-                  Text(
-                    'Halo, ${profile?.username ?? 'Pendaki'}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.displaySmall,
+                  const SizedBox(width: HiqeoSpacing.md),
+                  _BerandaNotificationButton(
+                    hasUnread: _notifications.hasUnreadNotifications,
+                    onTap: () {
+                      unawaited(_notifications.markBadgeSeen());
+                      context.push('/notifikasi');
+                    },
                   ),
                 ],
               ),
               const SizedBox(height: HiqeoSpacing.xl),
-              _HeroCard(
-                title: next?.group.mountain ?? next?.group.name ?? 'Belum ada pendakian',
-                meta: next == null
-                    ? 'Belum ada rombongan. Siapkan pendakian untuk mulai.'
-                    : nextHikeMeta(keyStatus),
-                onPrepare: () => context.push('/siap-naik'),
+              RepaintBoundary(
+                child: _HeroCard(
+                  title: heroTitle,
+                  meta: heroMeta,
+                  onPrepare: () => context.push('/siap-naik'),
+                ),
               ),
               const SizedBox(height: HiqeoSpacing.xl),
-              LastTripSummaryCard(
-                data: _summary,
-                mountain: _mountainOf(_summarySession),
-                unavailableReason: _summaryError,
-                onViewKartu: sessionId == null
-                    ? null
-                    : () => context.push(
-                          '/kartu?sesi=${Uri.encodeQueryComponent(sessionId)}',
-                        ),
+              RepaintBoundary(
+                child: LastTripSummaryCard(
+                  data: _summary,
+                  mountain: _mountainOf(_summarySession),
+                  unavailableReason: _summaryError,
+                  onViewKartu: sessionId == null
+                      ? null
+                      : () => context.push(
+                            '/kartu?sesi=${Uri.encodeQueryComponent(sessionId)}',
+                          ),
+                ),
               ),
               const SizedBox(height: HiqeoSpacing.xl),
               ExpandableFeaturesCard(features: _features(context)),
@@ -351,6 +541,65 @@ class _HeroCard extends StatelessWidget {
             onPressed: onPrepare,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BerandaNotificationButton extends StatelessWidget {
+  const _BerandaNotificationButton({
+    required this.hasUnread,
+    required this.onTap,
+  });
+
+  final bool hasUnread;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Center(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            HiqeoGlassCircleButton(
+              key: const ValueKey<String>('beranda-notif-button'),
+              semanticsLabel: hasUnread
+                  ? 'Notifikasi, ada pemberitahuan baru'
+                  : 'Notifikasi',
+              size: 44,
+              onTap: onTap,
+              child: HiqeoIcon(
+                HiqeoIcons.bell,
+                size: 20,
+                color: colors.textPrimary,
+              ),
+            ),
+            if (hasUnread)
+              Positioned(
+                top: 1,
+                right: 1,
+                child: IgnorePointer(
+                  child: Container(
+                    key: const ValueKey<String>('beranda-notif-red-dot'),
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: colors.notificationBadge,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: colors.background,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

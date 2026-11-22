@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/utils/safe_url_launcher.dart';
+import '../../../design/glass/glass_surface.dart';
 import '../../../design/gooey/gooey_switch.dart';
 import '../../../design/tokens.dart';
 import '../../../design/widgets/hiqeo_button.dart';
@@ -25,16 +28,16 @@ import 'widgets/plus_widgets.dart';
 
 /// D6 Kelola Langganan.
 ///
-/// Cadangan cloud belum punya server pada tahap ini, jadi layar tidak pernah
-/// menampilkan waktu cadangan karangan: statusnya dinyatakan belum tersambung
-/// dan saklar hanya menyimpan pilihan di HP. Ekspor GPX tetap gratis dan
-/// tersedia meskipun Plus tidak aktif.
+/// Mengelola status Hiqeo Plus, menu eksklusif Mahasiswa & Tahunan (Analitik
+/// lanjutan dan Rekap tahunan), cadangan cloud otomatis terenkripsi sesi, serta
+/// ekspor GPX gratis.
 class ManageSubscriptionPage extends StatefulWidget {
   const ManageSubscriptionPage({
     super.key,
     this.backupRepository,
     this.repository,
     this.exporter,
+    this.onOpenExternalUrl,
   });
 
   final CloudBackupRepository? backupRepository;
@@ -42,6 +45,7 @@ class ManageSubscriptionPage extends StatefulWidget {
   /// Hanya dipakai lembar ekspor GPX; layar utama tidak membuka basis data.
   final TrackingRepository? repository;
   final GpxExporter? exporter;
+  final Future<bool> Function(String url)? onOpenExternalUrl;
 
   @override
   State<ManageSubscriptionPage> createState() => _ManageSubscriptionPageState();
@@ -52,6 +56,7 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
   bool _backupLoading = true;
   String? _backupError;
   bool _savingAutoBackup = false;
+  bool _syncingNow = false;
 
   CloudBackupRepository get _backupRepository =>
       widget.backupRepository ?? PlusContentDependencies.cloudBackup();
@@ -106,112 +111,112 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
     }
   }
 
+  Future<void> _setWifiOnly(bool value) async {
+    final current = _backup;
+    if (current == null || _savingAutoBackup) return;
+    setState(() {
+      _savingAutoBackup = true;
+      _backup = current.copyWith(wifiOnly: value);
+    });
+    try {
+      final saved = await _backupRepository.setWifiOnly(value);
+      if (!mounted) return;
+      setState(() => _backup = saved);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _backup = current);
+      _notify('Pengaturan Wi-Fi belum bisa disimpan.');
+    } finally {
+      if (mounted) setState(() => _savingAutoBackup = false);
+    }
+  }
+
+  Future<void> _syncNow() async {
+    if (_syncingNow) return;
+    setState(() => _syncingNow = true);
+    try {
+      final updated = await _backupRepository.syncNow(ignoreWifiOnly: true);
+      if (!mounted) return;
+      setState(() => _backup = updated);
+      _notify('Riwayat dan statistik tersinkron dengan server.');
+    } catch (_) {
+      if (!mounted) return;
+      _notify('Sinkronisasi gagal. Periksa koneksi internet.');
+    } finally {
+      if (mounted) setState(() => _syncingNow = false);
+    }
+  }
+
   void _notify(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _copyRecoveryCode(String code) async {
-    await Clipboard.setData(ClipboardData(text: code));
-    if (!mounted) return;
-    _notify('Kode pemulihan disalin.');
+  Future<void> _openStoreSubscriptions() async {
+    final isIos = defaultTargetPlatform == TargetPlatform.iOS;
+    final url = isIos
+        ? 'https://apps.apple.com/account/subscriptions'
+        : 'https://play.google.com/store/account/subscriptions';
+    var launched = false;
+    try {
+      launched = widget.onOpenExternalUrl != null
+          ? await widget.onOpenExternalUrl!(url)
+          : await launchSafeExternalUrl(Uri.parse(url));
+    } catch (_) {
+      launched = false;
+    }
+    if (!launched && mounted) {
+      try {
+        await Clipboard.setData(ClipboardData(text: url));
+      } catch (_) {}
+      if (!mounted) return;
+      await _showStoreInfo(isIos: isIos);
+    }
   }
 
-  Future<void> _showRecoveryCode(CloudBackupState backup) {
+  Future<void> _showStoreInfo({required bool isIos}) {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
+    final storeName = isIos ? 'App Store' : 'Google Play';
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(HiqeoSpacing.md),
-          child: PlusCard(
-            radius: HiqeoRadius.hero,
-            padding: const EdgeInsets.all(HiqeoSpacing.xl),
+      useSafeArea: true,
+      builder: (sheetContext) {
+        final safeBottom = MediaQuery.paddingOf(sheetContext).bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            HiqeoSpacing.md,
+            0,
+            HiqeoSpacing.md,
+            HiqeoSpacing.md + safeBottom,
+          ),
+          child: GlassSurface(
+            tier: GlassTier.panel,
+            borderRadius: 28,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text('Kode pemulihan', style: theme.textTheme.headlineSmall),
-                const SizedBox(height: HiqeoSpacing.sm),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: HiqeoSpacing.lg,
-                    vertical: HiqeoSpacing.md,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colors.secondary.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(HiqeoRadius.floating),
-                    border: Border.all(color: colors.hairline),
-                  ),
-                  child: Text(
-                    backup.recoveryCode,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      letterSpacing: 2,
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colors.textSecondary.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(HiqeoRadius.pill),
                     ),
                   ),
                 ),
-                const SizedBox(height: HiqeoSpacing.md),
-                Text(
-                  'Simpan kode ini untuk memulihkan data di perangkat baru. '
-                  'Kode baru bisa dipakai setelah server cadangan tersambung; '
-                  'pada build ini tidak ada data yang dikirim ke server.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: HiqeoSpacing.lg),
-                HiqeoButton(
-                  key: const ValueKey('manage-copy-recovery'),
-                  label: 'Salin kode',
-                  onPressed: () async {
-                    Navigator.of(sheetContext).pop();
-                    await _copyRecoveryCode(backup.recoveryCode);
-                  },
-                ),
-                const SizedBox(height: HiqeoSpacing.sm),
-                HiqeoButton(
-                  label: 'Tutup',
-                  variant: HiqeoButtonVariant.secondary,
-                  onPressed: () => Navigator.of(sheetContext).pop(),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showStoreInfo() {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    return showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(HiqeoSpacing.md),
-          child: PlusCard(
-            radius: HiqeoRadius.hero,
-            padding: const EdgeInsets.all(HiqeoSpacing.xl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
+                const SizedBox(height: 14),
                 Text('Kelola langganan', style: theme.textTheme.headlineSmall),
                 const SizedBox(height: HiqeoSpacing.sm),
                 Text(
-                  'Langganan dibeli dan dikelola lewat App Store atau Google '
-                  'Play. Build ini belum tersambung ke toko, jadi Hiqeo belum '
-                  'bisa membuka halaman pengelolaan langganan di perangkat '
-                  'ini.',
+                  'Langganan dikelola melalui $storeName. Tautan halaman '
+                  'langganan sudah disalin jika toko aplikasi tidak terbuka '
+                  'otomatis.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colors.textSecondary,
                   ),
@@ -233,8 +238,8 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
               ],
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -262,31 +267,7 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
     return PlusScrollPage(
       topBar: PlusTopBar(
         lockup: true,
-        onBack: () => Navigator.of(context).maybePop(),
-      ),
-      bottomBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          HiqeoButton(
-            key: const ValueKey('manage-export-gpx'),
-            label: 'Ekspor data (GPX) · gratis',
-            variant: HiqeoButtonVariant.secondary,
-            onPressed: _showGpxSheet,
-          ),
-          const SizedBox(height: HiqeoSpacing.sm),
-          if (hasPlus || access.planId != null)
-            HiqeoButton(
-              key: const ValueKey('manage-store'),
-              label: 'Kelola langganan di app store',
-              variant: HiqeoButtonVariant.secondary,
-              onPressed: _showStoreInfo,
-            )
-          else
-            HiqeoButton(
-              label: 'Aktifkan Plus',
-              onPressed: () => context.push(PlusRoutes.paywall),
-            ),
-        ],
+        onBack: () => popPlusRoute(context),
       ),
       children: <Widget>[
         _StatusCard(
@@ -294,6 +275,13 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
           planTitle: planTitle,
           graceDays: graceDays,
         ),
+        if (access.hasFullSocialAccess) ...<Widget>[
+          const SizedBox(height: HiqeoSpacing.md),
+          _ExclusiveToolsCard(
+            onAnalytics: () => context.push(PlusRoutes.analytics),
+            onRecap: () => context.push(PlusRoutes.recap),
+          ),
+        ],
         if (hasPlus) ...<Widget>[
           const SizedBox(height: HiqeoSpacing.md),
           if (_backupLoading)
@@ -304,17 +292,13 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
             _CloudCard(
               backup: _backup!,
               saving: _savingAutoBackup,
+              syncing: _syncingNow,
               onAutoBackupChanged: _setAutoBackup,
-              onRecoveryCode: () => _showRecoveryCode(_backup!),
+              onWifiOnlyChanged: _setWifiOnly,
+              onSyncNow: _syncNow,
             ),
           const SizedBox(height: HiqeoSpacing.md),
           if (_backup != null) _DeviceCard(devices: _backup!.devices),
-          const SizedBox(height: HiqeoSpacing.md),
-          PlusNotice(
-            icon: HiqeoIcons.lock,
-            text: 'Server cadangan cloud belum ada di build ini. Saklar dan '
-                'kode disimpan di HP; tidak ada data yang dikirim ke server.',
-          ),
         ] else if (access.state == PlusAccessState.expired) ...<Widget>[
           const SizedBox(height: HiqeoSpacing.md),
           PlusNotice(
@@ -325,6 +309,28 @@ class _ManageSubscriptionPageState extends State<ManageSubscriptionPage> {
         ],
         const SizedBox(height: HiqeoSpacing.md),
         const _OwnershipCard(),
+        const SizedBox(height: HiqeoSpacing.xl),
+        HiqeoButton(
+          key: const ValueKey('manage-export-gpx'),
+          label: 'Ekspor data (GPX) · gratis',
+          variant: HiqeoButtonVariant.secondary,
+          onPressed: _showGpxSheet,
+        ),
+        const SizedBox(height: HiqeoSpacing.sm),
+        if (hasPlus || access.planId != null)
+          HiqeoButton(
+            key: const ValueKey('manage-store'),
+            label: defaultTargetPlatform == TargetPlatform.iOS
+                ? 'Kelola langganan di App Store'
+                : 'Kelola langganan di Google Play',
+            variant: HiqeoButtonVariant.secondary,
+            onPressed: () => unawaited(_openStoreSubscriptions()),
+          )
+        else
+          HiqeoButton(
+            label: 'Aktifkan Plus',
+            onPressed: () => context.push(PlusRoutes.paywall),
+          ),
       ],
     );
   }
@@ -487,18 +493,125 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
+class _ExclusiveToolsCard extends StatelessWidget {
+  const _ExclusiveToolsCard({
+    required this.onAnalytics,
+    required this.onRecap,
+  });
+
+  final VoidCallback onAnalytics;
+  final VoidCallback onRecap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+    return PlusCard(
+      key: const ValueKey('manage-plus-exclusive-tools'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const PlusOverline('Eksklusif Mahasiswa & Tahunan'),
+          const SizedBox(height: HiqeoSpacing.sm),
+          _toolRow(
+            key: const ValueKey('plus-row-analitik'),
+            icon: HiqeoIcons.activity,
+            title: 'Analitik lanjutan',
+            subtitle: 'Pace kemiringan, kecepatan vertikal, dan rekor pribadi',
+            colors: colors,
+            theme: theme,
+            onTap: onAnalytics,
+          ),
+          Divider(color: colors.hairline, height: HiqeoSpacing.md),
+          _toolRow(
+            key: const ValueKey('plus-row-rekap'),
+            icon: HiqeoIcons.calendar,
+            title: 'Rekap tahunan',
+            subtitle: 'Kartu statistik tahunan yang bisa dibagikan',
+            colors: colors,
+            theme: theme,
+            onTap: onRecap,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _toolRow({
+    required Key key,
+    required HiqeoIconData icon,
+    required String title,
+    required String subtitle,
+    required HiqeoColors colors,
+    required ThemeData theme,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: key,
+        borderRadius: BorderRadius.circular(HiqeoRadius.floating),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: colors.secondary,
+                ),
+                child: Center(
+                  child: HiqeoIcon(icon, size: 19, color: colors.textPrimary),
+                ),
+              ),
+              const SizedBox(width: HiqeoSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(title, style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 1),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              HiqeoIcon(
+                HiqeoIcons.chevronRight,
+                size: 18,
+                color: colors.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CloudCard extends StatelessWidget {
   const _CloudCard({
     required this.backup,
     required this.saving,
+    required this.syncing,
     required this.onAutoBackupChanged,
-    required this.onRecoveryCode,
+    required this.onWifiOnlyChanged,
+    required this.onSyncNow,
   });
 
   final CloudBackupState backup;
   final bool saving;
+  final bool syncing;
   final ValueChanged<bool> onAutoBackupChanged;
-  final VoidCallback onRecoveryCode;
+  final ValueChanged<bool> onWifiOnlyChanged;
+  final VoidCallback onSyncNow;
 
   @override
   Widget build(BuildContext context) {
@@ -533,7 +646,7 @@ class _CloudCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 1),
                     Text(
-                      'Hanya lewat Wi-Fi',
+                      'Riwayat & statistik otomatis dipulihkan saat masuk di perangkat baru',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colors.textSecondary,
                       ),
@@ -545,64 +658,72 @@ class _CloudCard extends StatelessWidget {
               GooeySwitch(
                 key: const ValueKey('manage-backup-switch'),
                 value: backup.autoBackup,
-                semanticsLabel: 'Cadangkan otomatis, hanya lewat Wi-Fi',
+                semanticsLabel: 'Cadangkan otomatis',
                 onChanged: saving ? (_) {} : onAutoBackupChanged,
               ),
             ],
           ),
-          Divider(color: colors.hairline, height: HiqeoSpacing.xl),
-          Text(
-            'Terakhir dicadangkan',
-            style: theme.textTheme.titleSmall,
-          ),
-          const SizedBox(height: 1),
-          Text(
-            lastBackup == null
-                ? 'Belum ada · server cadangan belum tersambung'
-                : '${formatDate(lastBackup)} · '
-                    '${formatClock(lastBackup.toLocal())}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
           const SizedBox(height: HiqeoSpacing.md),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              key: const ValueKey('manage-recovery-code'),
-              borderRadius: BorderRadius.circular(HiqeoRadius.floating),
-              onTap: onRecoveryCode,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            'Kode pemulihan',
-                            style: theme.textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            'Simpan untuk memulihkan di perangkat baru',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
+                    Text(
+                      'Hanya lewat Wi-Fi',
+                      style: theme.textTheme.titleSmall,
                     ),
-                    HiqeoIcon(
-                      HiqeoIcons.chevronRight,
-                      size: 18,
-                      color: colors.textSecondary,
+                    const SizedBox(height: 1),
+                    Text(
+                      'Hemat kuota seluler saat mencadangkan sesi',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
+              const SizedBox(width: HiqeoSpacing.sm),
+              GooeySwitch(
+                key: const ValueKey('manage-wifi-only-switch'),
+                value: backup.wifiOnly,
+                semanticsLabel: 'Hanya lewat Wi-Fi',
+                onChanged: saving ? (_) {} : onWifiOnlyChanged,
+              ),
+            ],
+          ),
+          Divider(color: colors.hairline, height: HiqeoSpacing.xl),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Terakhir dicadangkan',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      lastBackup == null
+                          ? 'Menunggu sinkronisasi pertama'
+                          : '${formatDate(lastBackup)} · '
+                              '${formatClock(lastBackup.toLocal())}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: HiqeoSpacing.sm),
+              FilledButton.tonal(
+                key: const ValueKey('manage-sync-now'),
+                onPressed: syncing ? null : onSyncNow,
+                child: Text(syncing ? 'Menyinkronkan…' : 'Sinkronkan'),
+              ),
+            ],
           ),
         ],
       ),
@@ -728,8 +849,7 @@ class _DeviceCard extends StatelessWidget {
           if (devices.length <= 1) ...<Widget>[
             const SizedBox(height: HiqeoSpacing.md),
             Text(
-              'Perangkat lain muncul di sini setelah cadangan cloud '
-              'tersambung.',
+              'Riwayat dan statistik otomatis dipulihkan saat kamu masuk dengan akun yang sama di perangkat lain.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colors.textSecondary,
               ),
@@ -804,13 +924,18 @@ class _GpxSheetState extends State<_GpxSheet> {
   @override
   void dispose() {
     final database = _database;
-    if (database != null) unawaited(database.close());
+    if (database != null) {
+      DriftTrackingRepository.unregisterDatabase(database);
+      unawaited(database.close());
+    }
     super.dispose();
   }
 
   Future<TrackingRepository?> _openRepository() async {
     final injected = widget.repository;
     if (injected != null) return injected;
+    final existing = _database;
+    if (existing != null) return DriftTrackingRepository(existing);
     try {
       final file = await defaultAppDatabaseFile();
       final database = openAppDatabase(file);
@@ -899,41 +1024,35 @@ class _GpxSheetState extends State<_GpxSheet> {
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
-    final media = MediaQuery.of(context);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
     return Padding(
-      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: bottomInset),
       child: FractionallySizedBox(
         heightFactor: 0.78,
-        child: Container(
+        child: GlassSurface(
           key: const ValueKey('gpx-sheet'),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(HiqeoRadius.hero),
-            ),
+          tier: GlassTier.panel,
+          borderRadius: 28,
+          padding: EdgeInsets.fromLTRB(
+            HiqeoSpacing.lg,
+            HiqeoSpacing.md,
+            HiqeoSpacing.lg,
+            HiqeoSpacing.lg + safeBottom,
           ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                HiqeoSpacing.lg,
-                HiqeoSpacing.md,
-                HiqeoSpacing.lg,
-                HiqeoSpacing.lg,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: colors.hairline,
-                        borderRadius: BorderRadius.circular(HiqeoRadius.pill),
-                      ),
-                    ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colors.textSecondary.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(HiqeoRadius.pill),
                   ),
+                ),
+              ),
                   const SizedBox(height: HiqeoSpacing.md),
                   Row(
                     children: <Widget>[
@@ -969,8 +1088,6 @@ class _GpxSheetState extends State<_GpxSheet> {
                   Expanded(child: _list(theme, colors)),
                 ],
               ),
-            ),
-          ),
         ),
       ),
     );

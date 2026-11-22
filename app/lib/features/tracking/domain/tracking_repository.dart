@@ -12,6 +12,9 @@ abstract interface class TrackingRepository {
 
   Future<void> addPoint(String sessionId, TrackPoint point);
 
+  /// Menghapus seluruh titik rekaman pada sesi tertentu (mis. skenario teleport).
+  Future<void> clearPoints(String sessionId);
+
   /// Titik sesi diurutkan menurut waktu rekam, lalu urutan masuk.
   Future<List<TrackPoint>> points(String sessionId);
 

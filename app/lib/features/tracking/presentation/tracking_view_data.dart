@@ -1,4 +1,5 @@
 import '../../../infrastructure/power/power_profile_manager.dart';
+import '../domain/elevation_profile.dart';
 import '../domain/track_point.dart';
 
 /// Teks metrik Pelacakan. Semua nilai berasal dari rekaman nyata; nilai yang
@@ -20,11 +21,12 @@ String formatDistanceValue(double meters) {
 
 String formatElevationValue(double meters) => _grouped(meters.round());
 
+/// Pace dalam menit:detik per km, dibatasi ke 3:00 (180 dtk) s/d 60:00 (3600 dtk).
 String formatPaceValue(double? secondsPerKm) {
   if (secondsPerKm == null ||
       !secondsPerKm.isFinite ||
-      secondsPerKm <= 0 ||
-      secondsPerKm > 36000) {
+      secondsPerKm < 180 ||
+      secondsPerKm > 3600) {
     return '—';
   }
   final seconds = secondsPerKm.round();
@@ -33,16 +35,31 @@ String formatPaceValue(double? secondsPerKm) {
   return '$minutes:$rest';
 }
 
+/// Kecepatan vertikal dalam m/jam, dibatasi ke +/- 3.000 m/jam.
 String formatVerticalSpeedValue(double? metersPerHour) {
   if (metersPerHour == null || !metersPerHour.isFinite) return '—';
-  return _grouped(metersPerHour.round());
+  final clamped = metersPerHour.clamp(-3000.0, 3000.0);
+  return _grouped(clamped.round());
 }
 
-String formatStepCount(int? steps) =>
-    steps == null || steps < 0 ? '—' : _grouped(steps);
+String formatStepCount(int? steps, {bool estimated = false}) {
+  if (steps == null || steps < 0) return '—';
+  final grouped = _grouped(steps);
+  return estimated ? '~$grouped' : grouped;
+}
 
 String formatCaloriesValue(double? kcal) =>
     kcal == null || !kcal.isFinite || kcal < 0 ? '—' : _grouped(kcal.round());
+
+/// Benar bila fix valid terakhir sudah lebih tua dari [maxAge] (bawaan 10 detik).
+bool isFixStale(
+  DateTime? lastValidFixAtUtc,
+  DateTime nowUtc, {
+  Duration maxAge = const Duration(seconds: 10),
+}) {
+  if (lastValidFixAtUtc == null) return false;
+  return nowUtc.difference(lastValidFixAtUtc) > maxAge;
+}
 
 String profileLabel(PowerProfile profile) => switch (profile) {
       PowerProfile.normal => 'Normal',
@@ -50,27 +67,13 @@ String profileLabel(PowerProfile profile) => switch (profile) {
       PowerProfile.critical => 'Kritis',
     };
 
-String batteryStatusLabel(int? percent, PowerProfile profile) {
-  if (percent == null) return 'Baterai tidak terbaca';
-  return 'Baterai $percent% · ${profileLabel(profile)}';
-}
-
-/// Sampel ketinggian dari titik yang benar-benar tercatat. Titik tanpa
-/// altitud dilewati, lalu deret dipangkas agar grafik tetap ringan.
+/// Sampel ketinggian dari titik yang benar-benar tercatat (tiap 10 m atau 5 dtk,
+/// dihaluskan rata-rata bergerak 5 titik, maksimal 120 titik).
 List<double> elevationSeries(
   List<TrackPoint> points, {
-  int maxSamples = 64,
-}) {
-  final altitudes = <double>[
-    for (final point in points)
-      if (point.altitudeM != null) point.altitudeM!,
-  ];
-  if (altitudes.length <= maxSamples) return altitudes;
-  return <double>[
-    for (var i = 0; i < maxSamples; i++)
-      altitudes[(i * (altitudes.length - 1) / (maxSamples - 1)).round()],
-  ];
-}
+  int maxSamples = 120,
+}) =>
+    buildElevationProfile(points, maxSamples: maxSamples);
 
 String _decimal(double value, int digits) {
   final text = value.toStringAsFixed(digits);

@@ -36,7 +36,7 @@ ThemeData buildHiqeoTheme(HiqeoColors colors) {
     ),
     extensions: <ThemeExtension<dynamic>>[colors],
     splashFactory: NoSplash.splashFactory,
-    highlightColor: Colors.transparent,
+    highlightColor: colors.primary.withValues(alpha: 0.08),
     dividerTheme: DividerThemeData(
       color: colors.hairline,
       thickness: 1,

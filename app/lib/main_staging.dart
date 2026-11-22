@@ -1,3 +1,3 @@
 import 'bootstrap.dart';
 
-Future<void> main() => bootstrap(Flavor.staging);
+void main() => bootstrap(Flavor.staging);

@@ -1,5 +1,6 @@
 import '../../../core/utils/clock.dart';
 import '../domain/track_point.dart';
+import '../domain/tracking_diagnostics.dart';
 import '../domain/tracking_engine.dart';
 import '../domain/tracking_repository.dart';
 import '../domain/tracking_session.dart';
@@ -25,15 +26,28 @@ class RecordingSession {
 
   final TrackingRepository _repository;
   final Clock _clock;
-  final TrackingEngine _engine;
+  TrackingEngine _engine;
 
   TrackingSession _session;
   TrackingSnapshot? _snapshot;
   int _pointCount;
 
   TrackingSession get session => _session;
-  TrackingSnapshot? get snapshot => _snapshot;
+
+  /// Potret terbaru dari fix valid terakhir (termasuk fix goyangan yang tidak
+  /// disimpan), supaya pace dan kecepatan vertikal tidak basi saat berhenti.
+  TrackingSnapshot? get snapshot => _engine.latestSnapshot ?? _snapshot;
   int get pointCount => _pointCount;
+
+  /// Hitungan diterima/ditolak beserta alasannya.
+  TrackingDiagnostics get diagnostics => _engine.diagnostics;
+
+  /// Mengosongkan titik di memori dan menginisialisasi ulang engine tracking.
+  void clearPoints() {
+    _pointCount = 0;
+    _engine = TrackingEngine();
+    _snapshot = null;
+  }
 
   static Future<RecordingSession> startNew({
     required TrackingRepository repository,
@@ -41,6 +55,8 @@ class RecordingSession {
     String? groupId,
     String? trailId,
     String? id,
+    String activityType = TrackingSession.activityHiking,
+    String? ownerUserId,
   }) async {
     final now = clock.nowUtc();
     final session = TrackingSession(
@@ -48,6 +64,8 @@ class RecordingSession {
       startedAtUtc: now,
       groupId: groupId,
       trailId: trailId,
+      activityType: TrackingSession.normalizeActivityType(activityType),
+      ownerUserId: ownerUserId,
     );
     await repository.saveSession(session);
     return RecordingSession._(
@@ -85,9 +103,21 @@ class RecordingSession {
     );
   }
 
+  /// Memproses satu fix. Mengembalikan potret bila titik DITERIMA dan disimpan,
+  /// `null` bila ditolak atau hanya goyangan GPS.
   Future<TrackingSnapshot?> onFix(TrackPoint raw) async {
     final snapshot = _engine.onFix(raw);
-    if (snapshot == null) return null;
+    if (snapshot == null) {
+      final latest = _engine.latestSnapshot;
+      if (latest != null &&
+          latest.movingTime.inSeconds != _session.movingSeconds) {
+        _session = _session.copyWith(
+          movingSeconds: latest.movingTime.inSeconds,
+        );
+        await _repository.saveSession(_session);
+      }
+      return null;
+    }
 
     await _repository.addPoint(_session.id, snapshot.lastPoint);
     _pointCount++;
@@ -104,7 +134,12 @@ class RecordingSession {
 
   Future<TrackingSession> finish() async {
     if (_session.status == TrackingSessionStatus.completed) return _session;
+    final latest = snapshot;
     _session = _session.copyWith(
+      distanceM: latest?.distanceM ?? _session.distanceM,
+      movingSeconds: latest?.movingTime.inSeconds ?? _session.movingSeconds,
+      elevationGainM: latest?.gainM ?? _session.elevationGainM,
+      elevationLossM: latest?.lossM ?? _session.elevationLossM,
       endedAtUtc: _clock.nowUtc(),
       status: TrackingSessionStatus.completed,
     );
@@ -120,6 +155,8 @@ Future<RecordingSession> openOrStartRecordingSession({
   required Clock clock,
   String? groupId,
   String? trailId,
+  String activityType = TrackingSession.activityHiking,
+  String? ownerUserId,
 }) async {
   final recovered = await SessionRecovery(repository).recoverActive();
   if (recovered != null) {
@@ -134,5 +171,7 @@ Future<RecordingSession> openOrStartRecordingSession({
     clock: clock,
     groupId: groupId,
     trailId: trailId,
+    activityType: activityType,
+    ownerUserId: ownerUserId,
   );
 }

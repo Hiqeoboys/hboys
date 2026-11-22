@@ -1,8 +1,4 @@
-/// Keadaan cadangan cloud yang disimpan lokal pada tahap ini.
-///
-/// Server cadangan belum tersambung, jadi [connected] selalu false untuk
-/// implementasi sekarang. Antarmuka ini sudah siap diganti implementasi
-/// backend tanpa mengubah layar D6.
+/// Status sinkronisasi cadangan cloud otomatis (khusus pelanggan Hiqeo Plus).
 library;
 
 class BackupDevice {
@@ -39,6 +35,7 @@ class BackupDevice {
 class CloudBackupState {
   const CloudBackupState({
     required this.autoBackup,
+    this.wifiOnly = true,
     required this.recoveryCode,
     required this.devices,
     required this.connected,
@@ -46,6 +43,7 @@ class CloudBackupState {
   });
 
   final bool autoBackup;
+  final bool wifiOnly;
   final String recoveryCode;
   final List<BackupDevice> devices;
   final bool connected;
@@ -53,6 +51,7 @@ class CloudBackupState {
 
   CloudBackupState copyWith({
     bool? autoBackup,
+    bool? wifiOnly,
     String? recoveryCode,
     List<BackupDevice>? devices,
     bool? connected,
@@ -60,6 +59,7 @@ class CloudBackupState {
   }) =>
       CloudBackupState(
         autoBackup: autoBackup ?? this.autoBackup,
+        wifiOnly: wifiOnly ?? this.wifiOnly,
         recoveryCode: recoveryCode ?? this.recoveryCode,
         devices: devices ?? this.devices,
         connected: connected ?? this.connected,
@@ -68,14 +68,17 @@ class CloudBackupState {
 
   Map<String, Object?> toJson() => <String, Object?>{
         'autoBackup': autoBackup,
+        'wifiOnly': wifiOnly,
         'recoveryCode': recoveryCode,
         'connected': connected,
         'lastBackupAtUtc': lastBackupAtUtc?.toIso8601String(),
         'devices': <Object?>[for (final device in devices) device.toJson()],
       };
 
-  static CloudBackupState? tryParse(Object? json,
-      {required String fallbackCode}) {
+  static CloudBackupState? tryParse(
+    Object? json, {
+    required String fallbackCode,
+  }) {
     if (json is! Map) return null;
     final code = json['recoveryCode']?.toString();
     final devices = <BackupDevice>[
@@ -85,6 +88,7 @@ class CloudBackupState {
     ];
     return CloudBackupState(
       autoBackup: json['autoBackup'] == true,
+      wifiOnly: json['wifiOnly'] != false,
       recoveryCode: code == null || code.isEmpty ? fallbackCode : code,
       devices: List<BackupDevice>.unmodifiable(devices),
       connected: json['connected'] == true,
@@ -98,7 +102,9 @@ class CloudBackupState {
 abstract interface class CloudBackupRepository {
   Future<CloudBackupState> load();
 
-  /// Menyimpan pilihan saklar. Tidak mengubah [CloudBackupState.lastBackupAtUtc]
-  /// karena belum ada server yang menerima cadangan.
   Future<CloudBackupState> setAutoBackup(bool enabled);
+
+  Future<CloudBackupState> setWifiOnly(bool wifiOnly);
+
+  Future<CloudBackupState> syncNow({bool ignoreWifiOnly = false});
 }

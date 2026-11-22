@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../../design/app_theme.dart';
+import '../../../../design/glass/glass_surface.dart';
 import '../../../../design/gooey/gooey_switch.dart';
 import '../../../../design/tokens.dart';
 import '../../../../design/typography.dart';
 import '../../../../design/widgets/hiqeo_button.dart';
 import '../../../../design/widgets/line_icons.dart';
-import 'plus_widgets.dart';
 
 /// Panel persetujuan papan nasional.
 ///
@@ -24,19 +24,24 @@ Future<bool?> showLeaderboardConsentSheet(
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: HiqeoColors.light.primary.withValues(alpha: 0.55),
-    builder: (sheetContext) => Theme(
-      data: buildHiqeoTheme(HiqeoColors.light),
-      child: SafeArea(
-        top: false,
+    builder: (sheetContext) {
+      final safeBottom = MediaQuery.paddingOf(sheetContext).bottom;
+      return Theme(
+        data: buildHiqeoTheme(HiqeoColors.light),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(HiqeoSpacing.md),
+          padding: EdgeInsets.fromLTRB(
+            HiqeoSpacing.md,
+            HiqeoSpacing.md,
+            HiqeoSpacing.md,
+            HiqeoSpacing.md + safeBottom,
+          ),
           child: _ConsentSheet(
             displayName: displayName,
             storedVisible: storedVisible,
           ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }
 
@@ -70,8 +75,9 @@ class _ConsentSheetState extends State<_ConsentSheet> {
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
-    return PlusCard(
-      radius: HiqeoRadius.hero,
+    return GlassSurface(
+      tier: GlassTier.panel,
+      borderRadius: 28,
       padding: const EdgeInsets.fromLTRB(
         HiqeoSpacing.xl,
         HiqeoSpacing.md,
@@ -84,7 +90,7 @@ class _ConsentSheetState extends State<_ConsentSheet> {
         children: <Widget>[
           Center(
             child: Container(
-              width: 40,
+              width: 36,
               height: 4,
               decoration: BoxDecoration(
                 color: colors.secondary,

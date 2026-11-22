@@ -46,8 +46,8 @@ void main() {
     expect(cache.entries[_route], isNotNull);
     expect(
       find.text(
-        'Data demo lokal, bukan prakiraan BMKG. Prakiraan resmi nanti '
-        'bersumber dari BMKG dan ditandai "perkiraan".',
+        'Menampilkan perkiraan cuaca lokal. Cuaca gunung dapat '
+        'berubah sewaktu-waktu.',
       ),
       findsOneWidget,
     );
@@ -91,7 +91,10 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.textContaining('Data demo lokal'), findsNothing);
+    expect(
+      find.textContaining('Menampilkan perkiraan cuaca lokal'),
+      findsNothing,
+    );
     expect(find.text('SUHU PUNCAK · PERKIRAAN'), findsOneWidget);
   });
 

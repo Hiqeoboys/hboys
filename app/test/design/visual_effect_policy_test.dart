@@ -22,14 +22,12 @@ void main() {
       expect(VisualEffectPolicy.full.gooey, isTrue);
     });
 
-    test('profil daya Hemat dan Kritis mematikan kaca dan gooey', () {
-      for (final power in <PowerProfile>[
-        PowerProfile.saver,
-        PowerProfile.critical,
-      ]) {
-        expect(policy(power: power).glassBlur, isFalse, reason: '$power');
-        expect(policy(power: power).gooey, isFalse, reason: '$power');
-      }
+    test('profil daya Hemat tetap menyalakan blur kaca dan mematikan gooey; Kritis mematikan keduanya', () {
+      expect(policy(power: PowerProfile.saver).glassBlur, isTrue);
+      expect(policy(power: PowerProfile.saver).gooey, isFalse);
+
+      expect(policy(power: PowerProfile.critical).glassBlur, isFalse);
+      expect(policy(power: PowerProfile.critical).gooey, isFalse);
     });
 
     test('perangkat lemah mematikan kaca dan gooey', () {
@@ -57,7 +55,8 @@ void main() {
   });
 
   group('probeDeviceTier', () {
-    const int duaGigaKb = 2 * 1024 * 1024;
+    const int satuSetengahGigaKb = 1536 * 1024;
+    const int tigaGigaMeasuredKb = 2800 * 1024;
     const int empatGigaKb = 4 * 1024 * 1024;
 
     test('inti sangat sedikit digolongkan perangkat lemah', () {
@@ -67,17 +66,24 @@ void main() {
       );
     });
 
-    test('RAM di bawah 3 GB digolongkan perangkat lemah', () {
+    test('RAM di bawah 2 GB digolongkan perangkat lemah', () {
       expect(
         VisualEffectPolicy.probeDeviceTier(
           processorCount: 4,
-          totalMemoryKb: duaGigaKb,
+          totalMemoryKb: satuSetengahGigaKb,
         ),
         DeviceTier.lowEnd,
       );
     });
 
-    test('empat inti dengan RAM cukup digolongkan mampu', () {
+    test('empat inti dengan RAM 3 GB (~2,7 GB terukur) maupun 4 GB digolongkan mampu', () {
+      expect(
+        VisualEffectPolicy.probeDeviceTier(
+          processorCount: 4,
+          totalMemoryKb: tigaGigaMeasuredKb,
+        ),
+        DeviceTier.capable,
+      );
       expect(
         VisualEffectPolicy.probeDeviceTier(
           processorCount: 4,

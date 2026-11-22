@@ -17,7 +17,11 @@ class FakeAuthService implements AuthService {
   final StreamController<AuthUser?> _changes =
       StreamController<AuthUser?>.broadcast();
   final List<AuthProviderKind> signInCalls = [];
+  final List<AuthProviderKind> switchAccountCalls = [];
   int signOutCalls = 0;
+  int deleteAccountCalls = 0;
+  Object? signInError;
+  Completer<void>? signInCompleter;
 
   @override
   Stream<AuthUser?> get authStateChanges => _changes.stream;
@@ -30,6 +34,20 @@ class FakeAuthService implements AuthService {
   @override
   Future<void> signIn(AuthProviderKind provider) async {
     signInCalls.add(provider);
+    if (signInCompleter != null) {
+      await signInCompleter!.future;
+    }
+    if (signInError != null) {
+      throw signInError!;
+    }
+  }
+
+  @override
+  Future<void> switchAccount(AuthProviderKind provider) async {
+    switchAccountCalls.add(provider);
+    if (signInError != null) {
+      throw signInError!;
+    }
   }
 
   @override
@@ -39,13 +57,25 @@ class FakeAuthService implements AuthService {
     _changes.add(null);
   }
 
+  @override
+  Future<void> deleteAccount() async {
+    deleteAccountCalls++;
+    currentUser = null;
+    _changes.add(null);
+  }
+
   Future<void> close() => _changes.close();
 }
 
 class FakeProfileRepository implements ProfileRepository {
   UserProfile? current;
+  Object? setUsernameError;
 
   final List<({String username, String publicKeyBase64})> registrations = [];
+  final List<String> setUsernameCalls = [];
+  final List<String> avatarUrlCalls = [];
+  final List<String> updateFullNameCalls = [];
+  Object? updateFullNameError;
 
   @override
   Future<UserProfile?> currentProfile() async => current;
@@ -66,6 +96,43 @@ class FakeProfileRepository implements ProfileRepository {
     );
     current = profile;
     return profile;
+  }
+
+  @override
+  Future<UserProfile> setUsername(String newUsername) async {
+    setUsernameCalls.add(newUsername);
+    if (setUsernameError != null) {
+      throw setUsernameError!;
+    }
+    final updated = (current ?? const UserProfile(userId: 'user-1')).copyWith(
+      username: newUsername,
+      usernameChangedAtUtc: DateTime.now().toUtc(),
+    );
+    current = updated;
+    return updated;
+  }
+
+  @override
+  Future<UserProfile> updateAvatarUrl(String avatarUrl) async {
+    avatarUrlCalls.add(avatarUrl);
+    final updated = (current ?? const UserProfile(userId: 'user-1')).copyWith(
+      avatarUrl: avatarUrl,
+    );
+    current = updated;
+    return updated;
+  }
+
+  @override
+  Future<UserProfile> updateFullName(String fullName) async {
+    updateFullNameCalls.add(fullName);
+    if (updateFullNameError != null) {
+      throw updateFullNameError!;
+    }
+    final updated = (current ?? const UserProfile(userId: 'user-1')).copyWith(
+      fullName: fullName,
+    );
+    current = updated;
+    return updated;
   }
 }
 

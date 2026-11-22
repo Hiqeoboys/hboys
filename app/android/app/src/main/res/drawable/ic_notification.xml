@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Siluet dua puncak gunung Hiqeo monokrom putih transparan agar tajam di status bar Android -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M2.2,19.5L8.6,8.2C8.9,7.7 9.6,7.7 9.9,8.2L12.7,13.1L14.8,9.9C15.1,9.4 15.8,9.4 16.1,9.9L21.8,19.5C22.1,20.0 21.7,20.5 21.1,20.5H2.9C2.3,20.5 1.9,20.0 2.2,19.5ZM9.25,10.9L6.4,16.1L9.25,14.8L11.4,16.0L9.25,10.9Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M17.2,3.5A1.9,1.9 0 1,1 17.2,7.3A1.9,1.9 0 1,1 17.2,3.5Z" />
+</vector>

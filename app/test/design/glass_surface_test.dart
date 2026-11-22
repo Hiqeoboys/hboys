@@ -13,15 +13,24 @@ import '../support/hiqeo_app_harness.dart';
 
 Widget glassApp({
   VisualEffectPolicy? policy,
+  GlassTier? tier,
   Widget? child,
   Color? tint,
+  bool? blurEnabledOverride,
+  ThemeData? theme,
+  bool wrapBackdropGroup = false,
 }) {
-  final surface = GlassSurface(
+  Widget surface = GlassSurface(
+    tier: tier,
     tint: tint,
+    blurEnabledOverride: blurEnabledOverride,
     child: child ?? const Text('Isi kaca'),
   );
+  if (wrapBackdropGroup) {
+    surface = BackdropGroup(child: surface);
+  }
   return MaterialApp(
-    theme: hiqeoLightTheme,
+    theme: theme ?? hiqeoLightTheme,
     home: Scaffold(
       body: Center(
         child: policy == null
@@ -43,110 +52,146 @@ VisualEffectPolicy policy({
       deviceTier: tier,
     );
 
-Color backdropColor(WidgetTester tester) {
-  final container = tester.widget<Container>(
+Color backdropFillColor(WidgetTester tester) {
+  final box = tester.widget<DecoratedBox>(
     find.descendant(
       of: find.byType(GlassSurface),
-      matching: find.byType(Container),
+      matching: find.byKey(const ValueKey<String>('glass-surface-fill')),
     ),
   );
-  return (container.decoration! as BoxDecoration).color!;
+  return (box.decoration as BoxDecoration).color!;
 }
 
 void main() {
-  testWidgets('kebijakan penuh memakai blur dan saturasi', (tester) async {
-    await tester.pumpWidget(glassApp(policy: VisualEffectPolicy.full));
+  setUp(GlassConfig.resetForTesting);
+  tearDown(GlassConfig.resetForTesting);
 
-    expect(find.byType(BackdropFilter), findsOneWidget);
-    expect(find.byType(ColorFiltered), findsOneWidget);
-    final blur = tester.widget<BackdropFilter>(find.byType(BackdropFilter));
-    expect(blur.filter.toString(), contains('18'));
-    expect(backdropColor(tester), HiqeoColors.light.glassFill);
-  });
-
-  testWidgets('tanpa scope, kaca dianggap perangkat mampu', (tester) async {
-    await tester.pumpWidget(glassApp());
-
-    expect(find.byType(BackdropFilter), findsOneWidget);
-    expect(find.byType(ColorFiltered), findsOneWidget);
-  });
-
-  testWidgets('profil daya Hemat dan Kritis memakai isi pekat tanpa blur',
+  testWidgets('tier panel dengan kebijakan penuh memakai blur sigma 22 + fill kaca transparan',
       (tester) async {
-    for (final power in <PowerProfile>[
-      PowerProfile.saver,
-      PowerProfile.critical,
-    ]) {
-      await tester.pumpWidget(glassApp(policy: policy(power: power)));
+    await tester.pumpWidget(
+      glassApp(policy: VisualEffectPolicy.full, tier: GlassTier.panel),
+    );
 
-      expect(find.byType(BackdropFilter), findsNothing, reason: '$power');
-      expect(find.byType(ColorFiltered), findsNothing, reason: '$power');
-      expect(backdropColor(tester), HiqeoColors.light.glassFillFallback);
-      expect(find.text('Isi kaca'), findsOneWidget, reason: '$power');
-    }
+    expect(find.byType(BackdropFilter), findsOneWidget);
+    final blur = tester.widget<BackdropFilter>(find.byType(BackdropFilter));
+    expect(blur.filter.toString(), contains('22'));
+    expect(backdropFillColor(tester), HiqeoColors.light.glassFill);
   });
 
-  testWidgets('perangkat lemah memakai isi pekat tanpa blur', (tester) async {
+  testWidgets('overlay pantulan memakai gradien vertikal simetris (tanpa miring)',
+      (tester) async {
     await tester.pumpWidget(
-      glassApp(policy: policy(tier: DeviceTier.lowEnd)),
+      glassApp(policy: VisualEffectPolicy.full, tier: GlassTier.navbar),
+    );
+
+    final reflection = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey<String>('glass-surface-reflection')),
+    );
+    final grad = (reflection.decoration as BoxDecoration).gradient!
+        as LinearGradient;
+    expect(grad.begin, Alignment.topCenter);
+    expect(grad.end, Alignment.bottomCenter);
+    expect(grad.stops, const <double>[0.0, 0.6]);
+    expect(grad.colors.first.a, closeTo(0.10, 0.01));
+    expect(grad.colors.last.a, closeTo(0.0, 0.001));
+  });
+
+  testWidgets('tier card memakai surface solid tanpa BackdropFilter & pantulan',
+      (tester) async {
+    await tester.pumpWidget(
+      glassApp(policy: VisualEffectPolicy.full, tier: GlassTier.card),
     );
 
     expect(find.byType(BackdropFilter), findsNothing);
-    expect(backdropColor(tester), HiqeoColors.light.glassFillFallback);
+    expect(
+      find.byKey(const ValueKey<String>('glass-surface-reflection')),
+      findsNothing,
+    );
+    expect(backdropFillColor(tester), HiqeoColors.light.surface);
+  });
+
+  testWidgets('tier overMap memakai glassFillMap 92% tanpa blur secara baku',
+      (tester) async {
+    await tester.pumpWidget(
+      glassApp(
+        policy: VisualEffectPolicy.full,
+        tier: GlassTier.overMap,
+        theme: hiqeoDarkTheme,
+      ),
+    );
+
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(backdropFillColor(tester), HiqeoColors.dark.glassFillMap);
+  });
+
+  testWidgets('profil daya Hemat tetap menyalakan blur kaca; hanya Kritis mematikannya dengan fill aman',
+      (tester) async {
+    await tester.pumpWidget(
+      glassApp(policy: policy(power: PowerProfile.saver), tier: GlassTier.panel),
+    );
+    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(backdropFillColor(tester), HiqeoColors.light.glassFill);
+    expect(find.text('Isi kaca'), findsOneWidget);
+
+    await tester.pumpWidget(
+      glassApp(policy: policy(power: PowerProfile.critical), tier: GlassTier.panel),
+    );
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(backdropFillColor(tester), HiqeoColors.light.glassFillSafe);
+    expect(find.text('Isi kaca'), findsOneWidget);
+  });
+
+  testWidgets('perangkat lemah mematikan blur namun menjaga fill aman',
+      (tester) async {
+    await tester.pumpWidget(
+      glassApp(policy: policy(tier: DeviceTier.lowEnd), tier: GlassTier.panel),
+    );
+
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(backdropFillColor(tester), HiqeoColors.light.glassFillSafe);
     expect(find.text('Isi kaca'), findsOneWidget);
   });
 
   testWidgets('kurangi animasi tidak mematikan blur kaca', (tester) async {
-    await tester.pumpWidget(glassApp(policy: policy(reduceMotion: true)));
+    await tester.pumpWidget(
+      glassApp(policy: policy(reduceMotion: true), tier: GlassTier.panel),
+    );
 
     expect(find.byType(BackdropFilter), findsOneWidget);
   });
 
   testWidgets('kilau sisi atas tidak menerima sentuhan', (tester) async {
-    await tester.pumpWidget(glassApp(policy: VisualEffectPolicy.full));
-
-    final highlight = find.descendant(
-      of: find.byType(GlassSurface),
-      matching: find.byType(IgnorePointer),
+    await tester.pumpWidget(
+      glassApp(policy: VisualEffectPolicy.full, tier: GlassTier.panel),
     );
+
+    final highlight = find.byKey(const ValueKey<String>('glass-surface-highlight'));
     expect(highlight, findsOneWidget);
     expect(tester.widget<IgnorePointer>(highlight).ignoring, isTrue);
   });
 
-  testWidgets('tint dicampur ke isi kaca tanpa mengganti warna dasar',
-      (tester) async {
-    const tint = Color(0x99313851);
-    await tester.pumpWidget(
-      glassApp(policy: VisualEffectPolicy.full, tint: tint),
-    );
-
-    expect(
-      backdropColor(tester),
-      Color.alphaBlend(tint, HiqeoColors.light.glassFill),
-    );
-    expect(find.byType(BackdropFilter), findsOneWidget);
-  });
-
-  testWidgets('tanpa blur, tint tetap dicampur ke isi pekat', (tester) async {
+  testWidgets('tint dicampur ke fill kaca', (tester) async {
     const tint = Color(0x99313851);
     await tester.pumpWidget(
       glassApp(
-        policy: policy(power: PowerProfile.saver),
+        policy: VisualEffectPolicy.full,
+        tier: GlassTier.panel,
         tint: tint,
       ),
     );
 
-    expect(find.byType(BackdropFilter), findsNothing);
     expect(
-      backdropColor(tester),
-      Color.alphaBlend(tint, HiqeoColors.light.glassFillFallback),
+      backdropFillColor(tester),
+      Color.alphaBlend(tint, HiqeoColors.light.glassFill),
     );
+    expect(find.byType(BackdropFilter), findsOneWidget);
   });
 
   testWidgets('isi kaca menentukan ukuran permukaan', (tester) async {
     await tester.pumpWidget(
       glassApp(
         policy: VisualEffectPolicy.full,
+        tier: GlassTier.panel,
         child: const SizedBox(width: 200, height: 64),
       ),
     );
@@ -155,7 +200,7 @@ void main() {
     expect(tester.getSize(find.byType(GlassSurface)).width, 200);
   });
 
-  testWidgets('navigasi bawah memakai permukaan kaca setinggi 64 px',
+  testWidgets('navigasi bawah memakai GlassSurface setinggi 64 px',
       (tester) async {
     final GoRouter router = buildHiqeoRouter();
     await tester.pumpWidget(buildHiqeoTestApp(router: router));
@@ -164,7 +209,7 @@ void main() {
 
     final glass = find.descendant(
       of: find.byType(HiqeoNavBar),
-      matching: find.byType(GlassSurface),
+      matching: find.byKey(const ValueKey<String>('navbar-liquid-glass')),
     );
     expect(glass, findsOneWidget);
     expect(

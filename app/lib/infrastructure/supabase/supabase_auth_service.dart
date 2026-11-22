@@ -3,41 +3,47 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
 import '../../core/config/supabase_config.dart';
-import '../../features/auth/domain/auth_service.dart';
+import '../../features/auth/domain/auth_service.dart' as domain;
+import '../../services/auth_service.dart' as standalone;
 
-class SupabaseAuthService implements AuthService {
-  SupabaseAuthService(this._client);
+class SupabaseAuthService implements domain.AuthService {
+  SupabaseAuthService(this._client, {standalone.AuthService? authService})
+      : _service = authService ?? standalone.AuthService(client: _client);
 
   final SupabaseClient _client;
+  final standalone.AuthService _service;
 
   @override
   bool get isConfigured => true;
 
   @override
-  AuthUser? get currentUser => _toUser(_client.auth.currentUser);
+  domain.AuthUser? get currentUser => _toUser(_client.auth.currentUser);
 
   @override
-  Stream<AuthUser?> get authStateChanges => _client.auth.onAuthStateChange
+  Stream<domain.AuthUser?> get authStateChanges => _client.auth.onAuthStateChange
       .map((state) => _toUser(state.session?.user));
 
   @override
-  Future<void> signIn(AuthProviderKind provider) async {
+  Future<void> signIn(domain.AuthProviderKind provider) async {
+    if (provider == domain.AuthProviderKind.google) {
+      await _service.signInWithGoogle();
+      return;
+    }
+
     try {
       final launched = await _client.auth.signInWithOAuth(
-        provider == AuthProviderKind.google
-            ? OAuthProvider.google
-            : OAuthProvider.apple,
+        OAuthProvider.apple,
         redirectTo: SupabaseConfig.oauthRedirect,
         authScreenLaunchMode: LaunchMode.externalApplication,
       );
       if (!launched) {
-        throw const AccountException(
+        throw const domain.AccountException(
           'AUTH_LAUNCH_FAILED',
-          'Browser login tidak dapat dibuka.',
+          'Browser login tidak dapat dibuka',
         );
       }
     } on AuthException catch (error) {
-      throw AccountException(
+      throw domain.AccountException(
         'AUTH_FAILED',
         'Login gagal: ${error.message}',
       );
@@ -45,23 +51,45 @@ class SupabaseAuthService implements AuthService {
   }
 
   @override
+  Future<void> switchAccount(domain.AuthProviderKind provider) async {
+    if (provider == domain.AuthProviderKind.google) {
+      await _service.switchGoogleAccount();
+      return;
+    }
+    await signOut();
+    await signIn(provider);
+  }
+
+  @override
   Future<void> signOut() async {
+    await _service.signOut();
+  }
+
+  @override
+  Future<void> deleteAccount() async {
     try {
-      await _client.auth.signOut();
+      await _client.rpc<void>('delete_my_account');
+      await signOut();
+    } on PostgrestException catch (error) {
+      throw domain.AccountException(
+        'DELETE_ACCOUNT_FAILED',
+        'Gagal menghapus akun di server: ${error.message}',
+      );
     } on AuthException catch (error) {
-      throw AccountException(
-        'SIGN_OUT_FAILED',
-        'Keluar gagal: ${error.message}',
+      throw domain.AccountException(
+        'DELETE_ACCOUNT_FAILED',
+        'Gagal menghapus akun: ${error.message}',
       );
     }
   }
 
-  AuthUser? _toUser(User? user) {
+  domain.AuthUser? _toUser(User? user) {
     if (user == null) return null;
-    return AuthUser(
+    return domain.AuthUser(
       id: user.id,
       email: user.email,
       displayName: _displayName(user),
+      avatarUrl: _avatarUrl(user),
       provider: _provider(user),
     );
   }
@@ -76,10 +104,20 @@ class SupabaseAuthService implements AuthService {
     return null;
   }
 
-  AuthProviderKind? _provider(User user) {
+  String? _avatarUrl(User user) {
+    final metadata = user.userMetadata;
+    if (metadata == null) return null;
+    for (final key in const <String>['avatar_url', 'picture']) {
+      final value = metadata[key];
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+    return null;
+  }
+
+  domain.AuthProviderKind? _provider(User user) {
     return switch (user.appMetadata['provider']) {
-      'google' => AuthProviderKind.google,
-      'apple' => AuthProviderKind.apple,
+      'google' => domain.AuthProviderKind.google,
+      'apple' => domain.AuthProviderKind.apple,
       _ => null,
     };
   }

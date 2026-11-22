@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nama_app/features/profile/application/profile_map_status.dart';
 import 'package:nama_app/features/profile/domain/profile_summary.dart';
 import 'package:nama_app/features/tracking/domain/tracking_session.dart';
 
@@ -87,22 +86,6 @@ void main() {
         ).elevationGainLabel,
         '−1.234 m',
       );
-    });
-  });
-
-  group('downloadedMountainLabel', () {
-    test('null berarti belum dapat dibaca', () {
-      expect(downloadedMountainLabel(null), 'Belum dapat dibaca');
-    });
-
-    test('nol dan negatif berarti belum ada peta terunduh', () {
-      expect(downloadedMountainLabel(0), 'Belum ada peta terunduh');
-      expect(downloadedMountainLabel(-2), 'Belum ada peta terunduh');
-    });
-
-    test('jumlah positif ditampilkan apa adanya', () {
-      expect(downloadedMountainLabel(1), '1 gunung');
-      expect(downloadedMountainLabel(4), '4 gunung');
     });
   });
 }

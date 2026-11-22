@@ -8,6 +8,7 @@ import 'package:nama_app/core/platform/phone_dialer.dart';
 import 'package:nama_app/core/utils/clock.dart';
 import 'package:nama_app/design/app_theme.dart';
 import 'package:nama_app/design/tokens.dart';
+import 'package:nama_app/features/safety/application/sos_action_service.dart';
 import 'package:nama_app/features/safety/application/sos_location.dart';
 import 'package:nama_app/features/safety/domain/emergency_contact.dart';
 import 'package:nama_app/features/safety/domain/safety_repository.dart';
@@ -98,29 +99,80 @@ class _FakeDialer implements PhoneDialer {
   }
 }
 
+class _FakeSosActionRunner implements SosActionRunner {
+  _FakeSosActionRunner({
+    this.outcome = const SosDispatchOutcome(
+      flashlightActive: true,
+      sirenActive: true,
+      savedRemoteUpsert: true,
+      sentGroupMessage: true,
+      notifiedEmergencyContacts: true,
+      remoteSosId: 'remote-sos-1',
+    ),
+  });
+
+  final SosDispatchOutcome outcome;
+  int activateCalls = 0;
+  int deactivateCalls = 0;
+  String? lastActivatedUuid;
+  String? lastDeactivatedRemoteId;
+
+  @override
+  Future<SosDispatchOutcome> activate({
+    required String sosUuid,
+    required SosFix? fix,
+    required SosCategory category,
+    required DateTime triggeredAtUtc,
+    SafetyRepository? safetyRepository,
+  }) async {
+    activateCalls++;
+    lastActivatedUuid = sosUuid;
+    return outcome;
+  }
+
+  @override
+  Future<void> deactivate({String? remoteSosId}) async {
+    deactivateCalls++;
+    lastDeactivatedRemoteId = remoteSosId;
+  }
+}
+
 class _Harness {
   _Harness({
     required this.clock,
     required this.repository,
     required this.location,
     required this.dialer,
+    required this.actionRunner,
   });
 
   final FakeClock clock;
   final _FakeSafetyRepository repository;
   final _FakeLocation location;
   final _FakeDialer dialer;
+  final _FakeSosActionRunner actionRunner;
 }
 
-/// Layar SOS selalu dibuka sebagai rute di atas rute dasar supaya tombol tutup
-/// dan tombol kembali Android dapat diuji: keduanya memanggil `Navigator.pop`.
 const String _baseRouteText = 'layar-dasar';
 
 Future<_Harness> _pump(
   WidgetTester tester, {
-  SosFix? fix = const SosFix(lat: -6.8, lon: 106.9, accuracyM: 8),
+  SosFix? fix = const SosFix(
+    lat: -6.8,
+    lon: 106.9,
+    accuracyM: 8,
+    altitudeM: 2150,
+  ),
   bool failSave = false,
   bool dialResult = true,
+  SosDispatchOutcome outcome = const SosDispatchOutcome(
+    flashlightActive: true,
+    sirenActive: true,
+    savedRemoteUpsert: true,
+    sentGroupMessage: true,
+    notifiedEmergencyContacts: true,
+    remoteSosId: 'remote-sos-1',
+  ),
 }) async {
   tester.view.physicalSize = const Size(390, 1100);
   tester.view.devicePixelRatio = 1.0;
@@ -131,6 +183,7 @@ Future<_Harness> _pump(
   final repository = _FakeSafetyRepository()..failSave = failSave;
   final location = _FakeLocation(fix);
   final dialer = _FakeDialer()..result = dialResult;
+  final actionRunner = _FakeSosActionRunner(outcome: outcome);
   _mockPlatformChannel(tester);
 
   await tester.pumpWidget(
@@ -146,6 +199,7 @@ Future<_Harness> _pump(
                     repository: repository,
                     locationProvider: location,
                     dialer: dialer,
+                    actionRunner: actionRunner,
                     clock: clock,
                   ),
                 ),
@@ -164,11 +218,10 @@ Future<_Harness> _pump(
     repository: repository,
     location: location,
     dialer: dialer,
+    actionRunner: actionRunner,
   );
 }
 
-/// Trek geser memakai `HapticFeedback`; kanal platform dipalsukan supaya
-/// panggilan itu tercatat, bukan dilempar sebagai plugin yang hilang.
 void _mockPlatformChannel(WidgetTester tester) {
   tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
     SystemChannels.platform,
@@ -178,8 +231,6 @@ void _mockPlatformChannel(WidgetTester tester) {
       .setMockMethodCallHandler(SystemChannels.platform, null));
 }
 
-/// Pemilik semantik tampilan uji. `pipelineOwner` pada binding sudah usang
-/// karena satu binding dapat mengelola beberapa tampilan.
 SemanticsOwner _semanticsOwner() =>
     RendererBinding.instance.renderViews.single.owner!.semanticsOwner!;
 
@@ -195,7 +246,6 @@ Future<TestGesture> _hold(WidgetTester tester) async {
   return gesture;
 }
 
-/// Geser trek melewati ambang 85% lalu lepas.
 Future<void> _slidePast(WidgetTester tester, String key) async {
   final finder = _callTrack(key);
   final width = tester.getSize(finder).width;
@@ -207,7 +257,6 @@ Future<void> _slidePast(WidgetTester tester, String key) async {
   await tester.pump();
 }
 
-/// Mengaktifkan trek lewat semantik, seperti ketukan TalkBack.
 Future<void> _semanticsTap(WidgetTester tester, String key) async {
   final handle = tester.ensureSemantics();
   try {
@@ -220,12 +269,12 @@ Future<void> _semanticsTap(WidgetTester tester, String key) async {
   }
 }
 
-/// Menahan 3 detik lalu membiarkan hitung mundur selesai sehingga SOS aktif.
+/// Menahan 3 detik penuh langsung mengaktifkan SOS tanpa hitung mundur tambahan.
 Future<void> _triggerSos(WidgetTester tester, _Harness harness) async {
   final gesture = await _hold(tester);
   await _advance(tester, harness.clock, const Duration(seconds: 3));
   await gesture.up();
-  await _advance(tester, harness.clock, const Duration(seconds: 3));
+  await tester.pump();
 }
 
 Future<void> _advance(
@@ -234,68 +283,59 @@ Future<void> _advance(
   Duration duration,
 ) async {
   clock.advance(duration);
-  await tester.pump(const Duration(milliseconds: 100));
+  await tester.pump(const Duration(milliseconds: 60));
   await tester.pump();
   await tester.pump();
 }
 
 void main() {
-  testWidgets('layar diam jujur dan memakai palet terbalik', (tester) async {
+  testWidgets('layar diam menampilkan Tekan dan tahan 3 detik dan palet gelap',
+      (tester) async {
     await _pump(tester);
 
-    // Judul "SOS" di kiri atas diganti tombol tutup; "SOS" kini hanya muncul
-    // di tengah lingkaran.
     expect(find.text('SOS'), findsOneWidget);
     expect(_closeButton, findsOneWidget);
     expect(tester.getSize(_closeButton), const Size(44, 44));
-    expect(
-      find.text('Tekan-tahan 3 detik untuk memulai'),
-      findsOneWidget,
-    );
+    expect(find.text('Tekan dan tahan 3 detik'), findsOneWidget);
     expect(
       find.text('SOS hanya tersimpan di HP ini. Tidak ada pengiriman otomatis.'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.byKey(const ValueKey('sos-cancel')), findsNothing);
-    // Nomor darurat kini berupa trek geser, bukan tombol ketuk.
     expect(_callTrack('sos-call-115'), findsOneWidget);
     expect(_callTrack('sos-call-112'), findsOneWidget);
     expect(find.text('Basarnas 115'), findsOneWidget);
     expect(find.text('Darurat 112'), findsOneWidget);
     expect(find.text('Geser untuk menelepon'), findsOneWidget);
-    expect(
-      find.text(
-        'SOS tidak menjamin pertolongan datang. Hiqeo tidak mengklaim '
-        'telah menghubungi Basarnas.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.textContaining('dikirim otomatis'), findsNothing);
 
     final scaffold = tester.widget<Scaffold>(
-      find.descendant(of: find.byType(SosPage), matching: find.byType(Scaffold)),
+      find.descendant(
+        of: find.byType(SosPage),
+        matching: find.byType(Scaffold),
+      ),
     );
     expect(scaffold.backgroundColor, HiqeoColors.dark.background);
   });
 
-  testWidgets('tekan-tahan 3 detik menyimpan SOS lokal dengan lokasi nyata',
+  testWidgets(
+      'tekan-tahan 3 detik langsung memicu SOS, senter, sirene, dan tombol Matikan SOS',
       (tester) async {
     final harness = await _pump(tester);
     final gesture = await _hold(tester);
     await _advance(tester, harness.clock, const Duration(seconds: 3));
 
-    expect(find.text('3'), findsOneWidget);
-    expect(find.text('Tekan-tahan 3 detik telah terpenuhi'), findsOneWidget);
-    expect(
-      find.text('SOS disimpan otomatis, kecuali dibatalkan.'),
-      findsOneWidget,
-    );
-    expect(find.text('Batal, saya aman'), findsOneWidget);
+    // Langsung aktif (tanpa hitung mundur tambahan)
+    expect(find.text('SOS aktif'), findsOneWidget);
+    expect(find.text('Matikan SOS'), findsOneWidget);
+    expect(find.text('Batal, saya aman'), findsNothing);
     expect(find.text('CEDERA'), findsOneWidget);
     expect(find.text('TERSESAT'), findsOneWidget);
     expect(find.text('CUACA'), findsOneWidget);
-    expect(find.text('Diterima 0 anggota'), findsOneWidget);
+    expect(find.byKey(const ValueKey('sos-hardware-flashlight')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sos-hardware-siren')), findsOneWidget);
+    expect(harness.actionRunner.activateCalls, 1);
     expect(harness.repository.events, hasLength(1));
+
     final saved = harness.repository.events.values.single;
     expect(saved.authorId, 'perangkat-lokal');
     expect(saved.category, SosCategory.other);
@@ -305,123 +345,76 @@ void main() {
     expect(saved.status, SosEventStatus.active);
     expect(saved.createdAtUtc, DateTime.utc(2026, 10, 30, 3, 0, 3));
     await gesture.up();
-
-    await _advance(tester, harness.clock, const Duration(seconds: 1));
-    expect(find.text('2'), findsOneWidget);
-    await _advance(tester, harness.clock, const Duration(seconds: 1));
-    expect(find.text('1'), findsOneWidget);
-    await _advance(tester, harness.clock, const Duration(seconds: 1));
-
-    expect(
-      find.text(
-        'SOS tersimpan di HP. Tidak ada pengiriman otomatis ke anggota atau '
-        'kontak darurat.',
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('Hanya penyimpanan lokal yang terjadi'),
-      findsOneWidget,
-    );
+    await tester.pump();
   });
 
-  testWidgets('melepas sebelum 3 detik tidak menyimpan apa pun', (tester) async {
+  testWidgets('melepas sebelum 3 detik tidak memicu SOS atau menyimpan apa pun',
+      (tester) async {
     final harness = await _pump(tester);
     final gesture = await _hold(tester);
     await _advance(tester, harness.clock, const Duration(seconds: 2));
     await gesture.up();
     await tester.pump();
 
-    expect(
-      find.text('SOS hanya tersimpan di HP ini. Tidak ada pengiriman otomatis.'),
-      findsOneWidget,
-    );
+    expect(find.text('Tekan dan tahan 3 detik'), findsOneWidget);
     expect(harness.repository.events, isEmpty);
+    expect(harness.actionRunner.activateCalls, 0);
     expect(harness.location.calls, 1);
   });
 
-  testWidgets('batal saat hitung mundur menandai event lokal sebagai batal',
+  testWidgets('Matikan SOS menghentikan senter/sirene dan menandai event batal',
       (tester) async {
     final harness = await _pump(tester);
-    final gesture = await _hold(tester);
-    await _advance(tester, harness.clock, const Duration(seconds: 3));
-    await gesture.up();
+    await _triggerSos(tester, harness);
     expect(harness.repository.events, hasLength(1));
+    expect(harness.actionRunner.activateCalls, 1);
 
     await tester.tap(find.byKey(const ValueKey('sos-cancel')));
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('SOS dibatalkan'), findsOneWidget);
-    expect(
-      find.text(
-        'SOS dibatalkan. Data lokal ditandai batal; tidak ada pesan terkirim.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('SOS dimatikan'), findsOneWidget);
+    expect(harness.actionRunner.deactivateCalls, 1);
+    expect(harness.actionRunner.lastDeactivatedRemoteId, 'remote-sos-1');
     final saved = harness.repository.events.values.single;
     expect(saved.status, SosEventStatus.cancelled);
     expect(saved.cancelledAtUtc, harness.clock.nowUtc());
     expect(find.byKey(const ValueKey('sos-reset')), findsOneWidget);
+    expect(find.text('Matikan SOS'), findsNothing);
   });
 
-  testWidgets('batal setelah hitung mundur selesai menandai event lokal batal',
+  testWidgets(
+      'tanpa perbaikan GPS senter & sirene tetap aktif meski koordinat tidak tersimpan',
       (tester) async {
-    final harness = await _pump(tester);
-    final gesture = await _hold(tester);
-    await _advance(tester, harness.clock, const Duration(seconds: 3));
-    await gesture.up();
-    await _advance(tester, harness.clock, const Duration(seconds: 3));
-    expect(
-      find.text(
-        'SOS tersimpan di HP. Tidak ada pengiriman otomatis ke anggota atau '
-        'kontak darurat.',
+    final harness = await _pump(
+      tester,
+      fix: null,
+      outcome: const SosDispatchOutcome(
+        flashlightActive: true,
+        sirenActive: true,
       ),
-      findsOneWidget,
     );
-
-    await tester.tap(find.byKey(const ValueKey('sos-cancel')));
-    await tester.pump();
-    await tester.pump();
-
-    expect(find.text('SOS dibatalkan'), findsOneWidget);
-    expect(
-      find.text(
-        'SOS dibatalkan. Data lokal ditandai batal; tidak ada pesan terkirim.',
-      ),
-      findsOneWidget,
-    );
-    final saved = harness.repository.events.values.single;
-    expect(saved.status, SosEventStatus.cancelled);
-    expect(saved.cancelledAtUtc, harness.clock.nowUtc());
-    expect(find.byKey(const ValueKey('sos-reset')), findsOneWidget);
-    expect(find.text('Batal, saya aman'), findsNothing);
-  });
-
-  testWidgets('tanpa perbaikan GPS tidak ada SOS yang disimpan', (tester) async {
-    final harness = await _pump(tester, fix: null);
     final handle = tester.ensureSemantics();
-    final gesture = await _hold(tester);
-    await _advance(tester, harness.clock, const Duration(seconds: 3));
-    await gesture.up();
+    await _triggerSos(tester, harness);
 
     expect(harness.repository.events, isEmpty);
+    expect(harness.actionRunner.activateCalls, 1);
     expect(
-      find.textContaining('Lokasi GPS belum tersedia. SOS tidak tersimpan'),
+      find.textContaining('Lokasi GPS belum tersedia'),
       findsOneWidget,
     );
     expect(
-      tester.getSemantics(find.byKey(const ValueKey('sos-stage-savedLocally'))).label,
+      tester
+          .getSemantics(find.byKey(const ValueKey('sos-stage-savedLocally')))
+          .label,
       'Tersimpan di HP: belum',
     );
-
-    await _advance(tester, harness.clock, const Duration(seconds: 3));
     expect(
-      find.textContaining('Lokasi GPS belum tersedia. SOS tidak tersimpan'),
-      findsOneWidget,
-    );
-    expect(
-      tester.getSemantics(find.byKey(const ValueKey('sos-stage-deliveredToContact'))).label,
+      tester
+          .getSemantics(
+            find.byKey(const ValueKey('sos-stage-deliveredToContact')),
+          )
+          .label,
       'Pesan sampai ke kontak darurat: belum',
     );
     handle.dispose();
@@ -431,10 +424,7 @@ void main() {
       (tester) async {
     final harness = await _pump(tester);
     final handle = tester.ensureSemantics();
-    final gesture = await _hold(tester);
-    await _advance(tester, harness.clock, const Duration(seconds: 3));
-    await gesture.up();
-    await _advance(tester, harness.clock, const Duration(seconds: 3));
+    await _triggerSos(tester, harness);
 
     await tester.tap(find.byKey(const ValueKey('sos-category-injury')));
     await tester.pump();
@@ -445,7 +435,10 @@ void main() {
       SosCategory.injury,
     );
     expect(
-      tester.getSemantics(find.byKey(const ValueKey('sos-category-injury'))).flagsCollection.isSelected,
+      tester
+          .getSemantics(find.byKey(const ValueKey('sos-category-injury')))
+          .flagsCollection
+          .isSelected,
       ui.Tristate.isTrue,
     );
 
@@ -498,7 +491,10 @@ void main() {
       (tester) async {
     final harness = await _pump(tester);
     final finder = _callTrack('sos-call-115');
-    expect(tester.widget<SlideToCall>(_callTrack('sos-call-112')).interactive, isTrue);
+    expect(
+      tester.widget<SlideToCall>(_callTrack('sos-call-112')).interactive,
+      isTrue,
+    );
 
     final gesture = await tester.startGesture(tester.getCenter(finder));
     await tester.pump();
@@ -513,7 +509,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(harness.dialer.numbers, isEmpty);
-    expect(tester.widget<SlideToCall>(_callTrack('sos-call-112')).interactive, isTrue);
+    expect(
+      tester.widget<SlideToCall>(_callTrack('sos-call-112')).interactive,
+      isTrue,
+    );
   });
 
   testWidgets('aksi semantik trek meminta konfirmasi sebelum membuka telepon',
@@ -562,7 +561,7 @@ void main() {
     expect(find.text(_baseRouteText), findsOneWidget);
   });
 
-  testWidgets('tombol tutup saat SOS aktif meminta konfirmasi lalu membatalkan',
+  testWidgets('tombol tutup saat SOS aktif meminta konfirmasi lalu mematikan',
       (tester) async {
     final harness = await _pump(tester);
     await _triggerSos(tester, harness);
@@ -573,12 +572,12 @@ void main() {
 
     await tester.tap(_closeButton);
     await tester.pumpAndSettle();
-    expect(find.text('Batalkan SOS?'), findsOneWidget);
+    expect(find.text('Matikan SOS?'), findsOneWidget);
     expect(find.byType(SosPage), findsOneWidget);
 
     await tester.tap(find.widgetWithText(TextButton, 'Biarkan aktif'));
     await tester.pumpAndSettle();
-    expect(find.text('Batalkan SOS?'), findsNothing);
+    expect(find.text('Matikan SOS?'), findsNothing);
     expect(find.byType(SosPage), findsOneWidget);
     expect(
       harness.repository.events.values.single.status,
@@ -587,9 +586,10 @@ void main() {
 
     await tester.tap(_closeButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Batalkan SOS'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Matikan SOS'));
     await tester.pumpAndSettle();
 
+    expect(harness.actionRunner.deactivateCalls, 1);
     expect(
       harness.repository.events.values.single.status,
       SosEventStatus.cancelled,
@@ -606,7 +606,7 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
-    expect(find.text('Batalkan SOS?'), findsOneWidget);
+    expect(find.text('Matikan SOS?'), findsOneWidget);
     expect(find.byType(SosPage), findsOneWidget);
     expect(
       harness.repository.events.values.single.status,
@@ -627,17 +627,9 @@ void main() {
   testWidgets('kegagalan penyimpanan lokal tidak diklaim berhasil',
       (tester) async {
     final harness = await _pump(tester, failSave: true);
-    final gesture = await _hold(tester);
-    await _advance(tester, harness.clock, const Duration(seconds: 3));
-    await gesture.up();
+    await _triggerSos(tester, harness);
 
     expect(harness.repository.events, isEmpty);
-    expect(
-      find.text('SOS gagal disimpan di HP. Coba lagi.'),
-      findsOneWidget,
-    );
-
-    await _advance(tester, harness.clock, const Duration(seconds: 3));
     expect(
       find.text('SOS gagal disimpan di HP. Coba lagi.'),
       findsOneWidget,

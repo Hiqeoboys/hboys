@@ -170,7 +170,7 @@ void main() {
     expect(find.text('4 pendakian'), findsOneWidget);
   });
 
-  testWidgets('sheet bandingkan segmen menjelaskan katalog yang belum ada',
+  testWidgets('sheet bandingkan segmen menampilkan segmen jalur nyata',
       (tester) async {
     await _pump(tester);
 
@@ -180,18 +180,20 @@ void main() {
     await tester.tap(row);
     await tester.pumpAndSettle();
 
+    expect(
+      find.byKey(const ValueKey<String>('segment-comparison-sheet')),
+      findsOneWidget,
+    );
     expect(find.text('Bandingkan segmen jalur'), findsNWidgets(2));
     expect(
-      find.textContaining('katalog jalur terverifikasi per gunung'),
-      findsOneWidget,
+      find.textContaining('Perbandingan per segmen jalur akan tersedia'),
+      findsNothing,
     );
-    expect(
-      find.textContaining('Katalog itu belum terisi di build ini'),
-      findsOneWidget,
-    );
-    expect(find.text('Mengerti'), findsOneWidget);
+    expect(find.text('Start – Pos 1'), findsOneWidget);
+    expect(find.text('Menuju Puncak'), findsOneWidget);
+    expect(find.text('Tutup'), findsOneWidget);
 
-    await tester.tap(find.text('Mengerti'));
+    await tester.tap(find.text('Tutup'));
     await tester.pumpAndSettle();
 
     expect(find.text('Bandingkan segmen jalur'), findsOneWidget);

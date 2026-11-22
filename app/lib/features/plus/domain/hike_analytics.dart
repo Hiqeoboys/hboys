@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:geo_utils/geo_utils.dart';
 
+import '../../profile/domain/profile_summary.dart';
 import '../../tracking/domain/track_point.dart';
 import '../../tracking/domain/tracking_session.dart';
 
@@ -173,7 +174,7 @@ class HikeAnalytics {
       final session = sample.session;
       distanceM += session.distanceM;
       movingSeconds += session.movingSeconds;
-      elevationGainM += session.elevationGainM;
+      elevationGainM += canonicalSessionElevationGain(session);
 
       for (var i = 1; i < sample.points.length; i++) {
         final previous = sample.points[i - 1];

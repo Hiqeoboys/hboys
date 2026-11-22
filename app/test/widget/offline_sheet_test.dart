@@ -166,7 +166,10 @@ void main() {
     expect(find.text('Gunung Lain'), findsOneWidget);
     expect(find.text('Terverifikasi'), findsOneWidget);
     expect(find.text('Belum terverifikasi'), findsOneWidget);
-    expect(find.textContaining('Versi 2 · data 1 Okt 2026'), findsNWidgets(2));
+    expect(
+      find.textContaining('Versi 2 · diperbarui 1 Okt 2026'),
+      findsNWidgets(2),
+    );
 
     await tester.tap(find.text('Gunung Uji'));
     await tester.pumpAndSettle();
@@ -176,7 +179,7 @@ void main() {
     expect(find.text('Belum diunduh di perangkat ini.'), findsOneWidget);
     expect(
       find.text(
-        'Perkiraan SDK: transfer 1,5 KB, penyimpanan 3,0 KB (margin ±20%).',
+        'Perkiraan ukuran unduhan: 1,5 KB (ruang penyimpanan 3,0 KB).',
       ),
       findsOneWidget,
     );
@@ -201,13 +204,12 @@ void main() {
     expect(find.text('Selesai diunduh'), findsOneWidget);
     expect(
       find.textContaining(
-        'SDK melaporkan unduhan selesai pada sesi ini. Aplikasi belum '
-        'memverifikasi ulang seluruh tile.',
+        'Unduhan selesai. Peta kini bisa dibuka tanpa sinyal.',
       ),
       findsOneWidget,
     );
-    expect(tester.widget<HiqeoButton>(find.byType(HiqeoButton)).onPressed,
-        isNull);
+    expect(
+        tester.widget<HiqeoButton>(find.byType(HiqeoButton)).onPressed, isNull);
   });
 
   testWidgets('region siap dari penyimpanan SDK menonaktifkan unduhan',
@@ -230,18 +232,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Siap dipakai offline · 10/10 aset tersimpan.'),
+      find.text('Siap dipakai tanpa sinyal.'),
       findsOneWidget,
     );
-    expect(tester.widget<HiqeoButton>(find.byType(HiqeoButton)).onPressed,
-        isNull);
+    expect(
+        tester.widget<HiqeoButton>(find.byType(HiqeoButton)).onPressed, isNull);
 
     await tester.tap(find.text('Unduh paket'));
     await tester.pumpAndSettle();
     expect(service.downloadCalls, 0);
   });
 
-  testWidgets('paket melewati batas tile menampilkan pelanggaran dan tombol mati',
+  testWidgets(
+      'paket melewati batas tile menampilkan pelanggaran dan tombol mati',
       (tester) async {
     final service = _FakeOfflineService();
     await _pump(
@@ -255,8 +258,8 @@ void main() {
 
     expect(find.textContaining('melebihi batas paket 1'), findsOneWidget);
     expect(service.estimateCalls, 0);
-    expect(tester.widget<HiqeoButton>(find.byType(HiqeoButton)).onPressed,
-        isNull);
+    expect(
+        tester.widget<HiqeoButton>(find.byType(HiqeoButton)).onPressed, isNull);
 
     await tester.tap(find.text('Unduh paket'));
     await tester.pumpAndSettle();
@@ -271,13 +274,13 @@ void main() {
     );
 
     await tester.scrollUntilVisible(
-      find.textContaining('750 tile pack'),
+      find.textContaining('Penyimpanan peta offline dibatasi'),
       160,
       scrollable: find.byType(Scrollable),
     );
     expect(
       find.textContaining(
-        'Logo dan atribusi Mapbox/OpenStreetMap wajib tetap terlihat',
+        'Atribusi Mapbox dan OpenStreetMap tetap ditampilkan',
       ),
       findsOneWidget,
     );

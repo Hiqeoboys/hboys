@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nama_app/design/gooey/gooey_switch.dart';
 import 'package:nama_app/features/plus/application/plus_controller.dart';
@@ -72,7 +71,7 @@ void main() {
     expect(find.text(_ownership), findsOneWidget);
   });
 
-  testWidgets('status aktif menampilkan cadangan cloud, perangkat, dan toko',
+  testWidgets('status aktif menampilkan alat eksklusif, cadangan cloud, perangkat, dan toko',
       (tester) async {
     await _pump(tester, controller: await _activeController());
 
@@ -90,6 +89,8 @@ void main() {
       findsOneWidget,
     );
 
+    expect(find.text('Analitik lanjutan'), findsOneWidget);
+    expect(find.text('Rekap tahunan'), findsOneWidget);
     expect(find.text('Cadangan cloud'), findsOneWidget);
     expect(find.text('Cadangkan otomatis'), findsOneWidget);
     expect(find.text('Hanya lewat Wi-Fi'), findsOneWidget);
@@ -98,19 +99,23 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('Belum ada · server cadangan belum tersambung'),
+      find.byKey(const ValueKey('manage-wifi-only-switch')),
       findsOneWidget,
     );
-    expect(find.text('Kode pemulihan'), findsOneWidget);
-    expect(find.text('Perangkat ini'), findsNWidgets(2));
+    expect(
+      find.byKey(const ValueKey('manage-sync-now')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Menunggu sinkronisasi pertama'),
+      findsOneWidget,
+    );
+    expect(find.text('Kode pemulihan'), findsNothing);
+    expect(find.text('Perangkat ini'), findsWidgets);
     expect(find.text('Aktif'), findsOneWidget);
     expect(
-      find.textContaining('Perangkat lain muncul di sini'),
-      findsOneWidget,
-    );
-    expect(
       find.textContaining('Server cadangan cloud belum ada di build ini'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('Kelola langganan di app store'), findsOneWidget);
     expect(find.text('Ekspor data (GPX) · gratis'), findsOneWidget);
@@ -221,39 +226,54 @@ void main() {
     );
   });
 
-  testWidgets('kode pemulihan bisa dibuka dan disalin', (tester) async {
-    String? copied;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-      if (call.method == 'Clipboard.setData') {
-        copied = (call.arguments as Map<Object?, Object?>)['text'] as String?;
-      }
-      return null;
-    });
-    addTearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, null);
-    });
+  testWidgets(
+      'analitik lanjutan dan rekap tahunan tampil untuk Mahasiswa & Tahunan tetapi tersembunyi untuk Tiket 1x Naik',
+      (tester) async {
+    final student = await buildPlusController(
+      token: 'student-tok',
+      payload: plusPayload(planId: 'student_annual'),
+    );
+    await _pump(tester, controller: student);
+    expect(find.byKey(const ValueKey('plus-row-analitik')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plus-row-rekap')), findsOneWidget);
 
-    await _pump(tester, controller: await _activeController());
+    final tripPass = await buildPlusController(
+      token: 'trip-tok',
+      payload: plusPayload(planId: 'trip_pass_3d'),
+    );
+    await _pump(tester, controller: tripPass);
+    expect(find.byKey(const ValueKey('plus-row-analitik')), findsNothing);
+    expect(find.byKey(const ValueKey('plus-row-rekap')), findsNothing);
+  });
 
-    await tester.tap(find.byKey(const ValueKey('manage-recovery-code')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Kode pemulihan'), findsNWidgets(2));
-    expect(find.text('ABCD-EFGH-JKLM-NPQR'), findsOneWidget);
-    expect(
-      find.textContaining('pada build ini tidak ada data yang dikirim'),
-      findsOneWidget,
+  testWidgets('saklar hanya Wi-Fi dan tombol sinkronkan memperbarui cadangan cloud',
+      (tester) async {
+    final backup = FakeCloudBackupRepository(
+      cloudBackupState(autoBackup: true, wifiOnly: true),
+    );
+    await _pump(
+      tester,
+      controller: await _activeController(),
+      backup: backup,
     );
 
-    await tester.tap(find.byKey(const ValueKey('manage-copy-recovery')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    final wifiSwitch = find.byKey(const ValueKey('manage-wifi-only-switch'));
+    expect(tester.widget<GooeySwitch>(wifiSwitch).value, isTrue);
 
-    expect(copied, 'ABCD-EFGH-JKLM-NPQR');
-    expect(find.text('Kode pemulihan disalin.'), findsOneWidget);
-    expect(find.text('ABCD-EFGH-JKLM-NPQR'), findsNothing);
+    await tester.tap(wifiSwitch);
+    await tester.pumpAndSettle();
+    expect(backup.state.wifiOnly, isFalse);
+    expect(tester.widget<GooeySwitch>(wifiSwitch).value, isFalse);
+
+    await tapAndSettleSnackBar(
+      tester,
+      find.byKey(const ValueKey('manage-sync-now')),
+    );
+    expect(backup.syncCalls, 1);
+    expect(
+      find.text('Riwayat dan statistik tersinkron dengan server.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('ekspor GPX tetap tersedia untuk pengguna gratis',
@@ -280,7 +300,10 @@ void main() {
       exporter: exporter,
     );
 
-    await tester.tap(find.text('Ekspor data (GPX) · gratis'));
+    final gpxBtn = find.text('Ekspor data (GPX) · gratis');
+    await tester.ensureVisible(gpxBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(gpxBtn);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('gpx-sheet')), findsOneWidget);
@@ -312,7 +335,10 @@ void main() {
       repository: FakeTrackingRepository(),
     );
 
-    await tester.tap(find.text('Ekspor data (GPX) · gratis'));
+    final gpxBtn = find.text('Ekspor data (GPX) · gratis');
+    await tester.ensureVisible(gpxBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(gpxBtn);
     await tester.pumpAndSettle();
 
     expect(find.text('Belum ada sesi selesai'), findsOneWidget);
@@ -350,12 +376,15 @@ void main() {
       (tester) async {
     await _pump(tester, controller: await _activeController());
 
-    await tester.tap(find.text('Kelola langganan di app store'));
+    final storeBtn = find.text('Kelola langganan di Google Play');
+    await tester.ensureVisible(storeBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(storeBtn);
     await tester.pumpAndSettle();
 
     expect(find.text('Kelola langganan'), findsOneWidget);
     expect(
-      find.textContaining('belum tersambung ke toko'),
+      find.textContaining('Langganan dikelola melalui Google Play'),
       findsOneWidget,
     );
     expect(
@@ -370,5 +399,61 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Kelola langganan'), findsNothing);
+  });
+
+  testWidgets(
+      'tombol Ekspor GPX dan Kelola langganan tidak sticky di bawah dan ikut bergulir di posisi paling bawah halaman',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = await _activeController();
+    addTearDown(controller.dispose);
+    const safeBottom = 24.0;
+
+    await pumpPlusPage(
+      tester,
+      MediaQuery(
+        data: const MediaQueryData(
+          size: Size(390, 640),
+          padding: EdgeInsets.only(top: 24, bottom: safeBottom),
+        ),
+        child: ManageSubscriptionPage(
+          backupRepository: FakeCloudBackupRepository(cloudBackupState()),
+          exporter: RecordingGpxExporter(),
+        ),
+      ),
+      controller: controller,
+      size: const Size(390, 640),
+    );
+
+    final gpxFinder = find.byKey(const ValueKey('manage-export-gpx'));
+    final storeFinder = find.byKey(const ValueKey('manage-store'));
+
+    // Tidak ada sticky bottom bar yang mengambang menutupi konten
+    expect(
+      find.byKey(const ValueKey('plus-sticky-bottom-bar')),
+      findsNothing,
+    );
+
+    final gpxRectBefore = tester.getRect(gpxFinder);
+    final storeRectBefore = tester.getRect(storeFinder);
+
+    // Gulir konten daftar ke paling bawah
+    await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+
+    // Kedua tombol berpindah naik mengikuti guliran dan tampil bersih di bawah kepemilikan data
+    final gpxRectAfter = tester.getRect(gpxFinder);
+    final storeRectAfter = tester.getRect(storeFinder);
+    expect(gpxRectAfter.top, lessThan(gpxRectBefore.top));
+    expect(storeRectAfter.top, lessThan(storeRectBefore.top));
+
+    final ownershipRect = tester.getRect(find.text(_ownership));
+    expect(gpxRectAfter.top, greaterThan(ownershipRect.bottom));
+    expect(storeRectAfter.top, greaterThan(gpxRectAfter.bottom));
+    expect(storeRectAfter.bottom, lessThanOrEqualTo(640.0 - safeBottom));
   });
 }

@@ -115,7 +115,8 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
     final reason = widget.unavailableReason;
     return GlassSurface(
       key: const ValueKey<String>('ringkasan-perjalanan'),
-      borderRadius: HiqeoRadius.hero,
+      tier: GlassTier.card,
+      borderRadius: 24,
       padding: const EdgeInsets.all(HiqeoSpacing.lg),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -151,7 +152,8 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
     final mountain = widget.mountain;
     return GlassSurface(
       key: const ValueKey<String>('ringkasan-perjalanan'),
-      borderRadius: HiqeoRadius.hero,
+      tier: GlassTier.card,
+      borderRadius: 24,
       padding: const EdgeInsets.all(HiqeoSpacing.lg),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -166,12 +168,14 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      'PENDAKIAN TERAKHIR',
+                      data.isJogging ? 'JOGGING TERAKHIR' : 'PENDAKIAN TERAKHIR',
                       style: HiqeoTypography.overline(colors.textSecondary),
                     ),
                     const SizedBox(height: HiqeoSpacing.xs),
                     Text(
-                      mountain ?? 'Pendakian ${data.dateText}',
+                      data.isJogging
+                          ? 'Jogging ${data.dateText}'
+                          : (mountain ?? 'Pendakian ${data.dateText}'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.headlineSmall
@@ -324,25 +328,27 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
                   ),
                 ),
               ),
-              Positioned(
-                left: (geometry.peak.dx - 28).clamp(0.0, math.max(0.0, size.width - 56)),
-                top: 0,
-                width: 56,
-                child: Opacity(
-                  opacity: peakOpacity,
-                  child: Text(
-                    'PUNCAK',
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colors.textSecondary,
-                      fontWeight: HiqeoTypography.bold,
-                      fontSize: 9,
-                      letterSpacing: 1.4,
+              if (!data.isJogging)
+                Positioned(
+                  left: (geometry.peak.dx - 28)
+                      .clamp(0.0, math.max(0.0, size.width - 56)),
+                  top: 0,
+                  width: 56,
+                  child: Opacity(
+                    opacity: peakOpacity,
+                    child: Text(
+                      'PUNCAK',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colors.textSecondary,
+                        fontWeight: HiqeoTypography.bold,
+                        fontSize: 9,
+                        letterSpacing: 1.4,
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           );
         },
@@ -373,7 +379,7 @@ class _KartuLink extends StatelessWidget {
           height: HiqeoMetrics.minTouchTarget,
           child: Center(
             child: ExcludeSemantics(
-              child: GlassSurface(
+              child: LightweightGlassSurface(
                 key: const ValueKey<String>('ringkasan-lihat-kartu'),
                 borderRadius: HiqeoRadius.pill,
                 padding: const EdgeInsets.symmetric(

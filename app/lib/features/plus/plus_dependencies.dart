@@ -1,36 +1,36 @@
 import 'package:flutter/foundation.dart';
 
+import '../../config/plans.dart';
 import '../../core/utils/clock.dart';
 import 'application/plus_controller.dart';
 import 'domain/plus_repositories.dart';
 import 'infrastructure/dev_entitlement_issuer.dart';
-import 'infrastructure/dummy_plus_repositories.dart';
 import 'infrastructure/entitlement_token.dart';
 import 'infrastructure/local_plus_stores.dart';
 
 /// Titik rakit Plus untuk aplikasi.
 ///
 /// Kunci publik produksi diisi lewat
-/// `--dart-define=PLUS_PUBLIC_KEY=<base64url>`. Tanpa itu, build rilis
-/// menolak semua token, sedangkan build debug memakai kunci pengembangan yang
-/// cocok dengan toko pembelian dummy.
+/// `--dart-define=PLUS_PUBLIC_KEY=<base64url>`. Sebelum payment gateway
+/// disambungkan, aplikasi memakai [MockSubscriptionRepository] sehingga tombol
+/// "Berlangganan" menampilkan "Pembayaran belum tersedia" dan tidak
+/// mengaktifkan status Plus secara palsu.
 abstract final class PlusDependencies {
   static final PlusController controller = createDefaultPlusController();
 }
 
 PlusController createDefaultPlusController({
   Clock clock = const SystemClock(),
+  SubscriptionRepository subscriptionRepository =
+      const MockSubscriptionRepository(),
 }) {
   return PlusController(
-    configRepository: kDebugMode
-        ? const DebugPlusConfigRepository()
-        : const UnavailablePlusConfigRepository(),
+    configRepository: subscriptionRepository,
     configStore: const SharedPreferencesPlusConfigStore(),
-    entitlementStore: const SharedPreferencesEntitlementLocalStore(),
+    entitlementStore: const SecureEntitlementLocalStore(),
     verifier: _buildEntitlementVerifier(),
-    billing: kDebugMode
-        ? DebugPlusBillingRepository(clock: clock)
-        : const UnavailablePlusBillingRepository(),
+    billing: subscriptionRepository,
+    accountPlusStore: const SecureAccountPlusCacheStore(),
     clock: clock,
   );
 }

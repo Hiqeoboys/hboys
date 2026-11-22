@@ -349,7 +349,9 @@ void main() {
 
     expect(repository.reports, <String>['Dimas A.']);
     expect(
-      find.text('Laporan belum terkirim: server peninjauan belum tersedia.'),
+      find.text(
+        'Laporan belum dapat dikirim. Periksa koneksi internet lalu coba lagi.',
+      ),
       findsOneWidget,
     );
 
@@ -366,7 +368,8 @@ void main() {
     expect(repository.blocks, <String>['Dimas A.']);
     expect(
       find.text(
-          'Dimas A. disembunyikan dari papan ini. Server belum tersedia.'),
+        'Dimas A. disembunyikan dari papan peringkat di perangkat ini.',
+      ),
       findsOneWidget,
     );
     expect(find.text('Dimas A.'), findsNothing);
@@ -420,7 +423,7 @@ void main() {
     expect(find.text('Leaderboard belum tersedia'), findsOneWidget);
     expect(
       find.text(
-        'Papan peringkat dirilis bertahap dan belum aktif di versi ini.',
+        'Papan peringkat sedang dibuka secara bertahap dan segera hadir.',
       ),
       findsOneWidget,
     );

@@ -105,7 +105,7 @@ GoRouter _router(Widget page) {
     initialLocation: '/siap-naik',
     routes: <RouteBase>[
       GoRoute(path: '/siap-naik', builder: (_, __) => page),
-      GoRoute(path: '/lacak', builder: (_, __) => destination('Tujuan Lacak')),
+      GoRoute(path: '/peta', builder: (_, __) => destination('Tujuan Peta')),
       GoRoute(path: '/profil', builder: (_, __) => destination('Tujuan Profil')),
       GoRoute(path: '/grup', builder: (_, __) => destination('Tujuan Grup')),
     ],
@@ -303,7 +303,7 @@ void main() {
 
     await tester.tap(find.text('Mulai pendakian'));
     await tester.pumpAndSettle();
-    expect(find.text('Tujuan Lacak'), findsOneWidget);
+    expect(find.text('Tujuan Peta'), findsOneWidget);
   });
 
   testWidgets('mulai pendakian gagal memberi pesan dan tetap di layar',

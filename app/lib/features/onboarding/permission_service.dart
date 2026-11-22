@@ -12,6 +12,7 @@ class PermissionReport {
     required this.locationServiceEnabled,
     required this.preciseLocation,
     required this.ignoringBatteryOptimizations,
+    this.activityRecognitionGranted = false,
   });
 
   final bool notificationGranted;
@@ -20,6 +21,7 @@ class PermissionReport {
   final bool locationServiceEnabled;
   final bool preciseLocation;
   final bool ignoringBatteryOptimizations;
+  final bool activityRecognitionGranted;
 
   bool get readyForBackground =>
       locationAlways &&
@@ -54,6 +56,14 @@ class PermissionService {
         ignoringBattery = false;
       }
     }
+    var activityRecognition = false;
+    try {
+      activityRecognition = Platform.isAndroid
+          ? await Permission.activityRecognition.isGranted
+          : await Permission.sensors.isGranted;
+    } catch (_) {
+      activityRecognition = false;
+    }
     return PermissionReport(
       notificationGranted: notification,
       locationWhileInUse: whileInUse,
@@ -61,20 +71,35 @@ class PermissionService {
       locationServiceEnabled: serviceEnabled,
       preciseLocation: precise,
       ignoringBatteryOptimizations: ignoringBattery,
+      activityRecognitionGranted: activityRecognition,
     );
   }
 
-  /// Meminta notifikasi (Android) dan lokasi saat digunakan. Izin "selalu"
-  /// harus diminta terpisah setelah izin dasar diberikan.
+  /// Meminta notifikasi (Android), aktivitas fisik, dan lokasi saat digunakan.
+  /// Izin "selalu" harus diminta terpisah setelah izin dasar diberikan.
   Future<PermissionReport> requestCore() async {
     if (Platform.isAndroid) {
       await Permission.notification.request();
+      try {
+        await Permission.activityRecognition.request();
+      } catch (_) {}
     }
     final whileInUse = await Permission.locationWhenInUse.request();
     if (whileInUse.isGranted) {
       await Permission.locationAlways.request();
     }
     return check();
+  }
+
+  Future<bool> requestActivityRecognition() async {
+    try {
+      final status = Platform.isAndroid
+          ? await Permission.activityRecognition.request()
+          : await Permission.sensors.request();
+      return status.isGranted;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Pada Android 11+ sistem dapat menolak dialog dan mengarahkan ke setelan.

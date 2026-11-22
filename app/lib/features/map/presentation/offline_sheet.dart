@@ -25,23 +25,20 @@ Future<void> showOfflineMapSheet(
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     useSafeArea: true,
-    builder: (sheetContext) => SafeArea(
-      top: false,
-      child: DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.74,
-        minChildSize: 0.42,
-        maxChildSize: 0.92,
-        builder: (context, scrollController) => OfflineSheetBody(
-          catalog: catalog,
-          loading: loading,
-          error: error,
-          controller: controller,
-          mapAvailable: mapAvailable,
-          onSelect: onSelect,
-          onRetry: onRetry,
-          scrollController: scrollController,
-        ),
+    builder: (sheetContext) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.74,
+      minChildSize: 0.42,
+      maxChildSize: 0.92,
+      builder: (context, scrollController) => OfflineSheetBody(
+        catalog: catalog,
+        loading: loading,
+        error: error,
+        controller: controller,
+        mapAvailable: mapAvailable,
+        onSelect: onSelect,
+        onRetry: onRetry,
+        scrollController: scrollController,
       ),
     ),
   );
@@ -80,7 +77,12 @@ class OfflineSheetBody extends StatelessWidget {
         listenable: controller,
         builder: (context, _) => ListView(
           controller: scrollController,
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            8,
+            20,
+            28 + MediaQuery.paddingOf(context).bottom,
+          ),
           children: <Widget>[
             Text(
               'Data offline tidak diperbarui otomatis dan harus diunduh ulang '
@@ -92,9 +94,9 @@ class OfflineSheetBody extends StatelessWidget {
             if (!mapAvailable) ...<Widget>[
               const SizedBox(height: HiqeoSpacing.md),
               const _Notice(
-                title: 'Mapbox belum aktif',
-                body: 'Daftar paket tetap bisa dibaca, tetapi estimasi dan '
-                    'unduhan memerlukan Mapbox di Android atau iOS.',
+                title: 'Peta offline belum siap',
+                body: 'Daftar paket tetap bisa dilihat, tetapi unduhan peta '
+                    'offline hanya tersedia di Android dan iOS.',
               ),
             ],
             const SizedBox(height: HiqeoSpacing.lg),
@@ -153,9 +155,9 @@ class _PackCard extends StatelessWidget {
     final theme = Theme.of(context);
     final plan = OfflinePlan.evaluate(package.offline);
     final area = plan.areaKm2.toStringAsFixed(1).replaceAll('.', ',');
-    final subtitle = 'Versi ${package.version} · data ${_formatDate(package.dataDateUtc)}'
-        '\n±${plan.tileCount} tile · $area km² · zoom '
-        '${package.offline.minZoom}-${package.offline.maxZoom}';
+    final subtitle =
+        'Versi ${package.version} · diperbarui ${_formatDate(package.dataDateUtc)}'
+        '\nArea $area km²';
     return Semantics(
       button: true,
       selected: selected,
@@ -271,11 +273,10 @@ class _SelectedPackage extends StatelessWidget {
       statusText = 'Status penyimpanan belum terbaca dari perangkat.';
     } else if (status.ready) {
       statusReady = true;
-      statusText = 'Siap dipakai offline · ${status.completedResources}/'
-          '${status.requiredResources} aset tersimpan.';
+      statusText = 'Siap dipakai tanpa sinyal.';
     } else if (status.hasRegion) {
-      statusText = 'Region tersimpan sebagian (${status.completedResources}/'
-          '${status.requiredResources} aset); belum siap.';
+      statusText = 'Unduhan peta belum selesai sepenuhnya. '
+          'Lanjutkan unduhan sebelum berangkat.';
     } else {
       statusText = 'Belum diunduh di perangkat ini.';
     }
@@ -324,17 +325,16 @@ class _SelectedPackage extends StatelessWidget {
               ),
           if (estimate != null)
             Text(
-              'Perkiraan SDK: transfer ${_formatBytes(estimate.transferBytes)}, '
-              'penyimpanan ${_formatBytes(estimate.storageBytes)} '
-              '(margin ±${(estimate.errorMargin * 100).round()}%).',
+              'Perkiraan ukuran unduhan: ${_formatBytes(estimate.transferBytes)} '
+              '(ruang penyimpanan ${_formatBytes(estimate.storageBytes)}).',
               style: theme.textTheme.bodySmall,
             )
           else if (!statusReady && controller.plan?.canDownload == true)
             Text(
               switch (phase) {
-                OfflineDownloadPhase.estimating => 'Menghitung perkiraan byte…',
-                OfflineDownloadPhase.error => 'Estimasi SDK tidak tersedia.',
-                _ => 'Estimasi byte belum dihitung.',
+                OfflineDownloadPhase.estimating => 'Menghitung perkiraan ukuran…',
+                OfflineDownloadPhase.error => 'Perkiraan ukuran belum tersedia.',
+                _ => 'Perkiraan ukuran belum dihitung.',
               },
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colors.textSecondary,
@@ -361,18 +361,16 @@ class _SelectedPackage extends StatelessWidget {
             const SizedBox(height: HiqeoSpacing.xs),
             Text(
               progress == null
-                  ? 'Menunggu progres dari SDK…'
-                  : '${progress.phase == OfflinePhase.stylePack ? 'Style pack' : 'Tile region'}: '
-                      '${progress.completedResources}/${progress.requiredResources} '
-                      'aset · ${_formatBytes(progress.completedBytes)}',
+                  ? 'Menyiapkan unduhan…'
+                  : '${progress.phase == OfflinePhase.stylePack ? 'Mengunduh gaya peta' : 'Mengunduh area peta'}: '
+                      '${_formatBytes(progress.completedBytes)}',
               style: theme.textTheme.bodySmall,
             ),
           ],
           if (phase == OfflineDownloadPhase.downloaded) ...<Widget>[
             const SizedBox(height: HiqeoSpacing.sm),
             Text(
-              'SDK melaporkan unduhan selesai pada sesi ini. Aplikasi belum '
-              'memverifikasi ulang seluruh tile.',
+              'Unduhan selesai. Peta kini bisa dibuka tanpa sinyal.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colors.textSecondary,
               ),
@@ -381,7 +379,7 @@ class _SelectedPackage extends StatelessWidget {
           const SizedBox(height: HiqeoSpacing.md),
           HiqeoButton(
             label: !mapAvailable
-                ? 'Unduhan butuh Mapbox aktif'
+                ? 'Unduhan hanya di Android & iOS'
                 : switch (phase) {
                     OfflineDownloadPhase.estimating => 'Menghitung…',
                     OfflineDownloadPhase.downloading => 'Mengunduh…',
@@ -438,9 +436,8 @@ class _EmptyCatalog extends StatelessWidget {
           ),
           const SizedBox(height: HiqeoSpacing.sm),
           Text(
-            'Katalog aplikasi kosong dan tidak membundel data gunung fiktif. '
-            'Tambahkan paket dari pipeline data yang sudah diverifikasi; lihat '
-            'docs/peta_offline.md untuk format katalog.',
+            'Daftar paket gunung belum tersedia. Sambungkan ke internet lalu '
+            'muat ulang untuk melihat peta yang bisa diunduh.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: colors.textSecondary,
             ),
@@ -553,23 +550,20 @@ class _FooterNotes extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          'Perkiraan tile adalah hitungan alamat tile Web Mercator, bukan '
-          'jumlah aset unduhan. Mapbox mengelompokkan tile menjadi tile pack.',
+          'Ukuran akhir unduhan dapat sedikit berbeda dari perkiraan awal, '
+          'tergantung detail kontur di area gunung.',
           style: style,
         ),
         const SizedBox(height: HiqeoSpacing.sm),
         Text(
-          'Batas Mapbox: maksimum ${MapGuardrails.mapboxTilePackLimit} tile pack '
-          'kumulatif untuk semua region; batas ini tidak bisa dihitung dari '
-          'jumlah tile dan dapat berubah. Data offline tidak diperbarui '
-          'otomatis.',
+          'Penyimpanan peta offline dibatasi agar memori perangkat tidak '
+          'penuh. Peta yang sudah diunduh tidak diperbarui otomatis.',
           style: style,
         ),
         const SizedBox(height: HiqeoSpacing.sm),
         Text(
-          'Unduhan memakai kuota data bila tidak ada Wi-Fi. Logo dan atribusi '
-          'Mapbox/OpenStreetMap wajib tetap terlihat, termasuk saat memakai '
-          'data offline.',
+          'Mengunduh tanpa Wi-Fi akan memakai kuota data seluler. Atribusi '
+          'Mapbox dan OpenStreetMap tetap ditampilkan saat memakai peta offline.',
           style: style,
         ),
       ],

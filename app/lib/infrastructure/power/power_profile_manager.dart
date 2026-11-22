@@ -52,20 +52,23 @@ class PowerProfileConfig {
   final bool allowVoice;
   final bool allowImages;
 
+  /// Interval GPS saat merekam. Akurasi GPS tidak ikut turun pada profil hemat;
+  /// interval 1 detik dijaga di Normal dan Hemat agar jarak, pace, dan
+  /// tanjakan tetap akurat. Hanya profil Kritis (< 20%) melonggarkan interval.
   static const normal = PowerProfileConfig(
-    gpsInterval: Duration(seconds: 5),
+    gpsInterval: Duration(seconds: 1),
     locationShareInterval: Duration(seconds: 60),
     allowVoice: true,
     allowImages: true,
   );
   static const saver = PowerProfileConfig(
-    gpsInterval: Duration(seconds: 15),
+    gpsInterval: Duration(seconds: 1),
     locationShareInterval: Duration(minutes: 3),
     allowVoice: false,
     allowImages: false,
   );
   static const critical = PowerProfileConfig(
-    gpsInterval: Duration(seconds: 60),
+    gpsInterval: Duration(seconds: 5),
     locationShareInterval: Duration(minutes: 10),
     allowVoice: false,
     allowImages: false,

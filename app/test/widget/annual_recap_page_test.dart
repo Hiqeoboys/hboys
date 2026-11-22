@@ -218,8 +218,8 @@ void main() {
     expect(find.text('LENCANA PUNCAK'), findsOneWidget);
     expect(
       find.text(
-        'Katalog puncak terverifikasi belum tersedia di build ini, jadi '
-        'lencana belum bisa diberikan.',
+        'Lencana puncak akan terbuka secara bertahap seiring bertambahnya '
+        'daftar gunung yang didukung.',
       ),
       findsOneWidget,
     );

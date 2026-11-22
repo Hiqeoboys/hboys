@@ -68,6 +68,7 @@ class GooeySelector<T> extends StatefulWidget {
     this.borderRadius = HiqeoRadius.pill,
     this.indicatorColor,
     this.defaultTextStyle,
+    this.expandItems = false,
   });
 
   final Axis axis;
@@ -91,6 +92,9 @@ class GooeySelector<T> extends StatefulWidget {
 
   /// Gaya teks bawaan saat item tidak memakai [GooeySelectorItem.builder].
   final TextStyle? defaultTextStyle;
+
+  /// Bila benar pada sumbu horizontal, setiap item berbagi lebar yang sama.
+  final bool expandItems;
 
   static const Duration slideDuration = Duration(milliseconds: 480);
   static const Duration reducedSlideDuration = Duration(milliseconds: 150);
@@ -398,12 +402,19 @@ class _GooeySelectorState<T> extends State<GooeySelector<T>>
           ),
         );
       }
+      final built = _buildItem(context, colors, index, head, tail, morphing);
       children.add(
-        _buildItem(context, colors, index, head, tail, morphing),
+        widget.axis == Axis.horizontal && widget.expandItems
+            ? Expanded(child: built)
+            : built,
       );
     }
     if (widget.axis == Axis.horizontal) {
-      return Row(mainAxisSize: MainAxisSize.min, children: children);
+      return Row(
+        mainAxisSize:
+            widget.expandItems ? MainAxisSize.max : MainAxisSize.min,
+        children: children,
+      );
     }
     return Column(
       mainAxisSize: MainAxisSize.min,

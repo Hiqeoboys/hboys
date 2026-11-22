@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nama_app/design/app_theme.dart';
-import 'package:nama_app/design/gooey/gooey_layer.dart';
 import 'package:nama_app/design/motion/visual_effect_policy.dart';
 import 'package:nama_app/design/tokens.dart';
 import 'package:nama_app/design/widgets/line_icons.dart';
@@ -13,8 +12,9 @@ import 'package:nama_app/infrastructure/power/power_profile_manager.dart';
 const Key _cardKey = ValueKey<String>('semua-fitur');
 const Key _toggleKey = ValueKey<String>('semua-fitur-toggle');
 
-/// Tinggi terbuka: 64 + 4 baris x 140 + 3 celah x 12 + 16 alas.
-const double _openHeight = 676;
+/// Tinggi terbuka untuk 4 kartu (2 baris): 52 + 2 baris x 132 + 1 celah x 10 + 16 alas = 342.
+const double _openHeight = 342;
+const double _collapsedHeight = ExpandableFeaturesCard.collapsedHeight;
 
 const VisualEffectPolicy _reduceMotionPolicy = VisualEffectPolicy(
   powerProfile: PowerProfile.normal,
@@ -30,46 +30,22 @@ const VisualEffectPolicy _saverPolicy = VisualEffectPolicy(
 
 List<FeatureEntry> _features(List<String> taps) => <FeatureEntry>[
       FeatureEntry(
-        icon: HiqeoIcons.activity,
-        title: 'Pelacakan',
-        subtitle: 'Catat jalur',
-        onTap: () => taps.add('pelacakan'),
-      ),
-      FeatureEntry(
-        icon: HiqeoIcons.map,
-        title: 'Peta offline',
-        subtitle: 'Unduh area',
-        onTap: () => taps.add('peta'),
+        icon: HiqeoIcons.mountain,
+        title: 'Hiqeo Plus',
+        subtitle: 'Cuaca rute & analitik',
+        onTap: () => taps.add('plus'),
       ),
       FeatureEntry(
         icon: HiqeoIcons.trail,
-        title: 'Jalur terverifikasi',
-        subtitle: 'Jalur resmi',
-        onTap: () => taps.add('jalur'),
-      ),
-      FeatureEntry(
-        icon: HiqeoIcons.compass,
-        title: 'Kompas',
-        subtitle: 'Arah dan kemiringan',
-        onTap: () => taps.add('kompas'),
-      ),
-      FeatureEntry(
-        icon: HiqeoIcons.group,
-        title: 'Grup chat',
-        subtitle: 'Teman satu grup',
-        onTap: () => taps.add('grup'),
+        title: 'Petunjuk jalur',
+        subtitle: 'Peta & pos pendakian',
+        onTap: () => taps.add('peta'),
       ),
       FeatureEntry(
         icon: HiqeoIcons.pin,
         title: 'Lokasi terakhir',
-        subtitle: 'Titik terakhir',
+        subtitle: 'Posisi tiap anggota',
         onTap: () => taps.add('lokasi'),
-      ),
-      FeatureEntry(
-        icon: HiqeoIcons.image,
-        title: 'Kartu pendakian',
-        subtitle: 'Foto dan ringkasan',
-        onTap: () => taps.add('kartu'),
       ),
       FeatureEntry(
         icon: HiqeoIcons.warning,
@@ -105,7 +81,8 @@ Future<void> _pump(
                 padding: const EdgeInsets.symmetric(
                   horizontal: HiqeoSpacing.lg,
                 ),
-                child: ExpandableFeaturesCard(key: _cardKey, features: features),
+                child:
+                    ExpandableFeaturesCard(key: _cardKey, features: features),
               ),
               const SizedBox(height: 400),
             ],
@@ -121,16 +98,13 @@ double _cardHeight(WidgetTester tester) =>
     tester.getSize(find.byKey(_cardKey)).height;
 
 void main() {
-  testWidgets('tertutup: satu baris 64 px tanpa satu pun kartu fitur',
+  testWidgets('tertutup: satu baris 52 px tanpa satu pun kartu fitur terlihat',
       (tester) async {
     final taps = <String>[];
     await _pump(tester, features: _features(taps));
 
-    expect(_cardHeight(tester), 64);
-    expect(find.text('Semua fitur'), findsOneWidget);
-    expect(find.byType(FeatureTile), findsNothing);
-    // Kosong berarti tidak ada gesekan atau blur yang bekerja diam-diam.
-    expect(find.byType(GooeyLayer), findsNothing);
+    expect(_cardHeight(tester), _collapsedHeight);
+    expect(find.text('Fitur utama'), findsOneWidget);
     expect(find.byType(ImageFiltered), findsNothing);
   });
 
@@ -144,10 +118,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(taps, isEmpty);
-    expect(_cardHeight(tester), 64, reason: 'ketukan di luar kartu tidak membuka');
+    expect(_cardHeight(tester), _collapsedHeight,
+        reason: 'ketukan di luar kartu tidak membuka');
   });
 
-  testWidgets('terbuka: grid 8 kartu setinggi 676 px dan aksi bekerja',
+  testWidgets('terbuka: grid 4 kartu setinggi 342 px dan aksi bekerja',
       (tester) async {
     final taps = <String>[];
     await _pump(tester, features: _features(taps));
@@ -156,14 +131,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_cardHeight(tester), _openHeight);
-    expect(find.byType(FeatureTile), findsNWidgets(8));
-    expect(find.text('Semua fitur'), findsOneWidget);
+    expect(find.byType(FeatureTile), findsNWidgets(4));
+    expect(find.text('Fitur utama'), findsOneWidget);
 
-    await tester.tap(find.text('Pelacakan'));
-    expect(taps, <String>['pelacakan']);
+    await tester.tap(find.text('Hiqeo Plus'));
+    expect(taps, <String>['plus']);
   });
 
-  testWidgets('menutup lagi mengembalikan baris 64 px', (tester) async {
+  testWidgets('menutup lagi mengembalikan baris 52 px', (tester) async {
     final taps = <String>[];
     await _pump(tester, features: _features(taps));
 
@@ -174,36 +149,30 @@ void main() {
     await tester.tap(find.byKey(_toggleKey));
     await tester.pumpAndSettle();
 
-    expect(_cardHeight(tester), 64);
-    expect(find.byType(FeatureTile), findsNothing);
-    expect(find.byType(GooeyLayer), findsNothing);
+    expect(_cardHeight(tester), _collapsedHeight);
   });
 
-  testWidgets('lapisan cair hanya hidup selama morph, lalu dibuang',
+  testWidgets('selama animasi reveal tidak ada filter blur jank',
       (tester) async {
     final taps = <String>[];
     await _pump(tester, features: _features(taps));
 
     await tester.tap(find.byKey(_toggleKey));
     await tester.pump();
-    expect(find.byType(GooeyLayer), findsNothing, reason: 't = 0 masih kaca');
-
-    /// 165 ms dari 550 ms berarti t = 0,3: bentuk cair penuh.
-    await tester.pump(const Duration(milliseconds: 165));
-    expect(find.byType(GooeyLayer), findsOneWidget);
-    expect(find.byType(ImageFiltered), findsWidgets);
-
-    await tester.pumpAndSettle();
-    expect(find.byType(GooeyLayer), findsNothing, reason: 'kaca tajam');
     expect(find.byType(ImageFiltered), findsNothing);
 
-    // Arah sebaliknya juga melewati bentuk cair lalu berhenti di kaca.
-    await tester.tap(find.byKey(_toggleKey));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 165));
-    expect(find.byType(GooeyLayer), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 190));
+    expect(find.byType(ImageFiltered), findsNothing);
+
     await tester.pumpAndSettle();
-    expect(find.byType(GooeyLayer), findsNothing);
+    expect(find.byType(ImageFiltered), findsNothing);
+    expect(_cardHeight(tester), _openHeight);
+
+    await tester.tap(find.byKey(_toggleKey));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byType(ImageFiltered), findsNothing);
+    await tester.pumpAndSettle();
+    expect(_cardHeight(tester), _collapsedHeight);
   });
 
   testWidgets('setelah terbuka kartu digulir sampai terlihat utuh',
@@ -211,7 +180,8 @@ void main() {
     final taps = <String>[];
     await _pump(tester, features: _features(taps), leading: 700);
 
-    final before = tester.state<ScrollableState>(find.byType(Scrollable)).position.pixels;
+    final before =
+        tester.state<ScrollableState>(find.byType(Scrollable)).position.pixels;
     expect(before, 0);
 
     await tester.tap(find.byKey(_toggleKey));
@@ -236,16 +206,23 @@ void main() {
       var node = tester.getSemantics(find.byKey(_toggleKey));
       expect(node.flagsCollection.isButton, isTrue);
       expect(node.flagsCollection.isExpanded, ui.Tristate.isFalse);
-      expect(find.bySemanticsLabel('Tampilkan semua fitur'), findsOneWidget);
-      expect(find.bySemanticsLabel('Pelacakan. Catat jalur'), findsNothing);
+      expect(find.bySemanticsLabel('Tampilkan fitur utama'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Hiqeo Plus'),
+        findsNothing,
+      );
 
       await tester.tap(find.byKey(_toggleKey));
       await tester.pumpAndSettle();
 
       node = tester.getSemantics(find.byKey(_toggleKey));
       expect(node.flagsCollection.isExpanded, ui.Tristate.isTrue);
-      expect(find.bySemanticsLabel('Sembunyikan semua fitur'), findsOneWidget);
-      expect(find.bySemanticsLabel('Pelacakan. Catat jalur'), findsOneWidget);
+      expect(find.bySemanticsLabel('Sembunyikan fitur utama'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Hiqeo Plus'),
+        findsOneWidget,
+      );
+      expect(find.text('Cuaca rute & analitik'), findsNothing);
     } finally {
       handle.dispose();
     }
@@ -265,9 +242,8 @@ void main() {
     await tester.pump(HiqeoMotion.screenFade);
 
     expect(_cardHeight(tester), _openHeight, reason: 'selesai dalam 260 ms');
-    expect(find.byType(GooeyLayer), findsNothing);
     expect(find.byType(ImageFiltered), findsNothing);
-    expect(find.byType(FeatureTile), findsNWidgets(8));
+    expect(find.byType(FeatureTile), findsNWidgets(4));
   });
 
   testWidgets('profil daya Hemat tetap melipat tanpa cair dan blur',
@@ -279,7 +255,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_cardHeight(tester), _openHeight);
-    expect(find.byType(GooeyLayer), findsNothing);
     expect(find.byType(ImageFiltered), findsNothing);
   });
 }

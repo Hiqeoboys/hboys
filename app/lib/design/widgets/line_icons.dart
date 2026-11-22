@@ -622,4 +622,168 @@ class HiqeoIcons {
         ..lineTo(18.8, 17.8),
     ],
   );
+
+  static final HiqeoIconData plus = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(12, 5.2)
+        ..lineTo(12, 18.8),
+      ui.Path()
+        ..moveTo(5.2, 12)
+        ..lineTo(18.8, 12),
+    ],
+  );
+
+  static final HiqeoIconData moreVertical = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(12, 5.6), radius: 0.9),
+        ),
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(12, 12), radius: 0.9),
+        ),
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(12, 18.4), radius: 0.9),
+        ),
+    ],
+  );
+
+  static final HiqeoIconData userPlus = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(9.2, 8.2), radius: 3.2),
+        ),
+      _dome(9.2, 19.6, 5.4),
+      ui.Path()
+        ..moveTo(18.6, 8.8)
+        ..lineTo(18.6, 13.6),
+      ui.Path()
+        ..moveTo(16.2, 11.2)
+        ..lineTo(21.0, 11.2),
+    ],
+  );
+
+  static final HiqeoIconData trash = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(4.4, 6.8)
+        ..lineTo(19.6, 6.8),
+      ui.Path()
+        ..moveTo(9.2, 6.8)
+        ..lineTo(9.2, 4.4)
+        ..lineTo(14.8, 4.4)
+        ..lineTo(14.8, 6.8),
+      ui.Path()
+        ..moveTo(6.2, 6.8)
+        ..lineTo(7.0, 19.8)
+        ..lineTo(17.0, 19.8)
+        ..lineTo(17.8, 6.8),
+      ui.Path()
+        ..moveTo(10.2, 10.4)
+        ..lineTo(10.4, 16.2),
+      ui.Path()
+        ..moveTo(13.8, 10.4)
+        ..lineTo(13.6, 16.2),
+    ],
+  );
+
+  static final HiqeoIconData play = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(8.0, 5.6)
+        ..lineTo(18.2, 12.0)
+        ..lineTo(8.0, 18.4)
+        ..close(),
+    ],
+  );
+
+  static final HiqeoIconData pause = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(8.4, 5.6)
+        ..lineTo(8.4, 18.4),
+      ui.Path()
+        ..moveTo(15.6, 5.6)
+        ..lineTo(15.6, 18.4),
+    ],
+  );
+
+  static final HiqeoIconData crosshair = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(12, 12), radius: 6.8),
+        ),
+      ui.Path()
+        ..addOval(
+          ui.Rect.fromCircle(center: const ui.Offset(12, 12), radius: 1.8),
+        ),
+      ui.Path()
+        ..moveTo(12, 2.6)
+        ..lineTo(12, 5.2),
+      ui.Path()
+        ..moveTo(12, 18.8)
+        ..lineTo(12, 21.4),
+      ui.Path()
+        ..moveTo(2.6, 12)
+        ..lineTo(5.2, 12),
+      ui.Path()
+        ..moveTo(18.8, 12)
+        ..lineTo(21.4, 12),
+    ],
+  );
+
+  static final HiqeoIconData chevronUp = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(5.8, 14.6)
+        ..lineTo(12, 8.4)
+        ..lineTo(18.2, 14.6),
+    ],
+  );
+
+  static final HiqeoIconData firstAid = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..addRRect(
+          ui.RRect.fromRectAndRadius(
+            const ui.Rect.fromLTRB(3.4, 6.4, 20.6, 19.8),
+            const ui.Radius.circular(3.0),
+          ),
+        ),
+      ui.Path()
+        ..moveTo(8.8, 6.4)
+        ..lineTo(8.8, 4.4)
+        ..lineTo(15.2, 4.4)
+        ..lineTo(15.2, 6.4),
+      ui.Path()
+        ..moveTo(12, 9.8)
+        ..lineTo(12, 16.4),
+      ui.Path()
+        ..moveTo(8.7, 13.1)
+        ..lineTo(15.3, 13.1),
+    ],
+  );
+
+  static final HiqeoIconData bell = HiqeoIconData(
+    () => <ui.Path>[
+      ui.Path()
+        ..moveTo(6.2, 10.6)
+        ..cubicTo(6.2, 6.9, 8.7, 4.4, 12, 4.4)
+        ..cubicTo(15.3, 4.4, 17.8, 6.9, 17.8, 10.6)
+        ..lineTo(18.6, 15.6)
+        ..cubicTo(18.8, 16.4, 19.3, 17.0, 20.0, 17.4)
+        ..lineTo(4.0, 17.4)
+        ..cubicTo(4.7, 17.0, 5.2, 16.4, 5.4, 15.6)
+        ..close(),
+      ui.Path()
+        ..moveTo(10.0, 19.2)
+        ..cubicTo(10.5, 20.1, 11.2, 20.6, 12, 20.6)
+        ..cubicTo(12.8, 20.6, 13.5, 20.1, 14.0, 19.2),
+    ],
+  );
 }

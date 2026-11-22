@@ -84,6 +84,23 @@ class PlusAccess {
 
   bool get isGrace => state == PlusAccessState.grace;
 
+  /// Hanya Paket Mahasiswa, Paket Tahunan, dan Founding/Lifetime yang memiliki
+  /// akses penuh fitur sosial (buat komunitas, kirim pesan komunitas, tambah
+  /// teman, peringkat Leaderboard, dan lencana Plus di profil).
+  /// Pengguna Gratis dan Tiket 1x Naik (`trip_pass_3d`) tidak termasuk.
+  bool get hasFullSocialAccess => hasPlus && isFullSocialPlan(planId);
+
+  static bool isFullSocialPlan(String? planId) {
+    if (planId == null) return false;
+    final normalized = planId.trim().toLowerCase();
+    return normalized == 'student_annual' ||
+        normalized == 'mahasiswa' ||
+        normalized == 'annual' ||
+        normalized == 'tahunan' ||
+        normalized == 'lifetime' ||
+        normalized == 'founding';
+  }
+
   @override
   bool operator ==(Object other) =>
       other is PlusAccess &&

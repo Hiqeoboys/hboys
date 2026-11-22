@@ -6,20 +6,30 @@ import '../../features/tracking/application/tracking_backend.dart';
 import '../../features/tracking/application/tracking_runtime.dart';
 import '../../features/tracking/application/tracking_status.dart';
 import '../../features/tracking/domain/tracking_repository.dart';
-import '../location/geolocator_tracking_source.dart';
+import '../../features/tracking/domain/tracking_session.dart';
+import '../auth/active_account_scope.dart';
+import '../location/location_source.dart';
 import '../power/device_battery_reader.dart';
 
 /// iOS tidak memakai TaskHandler: background location membuat isolate utama
 /// tetap hidup saat layar terkunci. Sesi tetap ditulis ke DB yang sama.
+/// Juga dipakai saat mode simulasi debug diaktifkan agar sumber lokasi simulasi
+/// dapat dikendalikan langsung dari UI melalui kode tracking yang sama.
 class IosLocalTrackingBackend implements TrackingBackend {
   IosLocalTrackingBackend({
     required TrackingRepository repository,
     Clock clock = const SystemClock(),
+    LocationSource locationSource = const RealLocationSource(),
+    BatteryReader? batteryReader,
   })  : _repository = repository,
-        _clock = clock;
+        _clock = clock,
+        _locationSource = locationSource,
+        _batteryReader = batteryReader;
 
   final TrackingRepository _repository;
   final Clock _clock;
+  final LocationSource _locationSource;
+  final BatteryReader? _batteryReader;
   final StreamController<TrackingEvent> _events =
       StreamController<TrackingEvent>.broadcast();
 
@@ -33,7 +43,9 @@ class IosLocalTrackingBackend implements TrackingBackend {
   Future<bool> isRunning() async => _runtime != null;
 
   @override
-  Future<void> start() async {
+  Future<void> start({
+    String activityType = TrackingSession.activityHiking,
+  }) async {
     if (_runtime != null) {
       await requestStatus();
       return;
@@ -41,11 +53,13 @@ class IosLocalTrackingBackend implements TrackingBackend {
     final recording = await openOrStartRecordingSession(
       repository: _repository,
       clock: _clock,
+      activityType: TrackingSession.normalizeActivityType(activityType),
+      ownerUserId: ActiveAccountScope.currentUserId(),
     );
     final runtime = TrackingRuntime(
       recording: recording,
-      location: const GeolocatorTrackingSource(),
-      battery: DeviceBatteryReader(),
+      location: _locationSource,
+      battery: _batteryReader ?? DeviceBatteryReader(),
       onUpdate: (update) {
         final status = TrackingStatus.fromRuntimeUpdate(update);
         _lastStatus = status;
@@ -79,6 +93,11 @@ class IosLocalTrackingBackend implements TrackingBackend {
   @override
   Future<void> resume() async {
     await _runtime?.resume();
+  }
+
+  /// Menghapus titik pada runtime sesi saat ini (khusus pengujian/skenario debug).
+  void clearCurrentPoints() {
+    _runtime?.clearPoints();
   }
 
   @override

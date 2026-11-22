@@ -14,14 +14,22 @@ void main() {
     test('mode terang', () {
       expect(contrastRatio(light.textPrimary, light.background), greaterThanOrEqualTo(4.5));
       expect(contrastRatio(light.textSecondary, light.background), greaterThanOrEqualTo(4.5));
+      expect(contrastRatio(light.textSecondary, light.surface), greaterThanOrEqualTo(4.5));
       expect(contrastRatio(light.warningText, light.background), greaterThanOrEqualTo(4.5));
+      expect(contrastRatio(light.warningText, light.surface), greaterThanOrEqualTo(4.5));
+      expect(contrastRatio(light.successText, light.background), greaterThanOrEqualTo(4.5));
+      expect(contrastRatio(light.successText, light.surface), greaterThanOrEqualTo(4.5));
       expect(contrastRatio(light.onPrimary, light.primary), greaterThanOrEqualTo(4.5));
     });
 
     test('mode gelap', () {
       expect(contrastRatio(dark.textPrimary, dark.background), greaterThanOrEqualTo(4.5));
       expect(contrastRatio(dark.textSecondary, dark.background), greaterThanOrEqualTo(4.5));
+      expect(contrastRatio(dark.textSecondary, dark.surface), greaterThanOrEqualTo(4.5));
       expect(contrastRatio(dark.warningText, dark.background), greaterThanOrEqualTo(4.5));
+      expect(contrastRatio(dark.warningText, dark.surface), greaterThanOrEqualTo(4.5));
+      expect(contrastRatio(dark.successText, dark.background), greaterThanOrEqualTo(4.5));
+      expect(contrastRatio(dark.successText, dark.surface), greaterThanOrEqualTo(4.5));
       expect(contrastRatio(dark.onPrimary, dark.primary), greaterThanOrEqualTo(4.5));
     });
   });
@@ -32,11 +40,14 @@ void main() {
     expect(light.secondary, const Color(0xFFC2CBD3));
     expect(light.surface, const Color(0xFFFBF9F5));
     expect(light.warning, const Color(0xFFB3412F));
+    expect(light.successText, const Color(0xFF166534));
     expect(dark.background, const Color(0xFF313851));
     expect(dark.primary, const Color(0xFFF6F3ED));
     expect(dark.secondary, const Color(0xFF4B5573));
-    expect(dark.textSecondary, const Color(0xFFA9B0C2));
+    expect(dark.textSecondary, const Color(0xFFB4BCCE));
     expect(dark.warning, const Color(0xFFE0705C));
+    expect(dark.warningText, const Color(0xFFF7A191));
+    expect(dark.successText, const Color(0xFF86EFAC));
   });
 
   test('tema membawa extension dan bobot tipografi rancangan', () {

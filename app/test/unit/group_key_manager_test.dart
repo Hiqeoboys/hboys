@@ -153,6 +153,12 @@ class FakeGroupRemote implements GroupRemoteService {
     required DateTime nowUtc,
   }) =>
       throw UnimplementedError();
+
+  @override
+  Future<void> deleteGroup(String groupId) async {}
+
+  @override
+  Future<void> leaveGroup(String groupId) async {}
 }
 
 class Harness {

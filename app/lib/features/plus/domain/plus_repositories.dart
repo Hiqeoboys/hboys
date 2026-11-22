@@ -32,6 +32,63 @@ abstract interface class EntitlementLocalStore {
   Future<void> writeLastSeenUtc(DateTime value);
 }
 
+/// Hak akses Hiqeo Plus yang disinkronkan dari akun Supabase dan disimpan di
+/// cache lokal agar seluruh fitur Plus tetap aktif ketika perangkat offline.
+class AccountPlusGrant {
+  const AccountPlusGrant({
+    required this.userId,
+    required this.isPlus,
+    this.planId,
+    this.expiresAtUtc,
+    required this.syncedAtUtc,
+  });
+
+  final String userId;
+  final bool isPlus;
+  final String? planId;
+  final DateTime? expiresAtUtc;
+  final DateTime syncedAtUtc;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'user_id': userId,
+        'is_plus': isPlus,
+        'plan_id': planId,
+        'expires_at': expiresAtUtc?.toUtc().toIso8601String(),
+        'synced_at': syncedAtUtc.toUtc().toIso8601String(),
+      };
+
+  static AccountPlusGrant? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final userId = raw['user_id'];
+    final isPlus = raw['is_plus'];
+    if (userId is! String || userId.trim().isEmpty || isPlus is! bool) {
+      return null;
+    }
+    final rawExp = raw['expires_at'];
+    final expiresAt =
+        rawExp is String ? DateTime.tryParse(rawExp)?.toUtc() : null;
+    final rawSynced = raw['synced_at'];
+    final syncedAt = (rawSynced is String
+            ? DateTime.tryParse(rawSynced)?.toUtc()
+            : null) ??
+        DateTime.now().toUtc();
+    return AccountPlusGrant(
+      userId: userId,
+      isPlus: isPlus,
+      planId: raw['plan_id'] as String?,
+      expiresAtUtc: expiresAt,
+      syncedAtUtc: syncedAt,
+    );
+  }
+}
+
+/// Cache lokal status Hiqeo Plus hasil sinkronisasi akun (offline-first).
+abstract interface class AccountPlusCacheStore {
+  Future<AccountPlusGrant?> read();
+  Future<void> write(AccountPlusGrant grant);
+  Future<void> clear();
+}
+
 abstract interface class EntitlementVerifier {
   /// Mengembalikan null bila tanda tangan, format, atau isi token tidak sah.
   Future<EntitlementPayload?> verify(String token);

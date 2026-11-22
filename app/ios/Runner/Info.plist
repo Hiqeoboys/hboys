@@ -36,16 +36,50 @@
 				<string>id.nama.namaapp</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>google-sign-in</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.447033994713-53d9qm954mguc9p54g7is2a9h0q6339q</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>sms</string>
+		<string>tel</string>
+		<string>https</string>
+		<string>googlegmail</string>
+		<string>googlechromes</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Lokasi dipakai untuk merekam jalur pendakian dan menampilkan posisi saat ini.</string>
+	<string>Hiqeo memerlukan akses lokasi untuk menampilkan posisi Anda di peta jalur pendakian dan fitur SOS.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Lokasi latar belakang diperlukan agar jalur tetap terekam saat layar terkunci; aplikasi menampilkan indikator lokasi.</string>
+	<string>Hiqeo memerlukan akses lokasi di latar belakang agar perekaman rute pendakian dan berbagi lokasi grup tetap akurat saat layar terkunci.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Akses kontak hanya dipakai saat kamu memilih kontak darurat untuk disimpan di HP ini.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Hiqeo memerlukan akses kamera untuk mengambil foto profil, mengunggah momen pendakian ke komunitas, serta mengendalikan lampu kilat saat mode darurat SOS.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Hiqeo memerlukan akses galeri untuk memilih foto dan video yang akan dibagikan di chat maupun profil Anda.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Hiqeo memerlukan izin menyimpan foto atau video dari ruang obrolan ke galeri perangkat Anda.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Mikrofon dipakai saat merekam video di ruang obrolan komunitas.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Hiqeo memerlukan akses sensor gerak untuk menghitung langkah dan aktivitas pendakian Anda.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Hiqeo memerlukan akses Bluetooth untuk komunikasi grup off-grid saat tidak ada sinyal seluler.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>

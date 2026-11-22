@@ -2,13 +2,19 @@ import 'package:geo_utils/geo_utils.dart';
 
 import 'track_point.dart';
 
-/// Mengakumulasi jarak. Pergerakan di bawah [minStepMeters] relatif terhadap
-/// titik terakhir yang dihitung diabaikan agar GPS yang bergoyang saat diam
-/// tidak menambah jarak.
+/// Mengakumulasi jarak sebagai jumlah Haversine antar titik yang lolos filter.
+///
+/// Penyaringan goyangan GPS (perpindahan kecil) dilakukan oleh `GpsFilter`;
+/// [minStepMeters] tersedia untuk pemakaian mandiri dan bernilai 0 secara
+/// bawaan.
 class DistanceCalculator {
-  DistanceCalculator({this.minStepMeters = 3});
+  DistanceCalculator({
+    this.minStepMeters = 2.0,
+    this.minMovingSpeedMps = 0.8,
+  });
 
   final double minStepMeters;
+  final double minMovingSpeedMps;
   TrackPoint? _anchor;
   double _total = 0;
 
@@ -21,7 +27,8 @@ class DistanceCalculator {
       return;
     }
     final d = distanceMeters(anchor.position, p.position);
-    if (d >= minStepMeters) {
+    final measuredSpeed = p.speedMps ?? 0;
+    if (d >= minStepMeters || measuredSpeed > minMovingSpeedMps) {
       _total += d;
       _anchor = p;
     }

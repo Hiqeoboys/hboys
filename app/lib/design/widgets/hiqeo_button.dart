@@ -116,6 +116,7 @@ class HiqeoButton extends StatelessWidget {
     this.variant = HiqeoButtonVariant.primary,
     this.semanticLabel,
     this.leading,
+    this.isLoading = false,
   });
 
   final String label;
@@ -126,27 +127,42 @@ class HiqeoButton extends StatelessWidget {
   /// Logo atau ikon di depan label, misalnya logo Google dan Apple.
   final Widget? leading;
 
+  /// Indikator sedang memproses aksi. Saat true, tombol dinonaktifkan untuk
+  /// mencegah ketukan ganda dan menampilkan indikator loading.
+  final bool isLoading;
+
   @override
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
+    final fg = _foregroundFor(colors, variant);
     final text = Text(
       label,
       maxLines: 1,
       style: theme.textTheme.titleSmall?.copyWith(
-        color: _foregroundFor(colors, variant),
+        color: fg,
       ),
     );
+    final effectiveLeading = isLoading
+        ? SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(fg),
+            ),
+          )
+        : leading;
     return _PressablePill(
       fill: _fillFor(colors, variant),
       semanticLabel: semanticLabel ?? label,
-      onPressed: onPressed,
-      child: leading == null
+      onPressed: isLoading ? null : onPressed,
+      child: effectiveLeading == null
           ? text
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                ExcludeSemantics(child: leading!),
+                ExcludeSemantics(child: effectiveLeading),
                 const SizedBox(width: HiqeoSpacing.md),
                 text,
               ],

@@ -3,11 +3,17 @@ import 'package:geolocator/geolocator.dart';
 import '../../tracking/application/tracking_controller.dart';
 
 class SosFix {
-  const SosFix({required this.lat, required this.lon, this.accuracyM});
+  const SosFix({
+    required this.lat,
+    required this.lon,
+    this.accuracyM,
+    this.altitudeM,
+  });
 
   final double lat;
   final double lon;
   final int? accuracyM;
+  final double? altitudeM;
 }
 
 abstract interface class SosLocationProvider {
@@ -35,6 +41,7 @@ class DeviceSosLocationProvider implements SosLocationProvider {
           lat: latest.lat,
           lon: latest.lon,
           accuracyM: _accuracy(latest.accuracyM),
+          altitudeM: latest.altitudeM,
         );
       }
     } catch (_) {
@@ -71,6 +78,9 @@ class DeviceSosLocationProvider implements SosLocationProvider {
         lat: position.latitude,
         lon: position.longitude,
         accuracyM: _accuracy(position.accuracy),
+        altitudeM: position.altitude.isFinite && position.altitude != 0
+            ? position.altitude
+            : null,
       );
 
   static int _accuracy(double meters) =>

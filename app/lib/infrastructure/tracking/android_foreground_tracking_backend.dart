@@ -5,6 +5,8 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../../features/tracking/application/tracking_backend.dart';
 import '../../features/tracking/application/tracking_status.dart';
+import '../../features/tracking/domain/tracking_session.dart';
+import '../auth/active_account_scope.dart';
 import 'tracking_foreground_service.dart';
 import 'tracking_task_handler.dart';
 
@@ -28,11 +30,14 @@ class AndroidForegroundTrackingBackend implements TrackingBackend {
   Future<bool> isRunning() => FlutterForegroundTask.isRunningService;
 
   @override
-  Future<void> start() async {
+  Future<void> start({
+    String activityType = TrackingSession.activityHiking,
+  }) async {
     if (await isRunning()) {
       await requestStatus();
       return;
     }
+    final normalizedType = TrackingSession.normalizeActivityType(activityType);
     final saved = await FlutterForegroundTask.saveData(
       key: TrackingTaskProtocol.databasePathKey,
       value: databasePath,
@@ -40,11 +45,24 @@ class AndroidForegroundTrackingBackend implements TrackingBackend {
     if (!saved) {
       throw StateError('Gagal menyimpan lokasi database untuk layanan latar.');
     }
+    await FlutterForegroundTask.saveData(
+      key: TrackingTaskProtocol.activityTypeKey,
+      value: normalizedType,
+    );
+    await FlutterForegroundTask.saveData(
+      key: TrackingTaskProtocol.ownerUserIdKey,
+      value: ActiveAccountScope.currentUserId() ?? '',
+    );
     final result = await FlutterForegroundTask.startService(
       serviceId: 4101,
       serviceTypes: const [ForegroundServiceTypes.location],
-      notificationTitle: 'Merekam pendakian',
+      notificationTitle: normalizedType == TrackingSession.activityJogging
+          ? 'Merekam jogging'
+          : 'Merekam pendakian',
       notificationText: 'Menyiapkan GPS...',
+      notificationIcon: const NotificationIcon(
+        metaDataName: 'com.pravera.flutter_foreground_task.notification_icon',
+      ),
       notificationButtons: const [
         NotificationButton(id: 'stop', text: 'Hentikan'),
       ],

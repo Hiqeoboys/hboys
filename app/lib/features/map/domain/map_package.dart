@@ -109,6 +109,10 @@ class MapTrail {
     required List<LatLng> points,
     this.verifiedAtUtc,
     this.verifiedBy,
+    this.distanceM,
+    this.elevationGainM,
+    this.maxElevationM,
+    this.gpxAssetPath,
   }) : points = List<LatLng>.unmodifiable(points);
 
   final String id;
@@ -118,10 +122,48 @@ class MapTrail {
   final DateTime? verifiedAtUtc;
   final String? verifiedBy;
   final List<LatLng> points;
+  final double? distanceM;
+  final double? elevationGainM;
+  final double? maxElevationM;
+
+  /// Path aset GPX internal (hanya untuk pemuatan rute lokal, JANGAN pernah
+  /// ditampilkan di UI).
+  final String? gpxAssetPath;
+
+  MapTrail copyWith({
+    List<LatLng>? points,
+    double? distanceM,
+    double? elevationGainM,
+    double? maxElevationM,
+    String? gpxAssetPath,
+  }) =>
+      MapTrail(
+        id: id,
+        name: name,
+        source: source,
+        verified: verified,
+        verifiedAtUtc: verifiedAtUtc,
+        verifiedBy: verifiedBy,
+        points: points ?? this.points,
+        distanceM: distanceM ?? this.distanceM,
+        elevationGainM: elevationGainM ?? this.elevationGainM,
+        maxElevationM: maxElevationM ?? this.maxElevationM,
+        gpxAssetPath: gpxAssetPath ?? this.gpxAssetPath,
+      );
 
   /// Hanya true bila data punya bukti verifikasi lapangan. Jangan pernah
   /// menampilkan label terverifikasi berdasarkan asumsi.
   bool get isVerified => verified;
+
+  double get effectiveDistanceM {
+    if (distanceM != null) return distanceM!;
+    if (points.length < 2) return 0;
+    var total = 0.0;
+    for (var i = 0; i < points.length - 1; i++) {
+      total += distanceMeters(points[i], points[i + 1]);
+    }
+    return total;
+  }
 
   Map<String, Object?> toGeoJsonFeature() => {
         'type': 'Feature',
@@ -152,6 +194,10 @@ class MountainMapPackage {
     this.verifiedAtUtc,
     this.verifiedBy,
     this.notes,
+    this.province,
+    this.elevationM,
+    this.sizeMb,
+    this.gpxAssetPath,
   }) : trails = List<MapTrail>.unmodifiable(trails);
 
   final String id;
@@ -164,6 +210,10 @@ class MountainMapPackage {
   final OfflineConfig offline;
   final List<MapTrail> trails;
   final String? notes;
+  final String? province;
+  final int? elevationM;
+  final int? sizeMb;
+  final String? gpxAssetPath;
 
   String get offlineRegionId => 'nama_$id';
 

@@ -30,21 +30,24 @@ class VisualEffectPolicy {
   final bool reduceMotion;
   final DeviceTier deviceTier;
 
+  bool get _criticalPower => powerProfile == PowerProfile.critical;
   bool get _powerRestricted => powerProfile != PowerProfile.normal;
   bool get _lowEnd => deviceTier == DeviceTier.lowEnd;
 
-  bool get glassBlur => !_powerRestricted && !_lowEnd;
+  /// Liquid Glass blur tetap aktif pada profil normal maupun hemat daya (20-39%);
+  /// hanya mati pada baterai kritis (<20%) atau perangkat berspesifikasi sangat rendah.
+  bool get glassBlur => !_criticalPower && !_lowEnd;
   bool get gooey => !_powerRestricted && !_lowEnd && !reduceMotion;
 
   /// Heuristika sederhana tanpa plugin: inti prosesor sangat sedikit atau RAM
-  /// di bawah 3 GB menandakan perangkat kelas bawah. Dapat ditimpa lewat uji.
-  /// Di platform tanpa `/proc/meminfo` (iOS, mesin pengembang) RAM dianggap
-  /// tidak diketahui dan perangkat dianggap mampu.
+  /// di bawah 2 GB menandakan perangkat kelas bawah. Di Android 3 GB fisik,
+  /// `/proc/meminfo` MemTotal biasanya ~2,6-2,8 GB akibat reservasi GPU/modem
+  /// sehingga ambang 2 GB menghindari salah klasifikasi pada perangkat 3 GB.
   static DeviceTier probeDeviceTier({int? processorCount, int? totalMemoryKb}) {
     final cores = processorCount ?? Platform.numberOfProcessors;
     if (cores <= 2) return DeviceTier.lowEnd;
     final memoryKb = totalMemoryKb ?? _readTotalMemoryKb();
-    if (memoryKb != null && memoryKb < 3 * 1024 * 1024) {
+    if (memoryKb != null && memoryKb < 2 * 1024 * 1024) {
       return DeviceTier.lowEnd;
     }
     return DeviceTier.capable;

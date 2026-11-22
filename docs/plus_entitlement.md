@@ -21,8 +21,13 @@ features/plus/
     dev_entitlement_issuer.dart penerbit token debug
     dummy_plus_repositories.dart konfigurasi/pembelian demo (debug saja)
     dummy_plus_data.dart        harga contoh; tidak dipakai build rilis
+    debug_route_weather.dart    prakiraan demo (debug saja)
+    debug_leaderboard.dart      papan peringkat demo (debug saja)
+    plus_local_caches.dart      cache cuaca di perangkat
+    device_sharing.dart         lembar berbagi teks/berkas
     local_plus_stores.dart      SharedPreferences + InMemory untuk uji
   plus_dependencies.dart        perakitan default
+  plus_content_dependencies.dart perakitan repositori konten Plus
 ```
 
 `NamaApp` membungkus `MaterialApp` dengan `PlusScope`. Bootstrap memanggil
@@ -100,7 +105,7 @@ memuat harga sendiri.
       "priceLabel": "Rp 499.000",
       "periodLabel": "sekali bayar",
       "durationDays": null,
-      "quotaRemaining": 87,
+      "quotaRemaining": 500,
       "quotaTotal": 500
     }
   ]
@@ -135,8 +140,8 @@ tanpa konfigurasi menampilkan keduanya mati.
 - `DebugPlusBillingRepository` menerbitkan token dengan kunci pengembangan.
   Tidak memanggil Play Billing/StoreKit dan tidak memiliki riwayat toko;
   `restore()` menjawab jujur "tidak ada pembelian".
-- Analytics dan rekap nanti memakai sesi lokal nyata. Data cuaca/leaderboard
-  demo nanti hanya boleh muncul di debug.
+- Analytics dan rekap memakai sesi lokal nyata. Data cuaca/leaderboard demo
+  hanya muncul di debug; build rilis menjawab "belum tersedia".
 
 Kunci pengembangan:
 
@@ -178,7 +183,8 @@ Sudah dijalankan (43 tes baru):
   checkpoint dan cache rusak.
 
 Perintah: `flutter test test/unit/plus_*_test.dart` dan `flutter analyze`.
-Seluruh suite saat dokumen ini ditulis: 459 tes lulus, analyzer bersih.
+Seluruh suite saat dokumen ini diperbarui: 564 tes lulus, analyzer bersih.
+Rincian layar D1–D9 dan animasinya ada di `docs/plus_layar.md`.
 
 Belum diuji: pembayaran nyata, backend konfigurasi nyata, penerbitan token
 produksi, dan perangkat fisik.

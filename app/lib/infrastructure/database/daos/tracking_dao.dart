@@ -40,6 +40,9 @@ class TrackingDao extends DatabaseAccessor<AppDatabase>
     await into(trackPoints).insert(point);
   }
 
+  Future<int> deletePoints(String sessionId) =>
+      (delete(trackPoints)..where((t) => t.sessionId.equals(sessionId))).go();
+
   Future<List<TrackPointRow>> points(String sessionId) => (select(trackPoints)
         ..where((t) => t.sessionId.equals(sessionId))
         ..orderBy([

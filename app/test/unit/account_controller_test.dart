@@ -211,6 +211,16 @@ class _FakeGroupRemote implements GroupRemoteService {
     required String groupId,
     required String userId,
   }) async {}
+
+  @override
+  Future<void> deleteGroup(String groupId) async {
+    groups.removeWhere((g) => g.group.id == groupId);
+  }
+
+  @override
+  Future<void> leaveGroup(String groupId) async {
+    groups.removeWhere((g) => g.group.id == groupId);
+  }
 }
 
 class _Harness {

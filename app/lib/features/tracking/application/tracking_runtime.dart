@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../../../infrastructure/power/power_profile_manager.dart';
 import '../domain/track_point.dart';
+import '../domain/tracking_diagnostics.dart';
 import '../domain/tracking_engine.dart';
 import '../domain/tracking_session.dart';
 import 'recording_session.dart';
@@ -54,6 +57,7 @@ class TrackingRuntimeUpdate {
     required this.profile,
     required this.batteryPercent,
     required this.isPaused,
+    this.diagnostics,
   });
 
   final TrackingSession session;
@@ -62,6 +66,7 @@ class TrackingRuntimeUpdate {
   final PowerProfile profile;
   final int? batteryPercent;
   final bool isPaused;
+  final TrackingDiagnostics? diagnostics;
 }
 
 class TrackingRuntimeError {
@@ -131,8 +136,15 @@ class TrackingRuntime {
     _subscription = _location.positions(config).listen(
       _enqueueFix,
       onError: (Object error) {
+        if (kDebugMode) {
+          debugPrint('TrackingRuntime GPS stream error: $error');
+        }
         _onError(
-            TrackingRuntimeError('Aliran GPS berhenti: $error', fatal: true));
+          const TrackingRuntimeError(
+            'Sinyal GPS terputus sementara.',
+            fatal: true,
+          ),
+        );
       },
     );
   }
@@ -140,11 +152,20 @@ class TrackingRuntime {
   void _enqueueFix(TrackPoint point) {
     _fixQueue = _fixQueue.then((_) async {
       try {
-        final snapshot = await _recording.onFix(point);
-        if (snapshot != null) _emit();
+        await _recording.onFix(point);
+        // Selalu kabari UI, juga untuk fix yang ditolak: hitungan diagnosa dan
+        // umur fix harus tetap bergerak agar angka lama tidak tampak segar.
+        _emit();
       } catch (error) {
-        _onError(TrackingRuntimeError('Gagal menyimpan titik GPS: $error',
-            fatal: true));
+        if (kDebugMode) {
+          debugPrint('TrackingRuntime onFix error: $error');
+        }
+        _onError(
+          const TrackingRuntimeError(
+            'Titik lokasi belum bisa disimpan di perangkat.',
+            fatal: true,
+          ),
+        );
       }
     });
   }
@@ -161,7 +182,12 @@ class TrackingRuntime {
         _emit();
       }
     } catch (error) {
-      _onError(TrackingRuntimeError('Gagal membaca baterai: $error'));
+      if (kDebugMode) {
+        debugPrint('TrackingRuntime _refreshBattery error: $error');
+      }
+      _onError(
+        const TrackingRuntimeError('Status baterai tidak terbaca.'),
+      );
     }
   }
 
@@ -172,6 +198,11 @@ class TrackingRuntime {
     _paused = true;
     await _subscription?.cancel();
     _subscription = null;
+    _emit();
+  }
+
+  void clearPoints() {
+    _recording.clearPoints();
     _emit();
   }
 
@@ -215,6 +246,7 @@ class TrackingRuntime {
           profile: _power.profile,
           batteryPercent: _batteryPercent,
           isPaused: _paused,
+          diagnostics: _recording.diagnostics,
         ),
       );
     } catch (_) {

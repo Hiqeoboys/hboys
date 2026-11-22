@@ -10,8 +10,11 @@ import '../app_database.dart';
 import '../daos/safety_dao.dart';
 
 class DriftSafetyRepository implements SafetyRepository {
-  DriftSafetyRepository(AppDatabase db) : _dao = SafetyDao(db);
+  DriftSafetyRepository(AppDatabase db)
+      : _db = db,
+        _dao = SafetyDao(db);
 
+  final AppDatabase _db;
   final SafetyDao _dao;
 
   @override
@@ -53,34 +56,119 @@ class DriftSafetyRepository implements SafetyRepository {
       _dao.cancelSosEvent(id, nowUtc.toUtc());
 
   @override
-  Future<void> saveContact(EmergencyContact contact) => _dao.upsertContact(
-        EmergencyContactsCompanion.insert(
-          id: contact.id,
-          userId: contact.userId,
-          name: contact.name,
-          phoneE164: contact.phoneE164,
-          channel: Value(contact.channel.name),
-          consentStatus: Value(contact.consentStatus.name),
-          consentAtUtc: Value(contact.consentAtUtc?.toUtc()),
-          createdAtUtc: contact.createdAtUtc.toUtc(),
-        ),
+  Future<void> saveContact(EmergencyContact contact) async {
+    if (contact.isHiqeoAccount) {
+      await _db.customStatement(
+        '''
+        INSERT INTO local_hiqeo_emergency_contacts
+          (id, user_id, contact_user_id, contact_username, display_name, consent_status, consent_at_utc, created_at_utc)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          display_name = excluded.display_name,
+          consent_status = excluded.consent_status,
+          consent_at_utc = excluded.consent_at_utc
+        ''',
+        <Object?>[
+          contact.id,
+          contact.userId,
+          contact.linkedUserId,
+          contact.linkedUsername ?? '',
+          contact.name,
+          contact.consentStatus.name,
+          contact.consentAtUtc?.toUtc().millisecondsSinceEpoch,
+          contact.createdAtUtc.toUtc().millisecondsSinceEpoch,
+        ],
       );
+      _db.notifyUpdates(<TableUpdate>{
+        TableUpdate.onTable(_db.emergencyContacts),
+      });
+      return;
+    }
+    await _dao.upsertContact(
+      EmergencyContactsCompanion.insert(
+        id: contact.id,
+        userId: contact.userId,
+        name: contact.name,
+        phoneE164: contact.phoneE164,
+        channel: Value(contact.channel.name),
+        consentStatus: Value(contact.consentStatus.name),
+        consentAtUtc: Value(contact.consentAtUtc?.toUtc()),
+        createdAtUtc: contact.createdAtUtc.toUtc(),
+      ),
+    );
+  }
+
+  Future<List<EmergencyContact>> _hiqeoContactsOf(String userId) async {
+    try {
+      final rows = await _db
+          .customSelect(
+            '''
+            SELECT id, user_id, contact_user_id, contact_username, display_name,
+                   consent_status, consent_at_utc, created_at_utc
+            FROM local_hiqeo_emergency_contacts
+            WHERE user_id = ?
+            ORDER BY created_at_utc ASC
+            ''',
+            variables: <Variable<Object>>[Variable.withString(userId)],
+          )
+          .get();
+      return rows.map((row) {
+        final consentMs = row.readNullable<int>('consent_at_utc');
+        final createdMs = row.read<int>('created_at_utc');
+        return EmergencyContact(
+          id: row.read<String>('id'),
+          userId: row.read<String>('user_id'),
+          name: row.read<String>('display_name'),
+          phoneE164: '',
+          linkedUserId: row.read<String>('contact_user_id'),
+          linkedUsername: row.read<String>('contact_username'),
+          consentStatus: _consentFromDb(row.read<String>('consent_status')),
+          consentAtUtc: consentMs == null
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(consentMs, isUtc: true),
+          createdAtUtc:
+              DateTime.fromMillisecondsSinceEpoch(createdMs, isUtc: true),
+        );
+      }).toList(growable: false);
+    } catch (_) {
+      return const <EmergencyContact>[];
+    }
+  }
 
   @override
   Future<List<EmergencyContact>> contactsOf(String userId) async {
-    final rows = await _dao.contactsOf(userId);
-    return rows.map(_toContact).toList(growable: false);
+    final phoneRows = await _dao.contactsOf(userId);
+    final hiqeoRows = await _hiqeoContactsOf(userId);
+    final merged = <EmergencyContact>[
+      ...phoneRows.map(_toContact),
+      ...hiqeoRows,
+    ]..sort((a, b) => a.createdAtUtc.compareTo(b.createdAtUtc));
+    return merged;
   }
 
   @override
   Stream<List<EmergencyContact>> watchContacts(String userId) =>
-      _dao.watchContacts(userId).map(
-            (rows) => rows.map(_toContact).toList(growable: false),
-          );
+      _dao.watchContacts(userId).asyncMap((rows) async {
+        final hiqeoRows = await _hiqeoContactsOf(userId);
+        final merged = <EmergencyContact>[
+          ...rows.map(_toContact),
+          ...hiqeoRows,
+        ]..sort((a, b) => a.createdAtUtc.compareTo(b.createdAtUtc));
+        return merged;
+      });
 
   @override
   Future<void> deleteContact(String id) async {
     await _dao.deleteContact(id);
+    try {
+      await _db.customStatement(
+        'DELETE FROM local_hiqeo_emergency_contacts WHERE id = ?',
+        <Object?>[id],
+      );
+      _db.notifyUpdates(<TableUpdate>{
+        TableUpdate.onTable(_db.emergencyContacts),
+      });
+    } catch (_) {}
   }
 
   SosEvent _toSosEvent(SosEventRow row) => SosEvent(

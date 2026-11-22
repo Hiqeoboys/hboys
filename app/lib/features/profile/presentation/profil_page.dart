@@ -1,35 +1,41 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../design/glass/glass_surface.dart';
+import '../../../core/config/supabase_config.dart';
+import '../../../design/glass/hiqeo_liquid_glass.dart';
+import '../../../design/layout.dart';
 import '../../../design/theme_mode_controller.dart';
 import '../../../design/tokens.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../../design/widgets/line_icons.dart';
+import '../../../design/widgets/persistent_media_image.dart';
+import '../../../infrastructure/auth/active_account_scope.dart';
 import '../../../infrastructure/database/app_database.dart';
 import '../../../infrastructure/database/database_connection.dart';
-import '../../../infrastructure/database/repositories/drift_safety_repository.dart';
 import '../../../infrastructure/database/repositories/drift_tracking_repository.dart';
 import '../../../infrastructure/power/power_profile_controller.dart';
-import '../../../infrastructure/power/power_profile_manager.dart';
 import '../../../infrastructure/supabase/supabase_services.dart';
 import '../../auth/application/account_controller.dart';
 import '../../auth/domain/auth_service.dart';
 import '../../auth/presentation/account_page.dart';
+import '../../history/presentation/history_page.dart';
 import '../../plus/application/plus_navigation.dart';
 import '../../plus/application/plus_scope.dart';
-import '../../safety/domain/emergency_contact.dart';
-import '../../safety/domain/safety_repository.dart';
+import '../../social/presentation/friends_page.dart';
 import '../../tracking/domain/tracking_repository.dart';
-import '../application/profile_map_status.dart';
 import '../domain/profile_summary.dart';
+import 'settings_page.dart';
 
 /// Profil tamu dan profil setelah masuk.
 ///
-/// Angka ringkasan berasal dari sesi selesai di database perangkat. Tidak ada
-/// angka contoh: selama data belum terbaca, nilainya "—".
+/// Susunan profil masuk (tanpa duplikasi dengan Pengaturan / Fitur Utama Beranda):
+/// 1. Identitas (avatar 84 dp, nama, @username)
+/// 2. Kartu statistik pendakian
+/// 3. Hiqeo Plus -> Akun -> Riwayat -> Daftar teman -> Pengaturan
 class ProfilPage extends StatefulWidget {
   const ProfilPage({
     super.key,
@@ -37,7 +43,10 @@ class ProfilPage extends StatefulWidget {
     this.powerController,
     this.themeController,
     this.trackingRepository,
+    @Deprecated('Kontak darurat dipindahkan ke Fitur Utama Beranda')
     this.safetyRepository,
+    @Deprecated('Kontak darurat dipindahkan ke Fitur Utama Beranda')
+    this.contactPicker,
     this.downloadedMountainCount,
   });
 
@@ -46,7 +55,8 @@ class ProfilPage extends StatefulWidget {
   final PowerProfileController? powerController;
   final ThemeModeController? themeController;
   final TrackingRepository? trackingRepository;
-  final SafetyRepository? safetyRepository;
+  final Object? safetyRepository;
+  final Object? contactPicker;
   final Future<int> Function()? downloadedMountainCount;
 
   @override
@@ -56,62 +66,56 @@ class ProfilPage extends StatefulWidget {
 class _ProfilPageState extends State<ProfilPage> {
   AppDatabase? _database;
   TrackingRepository? _tracking;
-  SafetyRepository? _safety;
 
   late final AccountController _account;
-  late final PowerProfileController _power;
-  late final ThemeModeController _theme;
   late final bool _ownsAccount;
-  late final bool _ownsPower;
 
   ProfileSummary? _summary;
+  bool _summaryLoading = true;
   bool _summaryFailed = false;
-
-  int? _downloadedMountains;
-  bool _mapsLoading = true;
-
-  List<EmergencyContact> _contacts = const <EmergencyContact>[];
-  bool _contactsLoading = false;
-  bool _contactsFailed = false;
-  String? _contactsUserId;
-  int _contactsGeneration = 0;
 
   @override
   void initState() {
     super.initState();
-    _ownsAccount = widget.accountController == null;
-    _account =
-        widget.accountController ?? SupabaseServices.createAccountController();
+    final shared = widget.accountController == null
+        ? SupabaseServices.sharedAccountController
+        : null;
+    _ownsAccount = widget.accountController == null && shared == null;
+    _account = widget.accountController ??
+        shared ??
+        SupabaseServices.createAccountController();
     _account.initialize();
-    _ownsPower = widget.powerController == null;
-    _power = widget.powerController ?? PowerProfileController();
-    if (_ownsPower) unawaited(_power.refresh());
-    _theme = widget.themeController ?? ThemeModeController.instance;
-    _account.addListener(_onAccountChanged);
+    DriftTrackingRepository.historyRevision.addListener(_loadSummary);
+    ActiveAccountScope.activeUserId.addListener(_onAccountChanged);
     unawaited(_openLocal());
-    unawaited(_loadMaps());
   }
 
   @override
   void dispose() {
-    _account.removeListener(_onAccountChanged);
+    ActiveAccountScope.activeUserId.removeListener(_onAccountChanged);
+    DriftTrackingRepository.historyRevision.removeListener(_loadSummary);
     if (_ownsAccount) _account.dispose();
-    if (_ownsPower) _power.dispose();
     final database = _database;
-    if (database != null) unawaited(database.close());
+    if (database != null) {
+      DriftTrackingRepository.unregisterDatabase(database);
+      unawaited(database.close());
+    }
     super.dispose();
   }
 
   void _onAccountChanged() {
-    _syncContacts();
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {
+      _summary = ProfileSummary.empty;
+      _summaryFailed = false;
+    });
+    unawaited(_loadSummary());
   }
 
   Future<void> _openLocal() async {
     AppDatabase? database;
     try {
-      if (widget.trackingRepository == null ||
-          widget.safetyRepository == null) {
+      if (widget.trackingRepository == null) {
         database = openAppDatabase(await defaultAppDatabaseFile());
       }
     } catch (_) {
@@ -124,14 +128,14 @@ class _ProfilPageState extends State<ProfilPage> {
     _database = database;
     _tracking = widget.trackingRepository ??
         (database == null ? null : DriftTrackingRepository(database));
-    _safety = widget.safetyRepository ??
-        (database == null ? null : DriftSafetyRepository(database));
     if (_tracking == null) {
-      setState(() => _summaryFailed = true);
+      setState(() {
+        _summaryLoading = false;
+        _summaryFailed = true;
+      });
     } else {
       await _loadSummary();
     }
-    _syncContacts();
   }
 
   Future<void> _loadSummary() async {
@@ -142,71 +146,16 @@ class _ProfilPageState extends State<ProfilPage> {
       if (!mounted) return;
       setState(() {
         _summary = ProfileSummary.fromSessions(sessions);
+        _summaryLoading = false;
         _summaryFailed = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _summaryFailed = true);
-    }
-  }
-
-  Future<void> _loadMaps() async {
-    final counter =
-        widget.downloadedMountainCount ?? defaultDownloadedMountainCount;
-    final count = await counter();
-    if (!mounted) return;
-    setState(() {
-      _downloadedMountains = count;
-      _mapsLoading = false;
-    });
-  }
-
-  void _syncContacts() {
-    final userId = _account.user?.id;
-    if (userId == _contactsUserId && !(_contactsFailed && _safety != null)) {
-      return;
-    }
-    _contactsUserId = userId;
-    final generation = ++_contactsGeneration;
-    if (userId == null) {
       setState(() {
-        _contacts = const <EmergencyContact>[];
-        _contactsLoading = false;
-        _contactsFailed = false;
+        _summaryLoading = false;
+        _summaryFailed = true;
       });
-      return;
     }
-    final repository = _safety;
-    if (repository == null) {
-      setState(() {
-        _contacts = const <EmergencyContact>[];
-        _contactsLoading = false;
-        _contactsFailed = true;
-      });
-      return;
-    }
-    setState(() {
-      _contactsLoading = true;
-      _contactsFailed = false;
-    });
-    unawaited(() async {
-      try {
-        final contacts = await repository.contactsOf(userId);
-        if (!mounted || generation != _contactsGeneration) return;
-        setState(() {
-          _contacts = contacts;
-          _contactsLoading = false;
-          _contactsFailed = false;
-        });
-      } catch (_) {
-        if (!mounted || generation != _contactsGeneration) return;
-        setState(() {
-          _contacts = const <EmergencyContact>[];
-          _contactsLoading = false;
-          _contactsFailed = true;
-        });
-      }
-    }());
   }
 
   void _signIn(AuthProviderKind provider) {
@@ -224,142 +173,172 @@ class _ProfilPageState extends State<ProfilPage> {
     );
   }
 
+  void _openSettings() {
+    final router = GoRouter.maybeOf(context);
+    if (router != null) {
+      router.push('/pengaturan');
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SettingsPage(accountController: _account),
+        ),
+      );
+    }
+  }
+
+  void _openHistory() {
+    final router = GoRouter.maybeOf(context);
+    if (router != null) {
+      router.push('/riwayat');
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => HistoryPage(repository: _tracking),
+        ),
+      );
+    }
+  }
+
+  void _openFriends() {
+    final router = GoRouter.maybeOf(context);
+    if (router != null) {
+      router.push('/teman');
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const FriendsPage()),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final bottomInset = AppLayout.bottomInset(context);
     return SafeArea(
       bottom: false,
-      child: AnimatedBuilder(
-        animation: Listenable.merge(<Listenable>[
-          _account,
-          _power,
-          _theme,
-        ]),
+      child: ListenableBuilder(
+        listenable: _account,
         builder: (context, _) {
           final signedIn = _account.user != null;
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final minHeight = (constraints.maxHeight - 56 - bottomInset)
-                  .clamp(0.0, double.infinity);
-              return SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  HiqeoSpacing.lg,
-                  HiqeoSpacing.xl,
-                  HiqeoSpacing.lg,
-                  HiqeoSpacing.xxl + bottomInset,
+          return RepaintBoundary(
+            key: const ValueKey<String>('profil-scroll-boundary'),
+            child: ListView(
+              clipBehavior: Clip.hardEdge,
+              padding: EdgeInsets.fromLTRB(
+                16,
+                24,
+                16,
+                bottomInset,
+              ),
+              children: <Widget>[
+                Text(
+                  'Profil',
+                  style: Theme.of(context).textTheme.displaySmall,
                 ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: minHeight),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisAlignment: signedIn
-                        ? MainAxisAlignment.start
-                        : MainAxisAlignment.spaceBetween,
-                    children: <Widget>[
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: <Widget>[
-                          Text(
-                            'Profil',
-                            style: Theme.of(context).textTheme.displaySmall,
-                          ),
-                          const SizedBox(height: HiqeoSpacing.xl),
-                          if (signedIn) ..._signedIn() else ..._guestTop(),
-                        ],
-                      ),
-                      if (!signedIn) _guestBottom(),
-                    ],
-                  ),
-                ),
-              );
-            },
+                const SizedBox(height: 20),
+                if (signedIn) ..._signedIn() else ..._guest(),
+              ],
+            ),
           );
         },
       ),
     );
   }
 
-  List<Widget> _guestTop() {
+  List<Widget> _guest() {
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+    final enabled = _account.isConfigured && !_account.isBusy;
+    final showApple = defaultTargetPlatform != TargetPlatform.android ||
+        SupabaseConfig.isAppleConfigured;
+
+    String? statusText;
+    bool statusIsError = false;
+    if (_account.isBusy) {
+      statusText = 'Menghubungkan akun…';
+    } else if (_account.error != null) {
+      statusText = _account.error!;
+      statusIsError = true;
+    } else if (_account.notice != null) {
+      statusText = _account.notice!;
+    } else if (!_account.isConfigured) {
+      statusText = 'Layanan masuk akun sedang tidak tersedia saat ini';
+    }
+
     return <Widget>[
       const _ProfileAvatar(),
-      const SizedBox(height: HiqeoSpacing.lg),
+      const SizedBox(height: 16),
       Center(
         child: Text(
           'Pendaki tamu',
-          style: Theme.of(context).textTheme.headlineSmall,
+          style: theme.textTheme.headlineSmall,
         ),
       ),
-      const SizedBox(height: HiqeoSpacing.xs),
+      const SizedBox(height: 4),
       Center(
         child: Text(
           'Data pendakian tersimpan di HP ini',
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: HiqeoColors.of(context).textSecondary,
-              ),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
       ),
-      const SizedBox(height: HiqeoSpacing.xl),
+      const SizedBox(height: 20),
       _StatsCard(
         summary: _summary,
+        loading: _summaryLoading,
         failed: _summaryFailed,
       ),
-      const SizedBox(height: HiqeoSpacing.lg),
-      const _PlusSection(),
-      const SizedBox(height: HiqeoSpacing.lg),
+      const SizedBox(height: 12),
+      _PlusAndSettingsSection(
+        onOpenSettings: _openSettings,
+        onOpenHistory: _openHistory,
+        showAccountRow: false,
+      ),
+      const SizedBox(height: 12),
       const _GuestBenefitsCard(),
-    ];
-  }
-
-  Widget _guestBottom() {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    final enabled = _account.isConfigured && !_account.isBusy;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        if (!_account.isConfigured)
-          Padding(
-            padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
-            child: Text(
-              'Login Google/Apple belum aktif di build ini.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colors.textSecondary,
-              ),
+      // Spasi profil tamu terukur: 16 dp di bawah kartu "Masuk untuk membuka",
+      // 12 dp di atas tombol Google (berlaku juga pada status gagal login).
+      if (statusText != null) ...<Widget>[
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            statusText,
+            key: ValueKey<String>(
+              statusIsError ? 'guest-status-error' : 'guest-status-text',
+            ),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: statusIsError ? colors.warningText : colors.textSecondary,
             ),
           ),
-        if (_account.error != null)
-          _Message(text: _account.error!, isError: true)
-        else if (_account.notice != null)
-          _Message(text: _account.notice!),
-        if (_account.isBusy)
-          Padding(
-            padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
-            child: Text(
-              'Membuka browser login…',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colors.textSecondary,
-              ),
-            ),
-          ),
-        const SizedBox(height: HiqeoSpacing.lg),
-        _AuthButtons(
-          enabled: enabled,
-          onGoogle: () => _signIn(AuthProviderKind.google),
-          onApple: () => _signIn(AuthProviderKind.apple),
         ),
-        const SizedBox(height: HiqeoSpacing.md),
-        Text(
-          'Isi pesanmu tidak dibaca server. Lokasi hanya tersimpan di HP ini.',
+        const SizedBox(height: 12),
+      ] else
+        const SizedBox(height: 16),
+      _AuthButtons(
+        enabled: enabled,
+        isBusy: _account.isBusy,
+        showApple: showApple,
+        onGoogle: () => _signIn(AuthProviderKind.google),
+        onApple: () => _signIn(AuthProviderKind.apple),
+      ),
+      // Catatan kaki 16 dp di bawah tombol, rata tengah, margin horizontal 12.
+      const SizedBox(height: 16),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Text(
+          'Isi pesanmu tidak dibaca server. Lokasi hanya tersimpan di HP ini '
+          'kecuali kamu menyalakan berbagi lokasi di grup.',
+          key: const ValueKey<String>('guest-privacy-footnote'),
           textAlign: TextAlign.center,
           style: theme.textTheme.bodySmall?.copyWith(
             color: colors.textSecondary,
           ),
         ),
-      ],
-    );
+      ),
+    ];
   }
 
   List<Widget> _signedIn() {
@@ -367,465 +346,74 @@ class _ProfilPageState extends State<ProfilPage> {
     final theme = Theme.of(context);
     final user = _account.user!;
     final profile = _account.profile;
-    final name = user.displayName?.trim().isNotEmpty == true
-        ? user.displayName!.trim()
-        : (profile?.username ?? 'Pendaki');
-    final handle =
-        profile == null ? 'Username belum dibuat' : '@${profile.username}';
+    final name = profile?.fullName?.trim().isNotEmpty == true
+        ? profile!.fullName!.trim()
+        : (user.displayName?.trim().isNotEmpty == true
+            ? user.displayName!.trim()
+            : (profile?.username ?? 'Pendaki'));
+    final avatarUrl = profile?.avatarUrl?.trim().isNotEmpty == true
+        ? profile!.avatarUrl!.trim()
+        : user.avatarUrl;
+    final localAvatarPath = profile?.localAvatarPath ?? _account.localAvatarPath;
+    final hasUsername =
+        profile?.username != null && profile!.username!.isNotEmpty;
+    final profileCompleted = hasUsername || (profile?.isProfileComplete ?? false);
+    final handle = hasUsername
+        ? '@${profile.username}'
+        : (profileCompleted || _account.isLoading
+            ? ''
+            : 'Username belum dibuat');
+
     return <Widget>[
-      _ProfileAvatar(initial: _initialOf(name)),
-      const SizedBox(height: HiqeoSpacing.lg),
+      // 1. Identitas (avatar 84 dp, nama, @username)
+      _ProfileAvatar(
+        initial: _initialOf(name),
+        avatarUrl: avatarUrl,
+        localAvatarPath: localAvatarPath,
+      ),
+      const SizedBox(height: 14),
       Center(
         child: Text(name, style: theme.textTheme.headlineSmall),
       ),
-      const SizedBox(height: HiqeoSpacing.xs),
-      Center(
-        child: Text(
-          handle,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: colors.textSecondary,
-          ),
-        ),
-      ),
-      if (user.provider != null) ...<Widget>[
-        const SizedBox(height: HiqeoSpacing.md),
+      if (handle.isNotEmpty) ...<Widget>[
+        const SizedBox(height: 4),
         Center(
-          child: _ProviderPill(provider: user.provider!),
-        ),
-      ],
-      if (profile == null) ...<Widget>[
-        const SizedBox(height: HiqeoSpacing.xs),
-        Center(
-          child: TextButton(
-            key: const ValueKey('profil-complete-account'),
-            onPressed: _openAccount,
-            child: const Text('Lengkapi akun'),
+          child: Text(
+            handle,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colors.textSecondary,
+            ),
           ),
         ),
       ],
       if (_account.deviceKeyMismatch) ...<Widget>[
-        const SizedBox(height: HiqeoSpacing.sm),
+        const SizedBox(height: 8),
         Text(
-          'Kunci perangkat berbeda dari direktori. Buka akun untuk '
+          'Kunci perangkat berbeda dari direktori. Buka Akun untuk '
           'mendaftarkan ulang kunci.',
           textAlign: TextAlign.center,
           style: theme.textTheme.bodySmall?.copyWith(color: colors.warningText),
         ),
-        Center(
-          child: TextButton(
-            onPressed: _openAccount,
-            child: const Text('Buka akun'),
-          ),
-        ),
       ],
-      const SizedBox(height: HiqeoSpacing.xl),
-      _StatsCard(summary: _summary, failed: _summaryFailed),
-      const SizedBox(height: HiqeoSpacing.lg),
-      const _PlusSection(),
-      const SizedBox(height: HiqeoSpacing.lg),
-      _ProfilRow(
-        key: const ValueKey('profil-row-kontak'),
-        icon: HiqeoIcons.phone,
-        title: 'Kontak darurat',
-        subtitle: _contactsSubtitle(),
-        onTap: () => unawaited(_showContactsSheet()),
+      const SizedBox(height: 20),
+
+      // 2. Kartu statistik
+      _StatsCard(
+        summary: _summary,
+        loading: _summaryLoading,
+        failed: _summaryFailed,
       ),
-      const SizedBox(height: HiqeoSpacing.sm),
-      _ProfilRow(
-        key: const ValueKey('profil-row-peta'),
-        icon: HiqeoIcons.map,
-        title: 'Peta terunduh',
-        subtitle: _mapsLoading
-            ? 'Memuat…'
-            : downloadedMountainLabel(_downloadedMountains),
-        onTap: () => unawaited(_showMapsSheet()),
-      ),
-      const SizedBox(height: HiqeoSpacing.sm),
-      _ProfilRow(
-        key: const ValueKey('profil-row-daya'),
-        icon: HiqeoIcons.battery,
-        title: 'Profil daya',
-        subtitle: _powerProfileLabel(_power.profile),
-        onTap: () => unawaited(_showPowerSheet()),
-      ),
-      const SizedBox(height: HiqeoSpacing.sm),
-      _ProfilRow(
-        key: const ValueKey('profil-row-privasi'),
-        icon: HiqeoIcons.lock,
-        title: 'Privasi lokasi',
-        subtitle: 'Belum ada berbagi lokasi',
-        onTap: () => unawaited(_showPrivacySheet()),
-      ),
-      const SizedBox(height: HiqeoSpacing.sm),
-      _ProfilRow(
-        key: const ValueKey('profil-row-tampilan'),
-        icon: HiqeoIcons.sun,
-        title: 'Tampilan',
-        subtitle: themeModeLabel(_theme.mode),
-        onTap: () => unawaited(_showThemeSheet()),
-      ),
-      const SizedBox(height: HiqeoSpacing.xl),
-      if (_account.error != null)
-        _Message(text: _account.error!, isError: true)
-      else if (_account.notice != null)
-        _Message(text: _account.notice!),
-      _SignOutButton(
-        enabled: !_account.isBusy,
-        onTap: () => unawaited(_account.signOut()),
-      ),
-      const SizedBox(height: HiqeoSpacing.xs),
-      Center(
-        child: TextButton(
-          key: const ValueKey('profil-delete-account'),
-          onPressed: _showDeleteAccount,
-          child: Text(
-            'Hapus akun',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.textSecondary,
-              decoration: TextDecoration.underline,
-            ),
-          ),
-        ),
+      const SizedBox(height: 12),
+
+      // 3. Hiqeo Plus -> Akun -> Riwayat -> Daftar teman -> Pengaturan
+      _PlusAndSettingsSection(
+        onOpenSettings: _openSettings,
+        onOpenHistory: _openHistory,
+        onOpenFriends: _openFriends,
+        showAccountRow: true,
+        onOpenAccount: _openAccount,
       ),
     ];
-  }
-
-  String _contactsSubtitle() {
-    if (_contactsLoading) return 'Memuat…';
-    if (_contactsFailed) return 'Kontak belum dapat dibaca';
-    if (_contacts.isEmpty) return 'Belum ada kontak darurat';
-    final contact = _contacts.first;
-    return '${contact.name} · ${_contactStatusLabel(contact.consentStatus)}';
-  }
-
-  Future<void> _showContactsSheet() {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    return _showSheet(
-      title: 'Kontak darurat',
-      subtitle: 'Hanya tersimpan di HP ini',
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          if (_contactsLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: HiqeoSpacing.lg),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_contactsFailed)
-            Text(
-              'Kontak darurat belum dapat dibaca dari HP ini.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colors.textSecondary,
-              ),
-            )
-          else if (_contacts.isEmpty)
-            Text(
-              'Belum ada kontak darurat tersimpan di HP ini.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colors.textSecondary,
-              ),
-            )
-          else
-            for (final contact in _contacts)
-              Padding(
-                padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(contact.name, style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${_contactChannelLabel(contact.channel)} · '
-                      '${contact.phoneE164}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      _contactStatusLabel(contact.consentStatus),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          const SizedBox(height: HiqeoSpacing.sm),
-          Text(
-            'Penerusan SOS ke kontak darurat belum tersedia di build ini.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showMapsSheet() {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    return _showSheet(
-      title: 'Peta terunduh',
-      subtitle: downloadedMountainLabel(_downloadedMountains),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text(
-            'Status dibaca dari region peta yang benar-benar tersimpan di '
-            'perangkat ini, bukan dari ingatan sesi aplikasi.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: HiqeoSpacing.lg),
-          Text(
-            'Unduhan peta offline memakai Mapbox dan memerlukan jaringan saat '
-            'mengunduh. Setelah tersimpan, peta bisa dibuka tanpa sinyal.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: HiqeoSpacing.lg),
-          _SheetAction(
-            label: 'Buka Peta',
-            onTap: () {
-              Navigator.of(context).pop();
-              context.go('/peta');
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showPowerSheet() {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    return _showSheet(
-      title: 'Profil daya',
-      subtitle: _powerProfileLabel(_power.profile),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text(
-            _power.levelPercent == null
-                ? 'Baterai belum terbaca.'
-                : 'Baterai ${_power.levelPercent}%'
-                    '${_power.isCharging ? ' · sedang diisi' : ''}.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: HiqeoSpacing.lg),
-          for (final profile in PowerProfile.values)
-            Padding(
-              padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
-              child: Text(
-                '${_powerProfileLabel(profile)}: GPS tiap '
-                '${PowerProfileConfig.of(profile).gpsInterval.inSeconds} detik, '
-                '${PowerProfileConfig.of(profile).allowImages ? 'gambar aktif' : 'gambar nonaktif'}.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: profile == _power.profile
-                      ? colors.textPrimary
-                      : colors.textSecondary,
-                ),
-              ),
-            ),
-          Text(
-            'Profil berubah otomatis mengikuti level baterai dan status '
-            'pengisian.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showPrivacySheet() {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    return _showSheet(
-      title: 'Privasi lokasi',
-      subtitle: 'Belum ada berbagi lokasi',
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text(
-            'Lokasi dan jejak pendakian hanya disimpan di HP ini. Belum ada '
-            'transport yang mengirim lokasi ke anggota grup atau server.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: HiqeoSpacing.md),
-          Text(
-            'Saat membuat Kartu Pendakian, titik awal dan akhir bisa '
-            'disembunyikan sebelum kartu disimpan atau dibagikan.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: HiqeoSpacing.md),
-          Text(
-            'Kontrol berbagi lokasi untuk anggota grup belum tersedia di '
-            'build ini.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showThemeSheet() {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    return showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      useSafeArea: true,
-      builder: (sheetContext) => SafeArea(
-        top: false,
-        child: GlassSurface(
-          borderRadius: HiqeoRadius.hero,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: colors.textSecondary.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(HiqeoRadius.pill),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text('Tampilan', style: theme.textTheme.headlineSmall),
-                const SizedBox(height: 2),
-                Text(
-                  'Berlaku langsung tanpa memulai ulang aplikasi.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                for (final mode in const <ThemeMode>[
-                  ThemeMode.system,
-                  ThemeMode.light,
-                  ThemeMode.dark,
-                ])
-                  _ThemeOption(
-                    key: ValueKey<String>('profil-theme-${mode.name}'),
-                    label: themeModeLabel(mode),
-                    selected: _theme.mode == mode,
-                    onTap: () async {
-                      await _theme.setMode(mode);
-                      if (sheetContext.mounted) {
-                        Navigator.of(sheetContext).pop();
-                      }
-                    },
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showSheet({
-    required String title,
-    String? subtitle,
-    required Widget body,
-  }) {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      useSafeArea: true,
-      builder: (sheetContext) => SafeArea(
-        top: false,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.8,
-          ),
-          child: GlassSurface(
-            borderRadius: HiqeoRadius.hero,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const SizedBox(height: 10),
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: colors.textSecondary.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(HiqeoRadius.pill),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(title, style: theme.textTheme.headlineSmall),
-                      if (subtitle != null) ...<Widget>[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-                    child: body,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showDeleteAccount() {
-    unawaited(
-      showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Hapus akun'),
-          content: const Text(
-            'Penghapusan akun belum tersedia di build ini. Tidak ada akun '
-            'atau data yang dihapus.',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Tutup'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -833,25 +421,6 @@ String themeModeLabel(ThemeMode mode) => switch (mode) {
       ThemeMode.light => 'Terang',
       ThemeMode.dark => 'Gelap',
       ThemeMode.system => 'Ikuti sistem',
-    };
-
-String _powerProfileLabel(PowerProfile profile) => switch (profile) {
-      PowerProfile.normal => 'Normal',
-      PowerProfile.saver => 'Hemat',
-      PowerProfile.critical => 'Kritis',
-    };
-
-String _contactStatusLabel(EmergencyContactConsentStatus status) =>
-    switch (status) {
-      EmergencyContactConsentStatus.granted => 'aktif',
-      EmergencyContactConsentStatus.pending => 'menunggu persetujuan',
-      EmergencyContactConsentStatus.revoked => 'persetujuan dicabut',
-    };
-
-String _contactChannelLabel(EmergencyContactChannel channel) =>
-    switch (channel) {
-      EmergencyContactChannel.sms => 'SMS',
-      EmergencyContactChannel.whatsapp => 'WhatsApp',
     };
 
 String _initialOf(String name) {
@@ -862,53 +431,112 @@ String _initialOf(String name) {
 }
 
 class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({this.initial});
+  const _ProfileAvatar({
+    this.initial,
+    this.avatarUrl,
+    this.localAvatarPath,
+  });
 
   final String? initial;
+  final String? avatarUrl;
+  final String? localAvatarPath;
+
+  static const double _size = 84;
 
   @override
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
     final signedIn = initial != null;
+    final fallbackChild = Center(
+      child: signedIn
+          ? Text(
+              initial!,
+              style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                    color: colors.onPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+            )
+          : HiqeoIcon(
+              HiqeoIcons.user,
+              size: 36,
+              color: colors.textPrimary,
+            ),
+    );
+
+    final File? cachedFile =
+        AccountController.cachedLocalAvatarFile(localAvatarPath);
+
+    final Widget imageOrFallback;
+    if (cachedFile != null) {
+      imageOrFallback = ClipOval(
+        child: Image.file(
+          cachedFile,
+          key: const ValueKey<String>('profil-avatar-local-file'),
+          width: _size,
+          height: _size,
+          cacheWidth: 256,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            if (avatarUrl != null && avatarUrl!.trim().isNotEmpty) {
+              return PersistentMediaImage(
+                url: avatarUrl!,
+                width: _size,
+                height: _size,
+                cacheWidth: 256,
+                fit: BoxFit.cover,
+                enableRetryOnTap: false,
+                placeholder: fallbackChild,
+                errorBuilder: (_) => fallbackChild,
+              );
+            }
+            return fallbackChild;
+          },
+        ),
+      );
+    } else if (avatarUrl != null && avatarUrl!.trim().isNotEmpty) {
+      imageOrFallback = ClipOval(
+        child: PersistentMediaImage(
+          url: avatarUrl!,
+          width: _size,
+          height: _size,
+          cacheWidth: 256,
+          fit: BoxFit.cover,
+          enableRetryOnTap: false,
+          placeholder: fallbackChild,
+          errorBuilder: (_) => fallbackChild,
+        ),
+      );
+    } else {
+      imageOrFallback = fallbackChild;
+    }
+
     return Center(
       child: Container(
-        width: 96,
-        height: 96,
+        width: _size,
+        height: _size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: signedIn ? colors.primary : colors.surface,
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: colors.glassShadow,
-              blurRadius: 24,
-              offset: const Offset(0, 10),
-            ),
-          ],
+          border: Border.all(
+            color: colors.glassBorder,
+            width: 1.5,
+          ),
         ),
-        child: Center(
-          child: signedIn
-              ? Text(
-                  initial!,
-                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                        color: colors.onPrimary,
-                        fontWeight: FontWeight.w800,
-                      ),
-                )
-              : HiqeoIcon(
-                  HiqeoIcons.user,
-                  size: 38,
-                  color: colors.textPrimary,
-                ),
-        ),
+        child: imageOrFallback,
       ),
     );
   }
 }
 
 class _StatsCard extends StatelessWidget {
-  const _StatsCard({required this.summary, required this.failed});
+  const _StatsCard({
+    required this.summary,
+    required this.loading,
+    required this.failed,
+  });
 
   final ProfileSummary? summary;
+  final bool loading;
   final bool failed;
 
   @override
@@ -916,11 +544,12 @@ class _StatsCard extends StatelessWidget {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     final summary = this.summary;
+    final showLoadingSkeleton = loading && summary == null && !failed;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        GlassSurface(
-          borderRadius: HiqeoRadius.card,
+        HiqeoGlassCard(
+          borderRadius: 24,
           padding: const EdgeInsets.symmetric(
             horizontal: HiqeoSpacing.sm,
             vertical: 20,
@@ -929,23 +558,26 @@ class _StatsCard extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: _Stat(
-                  key: const ValueKey('profil-stat-pendakian'),
+                  key: const ValueKey<String>('profil-stat-pendakian'),
                   value: summary?.hikeCountLabel ?? '—',
                   label: 'Pendakian',
+                  loading: showLoadingSkeleton,
                 ),
               ),
               Expanded(
                 child: _Stat(
-                  key: const ValueKey('profil-stat-jarak'),
+                  key: const ValueKey<String>('profil-stat-jarak'),
                   value: summary?.distanceLabel ?? '—',
                   label: 'Jarak',
+                  loading: showLoadingSkeleton,
                 ),
               ),
               Expanded(
                 child: _Stat(
-                  key: const ValueKey('profil-stat-tanjakan'),
+                  key: const ValueKey<String>('profil-stat-tanjakan'),
                   value: summary?.elevationGainLabel ?? '—',
                   label: 'Tanjakan',
+                  loading: showLoadingSkeleton,
                 ),
               ),
             ],
@@ -968,10 +600,16 @@ class _StatsCard extends StatelessWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat({super.key, required this.value, required this.label});
+  const _Stat({
+    super.key,
+    required this.value,
+    required this.label,
+    this.loading = false,
+  });
 
   final String value;
   final String label;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -979,15 +617,26 @@ class _Stat extends StatelessWidget {
     final theme = Theme.of(context);
     return Column(
       children: <Widget>[
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            value,
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w800,
+        if (loading)
+          Container(
+            width: 44,
+            height: 26,
+            margin: const EdgeInsets.symmetric(vertical: 3),
+            decoration: BoxDecoration(
+              color: colors.hairline.withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(8),
+            ),
+          )
+        else
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: theme.textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
-        ),
         const SizedBox(height: 2),
         Text(
           label,
@@ -1005,26 +654,27 @@ class _GuestBenefitsCard extends StatelessWidget {
   const _GuestBenefitsCard();
 
   static const List<String> _benefits = <String>[
-    'Grup dan undangan anggota',
-    'SOS diteruskan ke kontak darurat',
-    'Cadangan jejak pendakian',
+    'Grup dan obrolan terenkripsi',
+    'Undang teman lewat username',
+    'Berbagi lokasi terakhir saat mendaki',
   ];
 
   @override
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
-    return GlassSurface(
-      borderRadius: HiqeoRadius.card,
-      padding: const EdgeInsets.all(20),
+    return HiqeoGlassCard(
+      key: const ValueKey<String>('guest-benefits-card'),
+      borderRadius: 24,
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text('Masuk untuk membuka', style: theme.textTheme.titleMedium),
-          const SizedBox(height: HiqeoSpacing.md),
+          const SizedBox(height: 12),
           for (final benefit in _benefits)
             Padding(
-              padding: const EdgeInsets.only(bottom: HiqeoSpacing.sm),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -1036,7 +686,7 @@ class _GuestBenefitsCard extends StatelessWidget {
                       color: colors.textPrimary,
                     ),
                   ),
-                  const SizedBox(width: HiqeoSpacing.md),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       benefit,
@@ -1046,13 +696,6 @@ class _GuestBenefitsCard extends StatelessWidget {
                 ],
               ),
             ),
-          const SizedBox(height: HiqeoSpacing.xs),
-          Text(
-            'Penerusan SOS dan cadangan jejak belum tersedia di build ini.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
         ],
       ),
     );
@@ -1062,14 +705,15 @@ class _GuestBenefitsCard extends StatelessWidget {
 class _AuthButtons extends StatelessWidget {
   const _AuthButtons({
     required this.enabled,
+    this.isBusy = false,
+    required this.showApple,
     required this.onGoogle,
     required this.onApple,
   });
 
-  /// Celah dua tombol penyedia masuk.
-  static const double _gap = 14;
-
   final bool enabled;
+  final bool isBusy;
+  final bool showApple;
   final VoidCallback onGoogle;
   final VoidCallback onApple;
 
@@ -1079,102 +723,112 @@ class _AuthButtons extends StatelessWidget {
     return Column(
       children: <Widget>[
         HiqeoButton(
-          key: const ValueKey('profil-login-google'),
-          label: 'Lanjutkan dengan Google',
+          key: const ValueKey<String>('profil-login-google'),
+          label: isBusy ? 'Menghubungkan…' : 'Lanjutkan dengan Google',
           variant: HiqeoButtonVariant.secondary,
+          isLoading: isBusy,
           leading: Image.asset(
             'assets/brand/google_g.png',
             width: 20,
             height: 20,
+            cacheWidth: 96,
             fit: BoxFit.contain,
             filterQuality: FilterQuality.high,
             excludeFromSemantics: true,
           ),
-          onPressed: enabled ? onGoogle : null,
+          onPressed: enabled && !isBusy ? onGoogle : null,
         ),
-        const SizedBox(height: _gap),
-        HiqeoButton(
-          key: const ValueKey('profil-login-apple'),
-          label: 'Lanjutkan dengan Apple',
-          leading: Image.asset(
-            'assets/brand/apple_logo.png',
-            height: 20,
-            fit: BoxFit.contain,
-            filterQuality: FilterQuality.high,
-            color: colors.onPrimary,
-            colorBlendMode: BlendMode.srcIn,
-            excludeFromSemantics: true,
+        if (showApple) ...<Widget>[
+          const SizedBox(height: 12),
+          HiqeoButton(
+            key: const ValueKey<String>('profil-login-apple'),
+            label: 'Lanjutkan dengan Apple',
+            leading: Image.asset(
+              'assets/brand/apple_logo.png',
+              height: 20,
+              cacheWidth: 96,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+              color: colors.onPrimary,
+              colorBlendMode: BlendMode.srcIn,
+              excludeFromSemantics: true,
+            ),
+            onPressed: enabled ? onApple : null,
           ),
-          onPressed: enabled ? onApple : null,
+        ],
+      ],
+    );
+  }
+}
+
+/// Baris menu Hiqeo Plus, Akun, Riwayat, Daftar teman, dan Pengaturan.
+class _PlusAndSettingsSection extends StatelessWidget {
+  const _PlusAndSettingsSection({
+    required this.onOpenSettings,
+    required this.onOpenHistory,
+    required this.showAccountRow,
+    this.onOpenFriends,
+    this.onOpenAccount,
+  });
+
+  final VoidCallback onOpenSettings;
+  final VoidCallback onOpenHistory;
+  final VoidCallback? onOpenFriends;
+  final bool showAccountRow;
+  final VoidCallback? onOpenAccount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        const RepaintBoundary(
+          key: ValueKey<String>('profil-plus-card-boundary'),
+          child: _HiqeoPlusRow(),
+        ),
+        if (showAccountRow && onOpenAccount != null) ...<Widget>[
+          const SizedBox(height: 8),
+          _ProfilRow(
+            key: const ValueKey<String>('profil-row-akun'),
+            icon: HiqeoIcons.user,
+            title: 'Akun',
+            subtitle: 'Username dan akun Google',
+            onTap: onOpenAccount!,
+          ),
+        ],
+        const SizedBox(height: 8),
+        _ProfilRow(
+          key: const ValueKey<String>('profil-row-riwayat'),
+          icon: HiqeoIcons.clock,
+          title: 'Riwayat',
+          subtitle: 'Catatan & detail pendakian offline',
+          onTap: onOpenHistory,
+        ),
+        if (showAccountRow && onOpenFriends != null) ...<Widget>[
+          const SizedBox(height: 8),
+          _ProfilRow(
+            key: const ValueKey<String>('profil-row-teman'),
+            icon: HiqeoIcons.group,
+            title: 'Daftar teman',
+            subtitle: 'Teman dan permintaan pertemanan',
+            onTap: onOpenFriends!,
+          ),
+        ],
+        const SizedBox(height: 8),
+        _ProfilRow(
+          key: const ValueKey<String>('profil-row-pengaturan'),
+          icon: HiqeoIcons.more,
+          title: 'Pengaturan',
+          subtitle: 'Izin, tema, privasi, dan cache',
+          onTap: onOpenSettings,
         ),
       ],
     );
   }
 }
 
-class _ProviderPill extends StatelessWidget {
-  const _ProviderPill({required this.provider});
-
-  final AuthProviderKind provider;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = HiqeoColors.of(context);
-    final label = provider == AuthProviderKind.google
-        ? 'Terhubung dengan Google'
-        : 'Terhubung dengan Apple';
-    return Semantics(
-      label: label,
-      child: GlassSurface(
-        borderRadius: HiqeoRadius.pill,
-        padding: const EdgeInsets.symmetric(
-          horizontal: HiqeoSpacing.lg,
-          vertical: 8,
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              if (provider == AuthProviderKind.google)
-                Image.asset(
-                  'assets/brand/google_g.png',
-                  width: 16,
-                  height: 16,
-                  fit: BoxFit.contain,
-                  excludeFromSemantics: true,
-                )
-              else
-                Image.asset(
-                  'assets/brand/apple_logo.png',
-                  height: 16,
-                  fit: BoxFit.contain,
-                  color: colors.textPrimary,
-                  colorBlendMode: BlendMode.srcIn,
-                  excludeFromSemantics: true,
-                ),
-              const SizedBox(width: HiqeoSpacing.sm),
-              ExcludeSemantics(
-                child: Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colors.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Pintu masuk Hiqeo Plus dari Profil. Baris fitur tetap tampil untuk pengguna
-/// gratis; gerbang di dalam rute yang menjelaskan dan menawarkan Plus.
-class _PlusSection extends StatelessWidget {
-  const _PlusSection();
+class _HiqeoPlusRow extends StatelessWidget {
+  const _HiqeoPlusRow();
 
   @override
   Widget build(BuildContext context) {
@@ -1197,50 +851,18 @@ class _PlusSection extends StatelessWidget {
     } else {
       subtitle = 'Cuaca rute, estimasi, analitik, dan rekap';
     }
-    final featureHint = hasPlus ? null : 'Termasuk Hiqeo Plus';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        _ProfilRow(
-          key: const ValueKey('profil-row-plus'),
-          icon: HiqeoIcons.mountain,
-          title: 'Hiqeo Plus',
-          subtitle: subtitle,
-          onTap: () {
-            if (hasPlus || everPurchased) {
-              context.push(PlusRoutes.manage);
-            } else {
-              openPlusPaywall(context);
-            }
-          },
-        ),
-        const SizedBox(height: HiqeoSpacing.sm),
-        _ProfilRow(
-          key: const ValueKey('profil-row-analitik'),
-          icon: HiqeoIcons.activity,
-          title: 'Analitik lanjutan',
-          subtitle: featureHint ?? 'Dari sesi selesai di HP ini',
-          onTap: () => context.push(PlusRoutes.analytics),
-        ),
-        const SizedBox(height: HiqeoSpacing.sm),
-        _ProfilRow(
-          key: const ValueKey('profil-row-rekap'),
-          icon: HiqeoIcons.calendar,
-          title: 'Rekap tahunan',
-          subtitle: featureHint ?? 'Kartu tahunan yang bisa dibagikan',
-          onTap: () => context.push(PlusRoutes.recap),
-        ),
-        if (plus?.leaderboardEnabled ?? false) ...<Widget>[
-          const SizedBox(height: HiqeoSpacing.sm),
-          _ProfilRow(
-            key: const ValueKey('profil-row-leaderboard'),
-            icon: HiqeoIcons.trophy,
-            title: 'Leaderboard',
-            subtitle: 'Papan nasional dan grup',
-            onTap: () => context.push(PlusRoutes.leaderboard),
-          ),
-        ],
-      ],
+    return _ProfilRow(
+      key: const ValueKey<String>('profil-row-plus'),
+      icon: HiqeoIcons.mountain,
+      title: 'Hiqeo Plus',
+      subtitle: subtitle,
+      onTap: () {
+        if (hasPlus || everPurchased) {
+          context.push(PlusRoutes.manage);
+        } else {
+          openPlusPaywall(context);
+        }
+      },
     );
   }
 }
@@ -1266,26 +888,35 @@ class _ProfilRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: '$title. $subtitle',
-      child: GlassSurface(
-        borderRadius: HiqeoRadius.card,
+      child: HiqeoGlassCard(
+        borderRadius: 24,
         child: Material(
           type: MaterialType.transparency,
+          borderRadius: BorderRadius.circular(24),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
-            borderRadius: BorderRadius.circular(HiqeoRadius.card),
+            borderRadius: BorderRadius.circular(24),
             onTap: onTap,
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: HiqeoSpacing.lg,
-                vertical: 14,
-              ),
+              padding: const EdgeInsets.all(16),
               child: Row(
                 children: <Widget>[
-                  HiqeoIcon(
-                    icon,
-                    size: 24,
-                    color: colors.textPrimary,
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: colors.secondary,
+                    ),
+                    child: Center(
+                      child: HiqeoIcon(
+                        icon,
+                        size: 22,
+                        color: colors.textPrimary,
+                      ),
+                    ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1301,7 +932,7 @@ class _ProfilRow extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: HiqeoSpacing.sm),
+                  const SizedBox(width: 8),
                   HiqeoIcon(
                     HiqeoIcons.chevronRight,
                     size: 18,
@@ -1311,151 +942,6 @@ class _ProfilRow extends StatelessWidget {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SignOutButton extends StatelessWidget {
-  const _SignOutButton({required this.enabled, required this.onTap});
-
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = HiqeoColors.of(context);
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: 'Keluar',
-      child: Opacity(
-        opacity: enabled ? 1 : 0.6,
-        child: GlassSurface(
-          borderRadius: HiqeoRadius.pill,
-          child: Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              key: const ValueKey('profil-sign-out'),
-              borderRadius: BorderRadius.circular(HiqeoRadius.pill),
-              onTap: enabled ? onTap : null,
-              child: SizedBox(
-                height: 56,
-                child: Center(
-                  child: Text(
-                    'Keluar',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: colors.textPrimary,
-                        ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ThemeOption extends StatelessWidget {
-  const _ThemeOption({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(HiqeoRadius.card),
-        onTap: onTap,
-        child: SizedBox(
-          height: 52,
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  label,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ),
-              if (selected)
-                HiqeoIcon(
-                  HiqeoIcons.check,
-                  size: 20,
-                  color: colors.textPrimary,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SheetAction extends StatelessWidget {
-  const _SheetAction({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = HiqeoColors.of(context);
-    return SizedBox(
-      height: 52,
-      child: Material(
-        color: colors.secondary,
-        shape: const StadiumBorder(),
-        child: InkWell(
-          customBorder: const StadiumBorder(),
-          onTap: onTap,
-          child: Center(
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: colors.textPrimary,
-                  ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Message extends StatelessWidget {
-  const _Message({required this.text, this.isError = false});
-
-  final String text;
-  final bool isError;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: HiqeoSpacing.md),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: isError ? colors.warningText : colors.textSecondary,
         ),
       ),
     );

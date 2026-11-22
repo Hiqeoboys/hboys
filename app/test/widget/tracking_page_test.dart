@@ -20,6 +20,7 @@ TrackingStatus _status({
   int? batteryPercent = 62,
   bool isPaused = false,
   PowerProfile profile = PowerProfile.normal,
+  DateTime? lastValidFixAtUtc,
 }) =>
     TrackingStatus(
       sessionId: 'sesi-1',
@@ -37,6 +38,7 @@ TrackingStatus _status({
       verticalSpeedMph: verticalSpeedMph,
       batteryPercent: batteryPercent,
       isPaused: isPaused,
+      lastValidFixAtUtc: lastValidFixAtUtc,
     );
 
 Finder _plain(String text) => find.byWidgetPredicate(
@@ -48,41 +50,43 @@ Widget _app(TrackingView view) => MaterialApp(
       home: Scaffold(body: view),
     );
 
-void _setTallPhone(WidgetTester tester) {
-  tester.view.physicalSize = const Size(390, 1400);
+void _setPhoneSize(WidgetTester tester, [Size size = const Size(360, 640)]) {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
 void main() {
-  testWidgets('tanpa izin menampilkan panduan dan metrik belum tersedia',
+  testWidgets(
+      'tata letak Bento Opsi B muat di layar 640 dp tanpa overflow dan menampilkan kartu metrik',
       (tester) async {
-    _setTallPhone(tester);
+    _setPhoneSize(tester, const Size(360, 640));
     var opened = 0;
     await tester.pumpWidget(_app(TrackingView(
       phase: TrackingPhase.idle,
       profile: PowerProfile.normal,
-      powerPercent: 62,
       permissionSummary: 'Belum aktif: izin "Selalu".',
       onOpenPermissions: () => opened++,
     )));
     await tester.pumpAndSettle();
 
-    expect(find.text('Tersimpan di HP'), findsOneWidget);
-    expect(find.text('Baterai 62% · Normal'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(find.text('Tersimpan di HP'), findsNothing);
+    expect(find.textContaining('Baterai '), findsNothing);
     expect(find.text('Waktu bergerak'), findsOneWidget);
     expect(find.text('00:00:00'), findsOneWidget);
     expect(find.text('Izin belum lengkap'), findsOneWidget);
     expect(find.text('Belum aktif: izin "Selalu".'), findsOneWidget);
     expect(find.text('Belum ada data ketinggian'), findsOneWidget);
+    expect(find.text('Sensor langkah tidak tersedia'), findsOneWidget);
     for (final label in <String>[
       'Jarak',
       'Pace',
       'Tanjakan',
       'Kec. vertikal',
       'Langkah',
-      'Kalori (estimasi)',
+      'Kalori',
     ]) {
       expect(find.text(label), findsOneWidget, reason: 'kartu $label hilang');
     }
@@ -94,7 +98,7 @@ void main() {
 
   testWidgets('sesi aktif menampilkan metrik nyata dan pasangan Jeda/Selesai',
       (tester) async {
-    _setTallPhone(tester);
+    _setPhoneSize(tester, const Size(360, 640));
     var paused = 0;
     var finished = 0;
     final handle = tester.ensureSemantics();
@@ -102,7 +106,6 @@ void main() {
       phase: TrackingPhase.recording,
       status: _status(),
       permissionReady: true,
-      powerPercent: 62,
       profile: PowerProfile.normal,
       elevation: <double>[1000, 1004, 1002, 1009, 1018],
       onPause: () => paused++,
@@ -110,6 +113,7 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
+    expect(tester.takeException(), isNull);
     expect(find.text('02:41:50'), findsOneWidget);
     expect(_plain('6,4 km'), findsOneWidget);
     expect(_plain('24:10 /km'), findsOneWidget);
@@ -140,54 +144,91 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets(
+      'menampilkan Mencari sinyal GPS sebelum fix valid dan peringatan hemat baterai hanya saat OS power save aktif',
+      (tester) async {
+    _setPhoneSize(tester, const Size(360, 640));
+    await tester.pumpWidget(_app(TrackingView(
+      phase: TrackingPhase.recording,
+      status: _status(pointCount: 0, lastValidFixAtUtc: null),
+      permissionReady: true,
+      profile: PowerProfile.saver,
+      isPowerSaveMode: true,
+      onPause: () {},
+      onFinish: () {},
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mencari sinyal GPS'), findsOneWidget);
+    expect(
+      find.text('Mode hemat baterai aktif, akurasi GPS bisa menurun'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('overlay diagnosa GPS dapat dibuka dan ditutup di kDebugMode',
+      (tester) async {
+    _setPhoneSize(tester, const Size(360, 640));
+    await tester.pumpWidget(_app(TrackingView(
+      phase: TrackingPhase.recording,
+      status: _status(),
+      permissionReady: true,
+      profile: PowerProfile.normal,
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('track-debug-toggle')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('track-debug-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('Diagnosa pipeline lokasi (kDebugMode)'), findsOneWidget);
+  });
+
   testWidgets('sesi dijeda menampilkan Lanjut dan berhenti menghitung waktu',
       (tester) async {
-    _setTallPhone(tester);
+    _setPhoneSize(tester, const Size(360, 640));
     var resumed = 0;
     await tester.pumpWidget(_app(TrackingView(
       phase: TrackingPhase.paused,
       status: _status(isPaused: true),
       permissionReady: true,
-      powerPercent: 62,
       profile: PowerProfile.normal,
       onResume: () => resumed++,
       onFinish: () {},
     )));
     await tester.pumpAndSettle();
 
-    expect(find.text('Dijeda'), findsOneWidget);
+    expect(find.text('· Dijeda'), findsOneWidget);
     expect(find.text('Lanjut'), findsOneWidget);
     expect(
-      find.text('Waktu bergerak berhenti selama rekaman dijeda.'),
+      find.text('Waktu bergerak berhenti selama rekaman dijeda'),
       findsOneWidget,
     );
     await tester.tap(find.text('Lanjut'));
     expect(resumed, 1);
   });
 
-  testWidgets('tanpa sesi dengan izin siap menawarkan mulai pendakian',
+  testWidgets('tanpa sesi dengan izin siap menawarkan mulai tracking',
       (tester) async {
-    _setTallPhone(tester);
+    _setPhoneSize(tester, const Size(360, 640));
     var started = 0;
     await tester.pumpWidget(_app(TrackingView(
       phase: TrackingPhase.idle,
       profile: PowerProfile.normal,
-      powerPercent: 80,
       permissionReady: true,
       onStart: () => started++,
     )));
     await tester.pumpAndSettle();
 
     expect(find.text('Izin belum lengkap'), findsNothing);
-    expect(find.text('Mulai pendakian'), findsOneWidget);
-    expect(find.text('Baterai 80% · Normal'), findsOneWidget);
-    await tester.tap(find.text('Mulai pendakian'));
+    expect(find.text('Mulai tracking'), findsOneWidget);
+    expect(find.text('Tersimpan di HP'), findsNothing);
+    await tester.tap(find.text('Mulai tracking'));
     expect(started, 1);
   });
 
   testWidgets('sesi selesai mempertahankan metrik dan menawarkan mulai baru',
       (tester) async {
-    _setTallPhone(tester);
+    _setPhoneSize(tester, const Size(360, 640));
     await tester.pumpWidget(_app(TrackingView(
       phase: TrackingPhase.finished,
       status: _status(
@@ -196,19 +237,22 @@ void main() {
         distanceM: 3210,
       ),
       permissionReady: true,
-      powerPercent: 55,
       profile: PowerProfile.saver,
+      isPowerSaveMode: true,
     )));
     await tester.pumpAndSettle();
 
     expect(find.text('01:00:00'), findsOneWidget);
     expect(_plain('3,2 km'), findsOneWidget);
-    expect(find.text('Mulai pendakian baru'), findsOneWidget);
-    expect(find.text('Baterai 55% · Hemat'), findsOneWidget);
+    expect(find.text('Mulai tracking baru'), findsOneWidget);
+    expect(
+      find.text('Mode hemat baterai aktif, akurasi GPS bisa menurun'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('galat rekaman tampil jujur tanpa tombol mulai', (tester) async {
-    _setTallPhone(tester);
+    _setPhoneSize(tester, const Size(360, 640));
     await tester.pumpWidget(_app(const TrackingView(
       phase: TrackingPhase.error,
       profile: PowerProfile.normal,
@@ -221,12 +265,12 @@ void main() {
       find.text('Gagal menyiapkan rekaman: layanan tidak tersedia.'),
       findsOneWidget,
     );
-    expect(find.text('Mulai pendakian'), findsNothing);
+    expect(find.text('Mulai tracking'), findsNothing);
   });
 
   testWidgets('layar mengikuti rancangan saat layanan platform tidak ada',
       (tester) async {
-    _setTallPhone(tester);
+    _setPhoneSize(tester, const Size(360, 640));
     await tester.pumpWidget(MaterialApp(
       theme: hiqeoLightTheme,
       home: const TrackingPage(),

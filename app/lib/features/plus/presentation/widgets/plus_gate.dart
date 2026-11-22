@@ -18,17 +18,26 @@ class PlusGate extends StatelessWidget {
     required this.title,
     required this.description,
     required this.child,
+    this.requireFullPlan = false,
   });
 
   final String title;
   final String description;
   final Widget child;
+  final bool requireFullPlan;
 
   @override
   Widget build(BuildContext context) {
     final plus = PlusScope.maybeOf(context);
-    if (plus?.hasPlus ?? false) return child;
-    return PlusLockedView(title: title, description: description);
+    final allowed = requireFullPlan
+        ? (plus?.hasFullSocialAccess ?? false)
+        : (plus?.hasPlus ?? false);
+    if (allowed) return child;
+    return PlusLockedView(
+      title: title,
+      description: description,
+      requireFullPlan: requireFullPlan,
+    );
   }
 }
 
@@ -37,10 +46,12 @@ class PlusLockedView extends StatelessWidget {
     super.key,
     required this.title,
     required this.description,
+    this.requireFullPlan = false,
   });
 
   final String title;
   final String description;
+  final bool requireFullPlan;
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +60,7 @@ class PlusLockedView extends StatelessWidget {
     return PlusScrollPage(
       topBar: PlusTopBar(
         title: 'Fitur Plus',
-        onBack: () => Navigator.of(context).maybePop(),
+        onBack: () => popPlusRoute(context),
       ),
       children: <Widget>[
         const SizedBox(height: HiqeoSpacing.md),
@@ -74,7 +85,9 @@ class PlusLockedView extends StatelessWidget {
                   const SizedBox(width: HiqeoSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Butuh Hiqeo Plus',
+                      requireFullPlan
+                          ? 'Khusus Hiqeo Plus Mahasiswa & Tahunan'
+                          : 'Butuh Hiqeo Plus',
                       style: theme.textTheme.titleMedium,
                     ),
                   ),
@@ -82,8 +95,11 @@ class PlusLockedView extends StatelessWidget {
               ),
               const SizedBox(height: HiqeoSpacing.sm),
               Text(
-                'Semua fitur inti tetap gratis. Plus hanya menambah cuaca '
-                'rute, estimasi, analitik, rekap, dan cadangan cloud.',
+                requireFullPlan
+                    ? 'Fitur ini tersedia khusus pelanggan Paket Mahasiswa atau '
+                        'Paket Tahunan.'
+                    : 'Semua fitur inti tetap gratis. Plus hanya menambah cuaca '
+                        'rute, estimasi, analitik, rekap, dan cadangan cloud.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colors.textSecondary,
                 ),

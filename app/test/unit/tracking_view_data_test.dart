@@ -41,17 +41,21 @@ void main() {
   test('langkah dan kalori tanpa sumber tidak dikarang', () {
     expect(formatStepCount(null), '—');
     expect(formatStepCount(11230), '11.230');
+    expect(formatStepCount(1204, estimated: true), '~1.204');
     expect(formatCaloriesValue(null), '—');
     expect(formatCaloriesValue(980.4), '980');
   });
 
-  test('label baterai mengikuti profil daya', () {
-    expect(batteryStatusLabel(null, PowerProfile.normal),
-        'Baterai tidak terbaca');
-    expect(batteryStatusLabel(62, PowerProfile.normal), 'Baterai 62% · Normal');
-    expect(batteryStatusLabel(35, PowerProfile.saver), 'Baterai 35% · Hemat');
-    expect(
-        batteryStatusLabel(12, PowerProfile.critical), 'Baterai 12% · Kritis');
+  test('deteksi fix kedaluwarsa (> 10 detik)', () {
+    expect(isFixStale(null, t0), isFalse);
+    expect(isFixStale(t0, t0.add(const Duration(seconds: 10))), isFalse);
+    expect(isFixStale(t0, t0.add(const Duration(seconds: 11))), isTrue);
+  });
+
+  test('label profil daya sesuai mode', () {
+    expect(profileLabel(PowerProfile.normal), 'Normal');
+    expect(profileLabel(PowerProfile.saver), 'Hemat');
+    expect(profileLabel(PowerProfile.critical), 'Kritis');
   });
 
   test('deret ketinggian melewati titik tanpa altitud', () {

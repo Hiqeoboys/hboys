@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nama_app/core/platform/contact_picker.dart';
 import 'package:nama_app/design/app_theme.dart';
 import 'package:nama_app/design/theme_mode_controller.dart';
 import 'package:nama_app/features/auth/application/account_controller.dart';
@@ -15,6 +17,7 @@ import 'package:nama_app/features/profile/presentation/profil_page.dart';
 import 'package:nama_app/features/safety/domain/emergency_contact.dart';
 import 'package:nama_app/features/safety/domain/safety_repository.dart';
 import 'package:nama_app/features/safety/domain/sos_event.dart';
+import 'package:nama_app/features/safety/presentation/emergency_contacts_sheet.dart';
 import 'package:nama_app/features/tracking/application/tracking_runtime.dart';
 import 'package:nama_app/features/tracking/domain/track_point.dart';
 import 'package:nama_app/features/tracking/domain/tracking_repository.dart';
@@ -67,6 +70,9 @@ class _FakeTrackingRepository implements TrackingRepository {
   Future<void> addPoint(String sessionId, TrackPoint point) async {}
 
   @override
+  Future<void> clearPoints(String sessionId) async {}
+
+  @override
   Future<List<TrackPoint>> points(String sessionId) async =>
       const <TrackPoint>[];
 
@@ -75,26 +81,34 @@ class _FakeTrackingRepository implements TrackingRepository {
 }
 
 class _FakeSafetyRepository implements SafetyRepository {
-  _FakeSafetyRepository({this.contacts = const [], this.failContacts = false});
+  _FakeSafetyRepository({
+    List<EmergencyContact> contacts = const <EmergencyContact>[],
+    this.failContacts = false,
+  }) : contacts = List<EmergencyContact>.of(contacts);
 
-  List<EmergencyContact> contacts;
+  final List<EmergencyContact> contacts;
   bool failContacts;
 
   @override
   Future<List<EmergencyContact>> contactsOf(String userId) async {
     if (failContacts) throw StateError('gagal');
-    return contacts;
+    return List<EmergencyContact>.of(contacts);
   }
 
   @override
-  Future<void> saveContact(EmergencyContact contact) async {}
+  Future<void> saveContact(EmergencyContact contact) async {
+    contacts.removeWhere((c) => c.id == contact.id);
+    contacts.add(contact);
+  }
 
   @override
   Stream<List<EmergencyContact>> watchContacts(String userId) =>
-      const Stream<List<EmergencyContact>>.empty();
+      Stream<List<EmergencyContact>>.value(List<EmergencyContact>.of(contacts));
 
   @override
-  Future<void> deleteContact(String id) async {}
+  Future<void> deleteContact(String id) async {
+    contacts.removeWhere((c) => c.id == id);
+  }
 
   @override
   Future<void> saveSosEvent(SosEvent event) async {}
@@ -113,18 +127,33 @@ class _FakeSafetyRepository implements SafetyRepository {
   Future<bool> cancelSosEvent(String id, DateTime nowUtc) async => false;
 }
 
+class _FakeContactPicker implements ContactPicker {
+  _FakeContactPicker(this.result);
+
+  ContactPickResult result;
+  int calls = 0;
+
+  @override
+  Future<ContactPickResult> pickContact() async {
+    calls++;
+    return result;
+  }
+}
+
 class _Harness {
   _Harness({
     required this.account,
     required this.auth,
     required this.power,
     required this.theme,
+    required this.safety,
   });
 
   final AccountController account;
   final FakeAuthService auth;
   final PowerProfileController power;
   final ThemeModeController theme;
+  final _FakeSafetyRepository safety;
 }
 
 TrackingSession _completed({
@@ -142,13 +171,14 @@ TrackingSession _completed({
     );
 
 EmergencyContact _contact({
+  String id = 'contact-1',
   String name = 'Budi',
-  String phone = '+628123456789',
+  String phone = '+6281234567890',
   EmergencyContactChannel channel = EmergencyContactChannel.whatsapp,
   EmergencyContactConsentStatus status = EmergencyContactConsentStatus.granted,
 }) =>
     EmergencyContact(
-      id: 'contact-1',
+      id: id,
       userId: 'user-1',
       name: name,
       phoneE164: phone,
@@ -181,6 +211,7 @@ Future<_Harness> _pump(
   int mapCount = 0,
   bool withRouter = false,
   PlusController? plus,
+  ContactPicker? contactPicker,
 }) async {
   _setTallPhone(tester);
   if (plus != null) addTearDown(plus.dispose);
@@ -202,6 +233,10 @@ Future<_Harness> _pump(
   );
   await power.refresh();
   final theme = ThemeModeController(store: InMemoryThemeModeStore());
+  final safety = _FakeSafetyRepository(
+    contacts: contacts,
+    failContacts: failContacts,
+  );
 
   addTearDown(() async {
     await tester.pumpWidget(const SizedBox());
@@ -219,11 +254,9 @@ Future<_Harness> _pump(
       sessions: sessions,
       fail: failSessions,
     ),
-    safetyRepository: _FakeSafetyRepository(
-      contacts: contacts,
-      failContacts: failContacts,
-    ),
+    safetyRepository: safety,
     downloadedMountainCount: () async => mapCount,
+    contactPicker: contactPicker,
   );
 
   if (withRouter) {
@@ -282,6 +315,7 @@ Future<_Harness> _pump(
     auth: auth,
     power: power,
     theme: theme,
+    safety: safety,
   );
 }
 
@@ -301,7 +335,7 @@ UserProfile _profile({String username = 'rani', String? keyBase64}) =>
     );
 
 void main() {
-  testWidgets('tamu melihat ringkasan kosong, manfaat, dan tombol login',
+  testWidgets('tamu melihat ringkasan, manfaat, spasi rapi, dan tombol login',
       (tester) async {
     final harness = await _pump(
       tester,
@@ -322,18 +356,15 @@ void main() {
     expect(find.text('Data pendakian tersimpan di HP ini'), findsOneWidget);
     expect(find.text('Masuk untuk membuka'), findsOneWidget);
     expect(find.text('Lanjutkan dengan Google'), findsOneWidget);
-    expect(find.text('Lanjutkan dengan Apple'), findsOneWidget);
-    expect(find.text('Grup dan undangan anggota'), findsOneWidget);
-    expect(find.text('SOS diteruskan ke kontak darurat'), findsOneWidget);
-    expect(find.text('Cadangan jejak pendakian'), findsOneWidget);
+    expect(find.text('Hiqeo Plus'), findsOneWidget);
+    expect(find.text('Pengaturan'), findsOneWidget);
+    expect(find.text('Analitik lanjutan'), findsNothing);
+    expect(find.text('Rekap tahunan'), findsNothing);
+    expect(find.text('Grup dan obrolan terenkripsi'), findsOneWidget);
+    expect(find.text('Undang teman lewat username'), findsOneWidget);
+    expect(find.text('Berbagi lokasi terakhir saat mendaki'), findsOneWidget);
     expect(
-      find.text(
-          'Penerusan SOS dan cadangan jejak belum tersedia di build ini.'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('Isi pesanmu tidak dibaca server. Lokasi hanya tersimpan di HP '
-          'ini.'),
+      find.byKey(const ValueKey<String>('guest-privacy-footnote')),
       findsOneWidget,
     );
     expect(find.text('1'), findsOneWidget);
@@ -359,17 +390,31 @@ void main() {
     final harness = await _pump(tester, configured: false);
 
     expect(
-      find.text('Login Google/Apple belum aktif di build ini.'),
+      find.text('Layanan masuk akun sedang tidak tersedia saat ini'),
       findsOneWidget,
     );
 
     await _tapKey(tester, 'profil-login-google');
-    await _tapKey(tester, 'profil-login-apple');
     expect(harness.auth.signInCalls, isEmpty);
   });
 
   testWidgets(
-      'sudah masuk menampilkan identitas, penyedia, statistik, dan baris',
+      'analitik lanjutan dan rekap tahunan dipindahkan ke Hiqeo Plus (tidak tampil di Profil)',
+      (tester) async {
+    final plus = await buildPlusController(
+      token: 'valid-token',
+      payload: plusPayload(),
+    );
+    await _pump(tester, plus: plus);
+
+    expect(find.text('Hiqeo Plus'), findsOneWidget);
+    expect(find.text('Analitik lanjutan'), findsNothing);
+    expect(find.text('Rekap tahunan'), findsNothing);
+    expect(find.text('Pengaturan'), findsOneWidget);
+  });
+
+  testWidgets(
+      'sudah masuk menampilkan urutan bersih: identitas, statistik, Hiqeo Plus -> Akun -> Riwayat -> Daftar teman -> Pengaturan (tanpa Kontak darurat)',
       (tester) async {
     final harness = await _pump(
       tester,
@@ -379,12 +424,6 @@ void main() {
       profile: _profile(),
       sessions: <TrackingSession>[
         _completed(id: 'selesai', distanceM: 31400, gainM: 1234),
-        TrackingSession(
-          id: 'aktif',
-          startedAtUtc: DateTime.utc(2026, 10, 1),
-          distanceM: 90000,
-          status: TrackingSessionStatus.active,
-        ),
       ],
       contacts: <EmergencyContact>[_contact()],
       mapCount: 2,
@@ -393,39 +432,53 @@ void main() {
     expect(harness.account.user, isNotNull);
     expect(find.text('Rani Puspita'), findsOneWidget);
     expect(find.text('@rani'), findsOneWidget);
-    expect(find.text('Terhubung dengan Google'), findsOneWidget);
     expect(find.text('Pendaki tamu'), findsNothing);
     expect(find.text('Masuk untuk membuka'), findsNothing);
 
+    // Statistik
     expect(find.text('1'), findsOneWidget);
     expect(find.text('31 km'), findsOneWidget);
     expect(find.text('1.234 m'), findsOneWidget);
 
-    expect(find.text('Kontak darurat'), findsOneWidget);
-    expect(find.text('Budi · aktif'), findsOneWidget);
-    expect(find.text('Peta terunduh'), findsOneWidget);
-    expect(find.text('2 gunung'), findsOneWidget);
-    expect(find.text('Profil daya'), findsOneWidget);
-    expect(find.text('Hemat'), findsOneWidget);
-    expect(find.text('Privasi lokasi'), findsOneWidget);
-    expect(find.text('Belum ada berbagi lokasi'), findsOneWidget);
-    expect(find.text('Tampilan'), findsOneWidget);
-    expect(find.text('Ikuti sistem'), findsOneWidget);
-    expect(find.byKey(const ValueKey('profil-sign-out')), findsOneWidget);
-    expect(find.text('Hapus akun'), findsOneWidget);
+    // Baris inti & Kontak Darurat dipindahkan ke Fitur Utama Beranda
+    expect(find.text('Hiqeo Plus'), findsOneWidget);
+    expect(find.text('Akun'), findsOneWidget);
+    expect(find.text('Username dan akun Google'), findsOneWidget);
+    expect(find.text('Riwayat'), findsOneWidget);
+    expect(find.text('Daftar teman'), findsOneWidget);
+    expect(find.text('Pengaturan'), findsOneWidget);
+    expect(find.text('Kontak darurat'), findsNothing);
+    expect(find.text('Tambah kontak darurat'), findsNothing);
+
+    // Baris yang dihapus dari Profil tidak boleh ada
+    expect(find.text('Peta terunduh'), findsNothing);
+    expect(find.text('Profil daya'), findsNothing);
+    expect(find.text('Privasi lokasi'), findsNothing);
+    expect(find.text('Tampilan'), findsNothing);
+    expect(find.byKey(const ValueKey('profil-sign-out')), findsNothing);
+    expect(find.text('Hapus akun'), findsNothing);
+
+    // Verifikasi urutan vertikal: Header -> Hiqeo Plus -> Akun -> Riwayat -> Daftar teman -> Pengaturan
+    final yHeader = tester.getTopLeft(find.text('Rani Puspita')).dy;
+    final yPlus = tester.getTopLeft(find.text('Hiqeo Plus')).dy;
+    final yAccount = tester.getTopLeft(find.text('Akun')).dy;
+    final yHistory = tester.getTopLeft(find.text('Riwayat')).dy;
+    final yFriends = tester.getTopLeft(find.text('Daftar teman')).dy;
+    final ySettings = tester.getTopLeft(find.text('Pengaturan')).dy;
+    expect(yHeader, lessThan(yPlus));
+    expect(yPlus, lessThan(yAccount));
+    expect(yAccount, lessThan(yHistory));
+    expect(yHistory, lessThan(yFriends));
+    expect(yFriends, lessThan(ySettings));
   });
 
-  testWidgets('profil tanpa username menampilkan ajakan melengkapi akun',
+  testWidgets('profil tanpa username menampilkan keterangan Username belum dibuat',
       (tester) async {
     await _pump(tester, signedIn: true);
 
     expect(find.text('Pendaki'), findsOneWidget);
     expect(find.text('Username belum dibuat'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('profil-complete-account')),
-      findsOneWidget,
-    );
-    expect(find.text('Terhubung dengan Google'), findsNothing);
+    expect(find.byKey(const ValueKey<String>('profil-row-akun')), findsOneWidget);
   });
 
   testWidgets('kunci perangkat yang berbeda memunculkan peringatan',
@@ -440,7 +493,6 @@ void main() {
       find.textContaining('Kunci perangkat berbeda dari direktori.'),
       findsOneWidget,
     );
-    expect(find.text('Buka akun'), findsOneWidget);
   });
 
   testWidgets('statistik jujur saat data lokal gagal dibaca', (tester) async {
@@ -453,181 +505,204 @@ void main() {
     );
   });
 
-  testWidgets('baris Tampilan mengubah mode tanpa memulai ulang',
+  testWidgets('sheet kontak darurat dapat menambah kontak manual & menghapus dengan konfirmasi',
       (tester) async {
-    final harness = await _pump(tester, signedIn: true, profile: _profile());
+    final safety = _FakeSafetyRepository(contacts: <EmergencyContact>[_contact()]);
+    final picker = _FakeContactPicker(
+      const ContactPickResult(status: ContactPickStatus.cancelled),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: hiqeoLightTheme,
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () => showEmergencyContactsSheet(
+                context,
+                ownerUserId: 'user-1',
+                safetyRepository: safety,
+                contactPicker: picker,
+              ),
+              child: const Text('Buka kontak'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Buka kontak'));
+    await tester.pumpAndSettle();
 
-    await _tapKey(tester, 'profil-row-tampilan');
-    expect(find.text('Ikuti sistem'), findsWidgets);
-    expect(find.text('Terang'), findsWidgets);
-    expect(find.text('Gelap'), findsWidgets);
+    expect(find.text('Budi'), findsWidgets);
     expect(
-      find.text('Berlaku langsung tanpa memulai ulang aplikasi.'),
+      find.textContaining('Kontak nomor HP langsung aktif'),
       findsOneWidget,
     );
 
-    await _tapKey(tester, 'profil-theme-dark');
-    expect(harness.theme.mode, ThemeMode.dark);
-    expect(find.text('Gelap'), findsOneWidget);
-    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
-    expect(app.themeMode, ThemeMode.dark);
-    expect(
-      Theme.of(tester.element(find.text('Profil'))).brightness,
-      Brightness.dark,
+    // Hapus Budi dengan konfirmasi
+    await tester.tap(
+      find.byKey(const ValueKey<String>('emergency-contact-delete-contact-1')),
     );
+    await tester.pumpAndSettle();
+    expect(find.text('Hapus kontak darurat?'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('emergency-delete-confirm')),
+    );
+    await tester.pumpAndSettle();
+    expect(safety.contacts, isEmpty);
+
+    // Tambah kontak baru secara manual
+    await tester.tap(
+      find.byKey(const ValueKey<String>('emergency-sheet-add-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('emergency-contact-name-input')),
+      'Ibu Sinta',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('emergency-contact-phone-input')),
+      '0813-9876-5432',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('emergency-contact-save-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(safety.contacts, hasLength(1));
+    expect(safety.contacts.single.name, 'Ibu Sinta');
+    expect(safety.contacts.single.phoneE164, '+6281398765432');
+    expect(
+      safety.contacts.single.consentStatus,
+      EmergencyContactConsentStatus.granted,
+    );
+    expect(safety.contacts.single.isActive, isTrue);
   });
 
-  testWidgets('sheet kontak menampilkan kontak lokal dan catatan jujur',
-      (tester) async {
-    await _pump(
-      tester,
-      signedIn: true,
-      profile: _profile(),
-      contacts: <EmergencyContact>[_contact()],
+  testWidgets('sheet kontak gagal dibaca tidak diklaim kosong', (tester) async {
+    final safety = _FakeSafetyRepository(failContacts: true);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: hiqeoLightTheme,
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () => showEmergencyContactsSheet(
+                context,
+                ownerUserId: 'user-1',
+                safetyRepository: safety,
+              ),
+              child: const Text('Buka kontak'),
+            ),
+          ),
+        ),
+      ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Buka kontak'));
+    await tester.pumpAndSettle();
 
-    await _tapKey(tester, 'profil-row-kontak');
-    expect(find.text('Hanya tersimpan di HP ini'), findsOneWidget);
-    expect(find.text('Budi'), findsOneWidget);
-    expect(find.text('WhatsApp · +628123456789'), findsOneWidget);
-    expect(find.text('aktif'), findsOneWidget);
-    expect(
-      find.text('Penerusan SOS ke kontak darurat belum tersedia di build ini.'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('kontak gagal dibaca tidak diklaim kosong', (tester) async {
-    await _pump(
-      tester,
-      signedIn: true,
-      profile: _profile(),
-      failContacts: true,
-    );
-
-    expect(find.text('Kontak belum dapat dibaca'), findsOneWidget);
-    await _tapKey(tester, 'profil-row-kontak');
     expect(
       find.text('Kontak darurat belum dapat dibaca dari HP ini.'),
       findsOneWidget,
     );
   });
 
-  testWidgets('sheet peta memakai jumlah nyata dan membuka layar peta',
+  testWidgets('baris leaderboard tidak tampil di Profil meski flag aktif (pindah ke Sosial)',
       (tester) async {
-    await _pump(
-      tester,
-      signedIn: true,
-      profile: _profile(),
-      mapCount: 3,
-      withRouter: true,
-    );
-
-    await _tapKey(tester, 'profil-row-peta');
-    expect(find.text('3 gunung'), findsWidgets);
-    expect(
-      find.textContaining('Status dibaca dari region peta yang benar-benar'),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Buka Peta'));
-    await tester.pumpAndSettle();
-    expect(find.text('Tujuan Peta'), findsOneWidget);
-  });
-
-  testWidgets('sheet daya menampilkan baterai dan interval tiap profil',
-      (tester) async {
-    await _pump(tester, signedIn: true, profile: _profile());
-
-    await _tapKey(tester, 'profil-row-daya');
-    expect(find.text('Baterai 25%.'), findsOneWidget);
-    expect(
-      find.text('Normal: GPS tiap 5 detik, gambar aktif.'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('Hemat: GPS tiap 15 detik, gambar nonaktif.'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('Kritis: GPS tiap 60 detik, gambar nonaktif.'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('sheet privasi tidak menjanjikan berbagi lokasi', (tester) async {
-    await _pump(tester, signedIn: true, profile: _profile());
-
-    await _tapKey(tester, 'profil-row-privasi');
-    expect(
-      find.textContaining('Belum ada transport yang mengirim lokasi'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('Kontrol berbagi lokasi untuk anggota grup belum tersedia di '
-          'build ini.'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('hapus akun menjelaskan bahwa belum ada yang dihapus',
-      (tester) async {
-    await _pump(tester, signedIn: true, profile: _profile());
-
-    await _tapKey(tester, 'profil-delete-account');
-    expect(
-      find.text('Penghapusan akun belum tersedia di build ini. Tidak ada akun '
-          'atau data yang dihapus.'),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Tutup'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Penghapusan akun belum tersedia di build ini. Tidak ada akun '
-          'atau data yang dihapus.'),
-      findsNothing,
-    );
-  });
-
-  testWidgets('keluar mengembalikan layar ke profil tamu', (tester) async {
-    final harness = await _pump(
-      tester,
-      signedIn: true,
-      profile: _profile(),
-    );
-
-    await _tapKey(tester, 'profil-sign-out');
-    expect(harness.auth.signOutCalls, 1);
-    expect(find.text('Pendaki tamu'), findsOneWidget);
-    expect(find.text('Lanjutkan dengan Google'), findsOneWidget);
-    expect(harness.account.user, isNull);
-  });
-
-  testWidgets('baris leaderboard tersembunyi selama flag mati', (tester) async {
     await _pump(tester);
     expect(
       find.byKey(const ValueKey<String>('profil-row-leaderboard')),
       findsNothing,
     );
 
-    final plus = await buildPlusController();
-    await _pump(tester, plus: plus);
+    final plus = await buildPlusController(leaderboard: true);
+    await _pump(tester, plus: plus, withRouter: true);
     expect(find.text('Hiqeo Plus'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('profil-row-leaderboard')),
       findsNothing,
     );
+    expect(find.text('Leaderboard'), findsNothing);
   });
 
-  testWidgets('baris leaderboard membuka papan saat flag aktif',
+  testWidgets(
+      'pembatalan login Google oleh pengguna (AUTH_CANCELLED) tidak memunculkan pesan error',
       (tester) async {
-    final plus = await buildPlusController(leaderboard: true);
-    await _pump(tester, plus: plus, withRouter: true);
+    final harness = await _pump(tester, configured: true, signedIn: false);
+    harness.auth.signInError = const AccountException(
+      'AUTH_CANCELLED',
+      'Login Google dibatalkan pengguna',
+    );
 
-    final row = find.byKey(const ValueKey<String>('profil-row-leaderboard'));
-    expect(row, findsOneWidget);
-    expect(find.text('Leaderboard'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey<String>('profil-login-google')));
+    await tester.pumpAndSettle();
 
-    await _tapKey(tester, 'profil-row-leaderboard');
-    expect(find.text('Tujuan Leaderboard'), findsOneWidget);
+    expect(harness.account.error, isNull);
+    expect(find.text('Login Google dibatalkan pengguna'), findsNothing);
+    expect(find.text('Pendaki tamu'), findsOneWidget);
+  });
+
+  testWidgets(
+      'tombol Google menampilkan loading spinner dan mencegah ketukan ganda saat sibuk',
+      (tester) async {
+    final harness = await _pump(tester, configured: true, signedIn: false);
+    final completer = Completer<void>();
+    harness.auth.signInCompleter = completer;
+
+    await tester.tap(find.byKey(const ValueKey<String>('profil-login-google')));
+    await tester.pump();
+
+    expect(harness.account.isBusy, isTrue);
+    expect(find.text('Menghubungkan…'), findsAtLeastNWidgets(1));
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('profil-login-google')));
+    await tester.pump();
+
+    expect(harness.auth.signInCalls.length, 1);
+
+    completer.complete();
+    await tester.pumpAndSettle();
+    expect(harness.account.isBusy, isFalse);
+  });
+
+  testWidgets(
+      'login Google berhasil menampilkan nama lengkap menggantikan Pendaki tamu',
+      (tester) async {
+    await _pump(
+      tester,
+      configured: true,
+      signedIn: true,
+      provider: AuthProviderKind.google,
+      displayName: 'Nama Akun Google',
+      profile: const UserProfile(
+        userId: 'user-1',
+        fullName: 'Rian Santoso',
+        avatarUrl: 'https://example.com/avatar.jpg',
+        username: null,
+      ),
+    );
+
+    expect(find.text('Pendaki tamu'), findsNothing);
+    expect(find.text('Rian Santoso'), findsOneWidget);
+    expect(find.text('Username belum dibuat'), findsOneWidget);
+  });
+
+  testWidgets(
+      'kesalahan konfigurasi atau developer error (ApiException: 10) menampilkan status gagal dengan spasi konsisten',
+      (tester) async {
+    final harness = await _pump(tester, configured: true, signedIn: false);
+    harness.auth.signInError = const AccountException(
+      'GOOGLE_DEVELOPER_ERROR',
+      'Konfigurasi OAuth Android belum cocok (ApiException: 10). Pastikan SHA-1 debug/release dan package id.nama.nama_app terdaftar di Google Cloud Console',
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('profil-login-google')));
+    await tester.pumpAndSettle();
+
+    expect(harness.account.error, contains('ApiException: 10'));
+    expect(find.byKey(const ValueKey<String>('guest-status-error')), findsOneWidget);
+    expect(find.textContaining('ApiException: 10'), findsOneWidget);
   });
 }

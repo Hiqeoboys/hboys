@@ -61,13 +61,18 @@ class _AnnualRecapPageState extends State<AnnualRecapPage> {
   @override
   void dispose() {
     final database = _database;
-    if (database != null) unawaited(database.close());
+    if (database != null) {
+      DriftTrackingRepository.unregisterDatabase(database);
+      unawaited(database.close());
+    }
     super.dispose();
   }
 
   Future<TrackingRepository?> _openRepository() async {
     final injected = widget.repository;
     if (injected != null) return injected;
+    final existing = _database;
+    if (existing != null) return DriftTrackingRepository(existing);
     try {
       final file = await defaultAppDatabaseFile();
       final database = openAppDatabase(file);

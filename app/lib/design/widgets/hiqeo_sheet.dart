@@ -24,6 +24,7 @@ class HiqeoSheet extends StatelessWidget {
     final colors = HiqeoColors.of(context);
     final theme = Theme.of(context);
     return GlassSurface(
+      tier: GlassTier.panel,
       borderRadius: HiqeoRadius.hero,
       child: Column(
         children: <Widget>[

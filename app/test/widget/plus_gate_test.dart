@@ -121,4 +121,55 @@ void main() {
     expect(find.text('isi-plus'), findsOneWidget);
     expect(find.text('Butuh Hiqeo Plus'), findsNothing);
   });
+
+  testWidgets(
+      'requireFullPlan mengunci Tiket 1x Naik dan membuka Mahasiswa serta Tahunan',
+      (tester) async {
+    GoRouter fullPlanRouter() => GoRouter(
+          initialLocation: '/eksklusif',
+          routes: <RouteBase>[
+            GoRoute(
+              path: '/eksklusif',
+              builder: (context, state) => const PlusGate(
+                title: 'Analitik lanjutan',
+                description: 'Khusus Mahasiswa & Tahunan.',
+                requireFullPlan: true,
+                child: Scaffold(body: Text('isi-eksklusif')),
+              ),
+            ),
+            GoRoute(
+              path: '/plus',
+              builder: (context, state) => const PaywallPage(),
+            ),
+          ],
+        );
+
+    final tripPass = await buildPlusController(
+      token: 'trip',
+      payload: plusPayload(planId: 'trip_pass_3d'),
+    );
+    final router1 = fullPlanRouter();
+    addTearDown(router1.dispose);
+    await pumpPlusRouter(tester, router1, controller: tripPass);
+    expect(find.text('isi-eksklusif'), findsNothing);
+    expect(find.text('Buka Hiqeo Plus'), findsOneWidget);
+
+    final student = await buildPlusController(
+      token: 'student',
+      payload: plusPayload(planId: 'student_annual'),
+    );
+    final router2 = fullPlanRouter();
+    addTearDown(router2.dispose);
+    await pumpPlusRouter(tester, router2, controller: student);
+    expect(find.text('isi-eksklusif'), findsOneWidget);
+
+    final annual = await buildPlusController(
+      token: 'annual',
+      payload: plusPayload(planId: 'annual'),
+    );
+    final router3 = fullPlanRouter();
+    addTearDown(router3.dispose);
+    await pumpPlusRouter(tester, router3, controller: annual);
+    expect(find.text('isi-eksklusif'), findsOneWidget);
+  });
 }

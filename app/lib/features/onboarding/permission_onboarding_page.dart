@@ -3,6 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../design/app_theme.dart';
+import '../../design/background/app_background.dart';
+import '../../design/background/page_background.dart';
+import '../../design/glass/hiqeo_liquid_glass.dart';
+import '../../design/layout.dart';
+import '../../design/tokens.dart';
+import '../../design/widgets/hiqeo_back_button.dart';
+import '../../design/widgets/hiqeo_button.dart';
 import 'android_brand_guides.dart';
 import 'permission_service.dart';
 
@@ -61,8 +69,11 @@ class _PermissionOnboardingPageState extends State<PermissionOnboardingPage>
       if (!mounted) return;
       setState(() => _report = report);
     } catch (error) {
+      if (kDebugMode) {
+        debugPrint('PermissionOnboardingPage._refresh failed: $error');
+      }
       if (!mounted) return;
-      setState(() => _message = 'Gagal membaca status izin: $error');
+      setState(() => _message = 'Status izin belum bisa dibaca dari perangkat.');
     }
   }
 
@@ -77,8 +88,14 @@ class _PermissionOnboardingPageState extends State<PermissionOnboardingPage>
       if (!mounted) return;
       setState(() => _report = report);
     } catch (error) {
+      if (kDebugMode) {
+        debugPrint('PermissionOnboardingPage._run failed: $error');
+      }
       if (!mounted) return;
-      setState(() => _message = 'Permintaan izin gagal: $error');
+      setState(
+        () => _message =
+            'Permintaan izin belum dapat diproses. Buka setelan perangkat.',
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -102,8 +119,14 @@ class _PermissionOnboardingPageState extends State<PermissionOnboardingPage>
         }
       });
     } catch (error) {
+      if (kDebugMode) {
+        debugPrint('PermissionOnboardingPage._runBatteryRequest failed: $error');
+      }
       if (!mounted) return;
-      setState(() => _message = 'Gagal meminta pengecualian baterai: $error');
+      setState(
+        () => _message =
+            'Permintaan optimasi baterai tidak tersedia. Buka setelan baterai manual.',
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -120,107 +143,175 @@ class _PermissionOnboardingPageState extends State<PermissionOnboardingPage>
       }
       await _refresh();
     } catch (error) {
+      if (kDebugMode) {
+        debugPrint('PermissionOnboardingPage._open failed: $error');
+      }
       if (!mounted) return;
-      setState(() => _message = 'Gagal membuka setelan: $error');
+      setState(
+        () => _message = 'Setelan perangkat tidak dapat dibuka otomatis.',
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasTokens = Theme.of(context).extension<HiqeoColors>() != null;
+    if (!hasTokens) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      return Theme(
+        data: isDark ? hiqeoDarkTheme : hiqeoLightTheme,
+        child: Builder(builder: _buildScaffold),
+      );
+    }
+    return _buildScaffold(context);
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     final report = _report;
+    final colors = HiqeoColors.of(context);
     final isAndroid =
         _supported && defaultTargetPlatform == TargetPlatform.android;
     final isIos = _supported && defaultTargetPlatform == TargetPlatform.iOS;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Izin & Baterai')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        children: [
-          if (!_supported)
-            const _Banner(
-              icon: Icons.info_outline,
-              title: 'Panduan hanya tersedia di Android dan iOS',
-              body: 'Perangkat ini tidak mendukung layanan lokasi latar '
-                  'belakang yang dipakai aplikasi.',
-            )
-          else ...[
-            if (_busy) const LinearProgressIndicator(),
-            if (_message != null) ...[
-              const SizedBox(height: 8),
-              _Banner(
-                icon: Icons.warning_amber_outlined,
-                title: 'Perhatian',
-                body: _message!,
-              ),
-            ],
-            const SizedBox(height: 12),
-            if (report == null)
-              const _Banner(
-                icon: Icons.hourglass_empty,
-                title: 'Memeriksa izin...',
-                body: 'Status izin dibaca dari sistem, bukan dari dialog.',
-              )
-            else ...[
-              _ReadyBanner(ready: report.readyForBackground),
-              const SizedBox(height: 12),
-              _Checklist(report: report, android: isAndroid),
-              const SizedBox(height: 16),
-              _PermissionActions(
-                report: report,
-                busy: _busy,
-                android: isAndroid,
-                onCore: () => _run(widget.service.requestCore),
-                onBackground: () =>
-                    _run(widget.service.requestBackgroundLocation),
-                onOpenSettings: () => _open(widget.service.openSettings),
-                onOpenLocationSettings: () =>
-                    _open(widget.service.openLocationSettings),
-                onBatteryRequest: _runBatteryRequest,
-                onOpenBatterySettings: () =>
-                    _open(widget.service.openBatteryOptimizationSettings),
-              ),
-            ],
-            if (isIos) ...[
-              const SizedBox(height: 16),
-              const _Banner(
-                icon: Icons.phone_iphone,
-                title: 'Catatan iOS',
-                body: 'Pilih "Always" dan aktifkan "Precise Location". iOS '
-                    'dapat menampilkan konfirmasi tambahan setelah aplikasi '
-                    'memakai lokasi di latar belakang. Perilaku ini perlu '
-                    'diuji di perangkat.',
-              ),
-            ],
-            if (isAndroid) ...[
-              const SizedBox(height: 24),
-              const _BrandGuideDisclaimer(),
-              const SizedBox(height: 8),
-              for (final guide in androidBrandGuides)
-                Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: ExpansionTile(
-                    leading: const Icon(Icons.smartphone_outlined),
-                    title: Text(guide.brand),
-                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    children: [
-                      for (var i = 0; i < guide.steps.length; i++)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+    return PageBackground(
+      page: AppBackgroundPage.profil,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: const HiqeoBackButton(inAppBar: true),
+          leadingWidth: HiqeoBackButton.appBarWidth,
+          title: const Text('Izin & baterai'),
+        ),
+        body: SafeArea(
+          bottom: false,
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              AppLayout.bottomInset(context),
+            ),
+            children: [
+              if (!_supported)
+                const _Banner(
+                  icon: Icons.info_outline,
+                  title: 'Panduan hanya tersedia di Android dan iOS',
+                  body: 'Perangkat ini tidak mendukung layanan lokasi latar '
+                      'belakang yang dipakai aplikasi.',
+                )
+              else ...[
+                if (_busy) const LinearProgressIndicator(),
+                if (_message != null) ...[
+                  const SizedBox(height: 8),
+                  _Banner(
+                    icon: Icons.warning_amber_outlined,
+                    title: 'Perhatian',
+                    body: _message!,
+                    isWarning: true,
+                  ),
+                ],
+                const SizedBox(height: 12),
+                if (report == null)
+                  const _Banner(
+                    icon: Icons.hourglass_empty,
+                    title: 'Memeriksa izin…',
+                    body: 'Sedang memeriksa status izin lokasi dan baterai di HP ini.',
+                  )
+                else ...[
+                  _ReadyBanner(ready: report.readyForBackground),
+                  const SizedBox(height: 12),
+                  _Checklist(report: report, android: isAndroid),
+                  const SizedBox(height: 16),
+                  _PermissionActions(
+                    report: report,
+                    busy: _busy,
+                    android: isAndroid,
+                    onCore: () => _run(widget.service.requestCore),
+                    onBackground: () =>
+                        _run(widget.service.requestBackgroundLocation),
+                    onOpenSettings: () => _open(widget.service.openSettings),
+                    onOpenLocationSettings: () =>
+                        _open(widget.service.openLocationSettings),
+                    onBatteryRequest: _runBatteryRequest,
+                    onOpenBatterySettings: () =>
+                        _open(widget.service.openBatteryOptimizationSettings),
+                  ),
+                ],
+                if (isIos) ...[
+                  const SizedBox(height: 16),
+                  const _Banner(
+                    icon: Icons.phone_iphone,
+                    title: 'Catatan iOS',
+                    body: 'Pilih "Always" dan aktifkan "Precise Location" agar '
+                        'pelacakan tetap akurat saat layar mati. iOS dapat '
+                        'meminta konfirmasi ulang setelah aplikasi memakai '
+                        'lokasi di latar belakang.',
+                  ),
+                ],
+                if (isAndroid) ...[
+                  const SizedBox(height: 24),
+                  const _BrandGuideDisclaimer(),
+                  const SizedBox(height: 8),
+                  for (final guide in androidBrandGuides)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: HiqeoGlassCard(
+                        borderRadius: 22,
+                        padding: EdgeInsets.zero,
+                        child: Theme(
+                          data: Theme.of(context)
+                              .copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            leading: Icon(
+                              Icons.smartphone_outlined,
+                              color: colors.primary,
+                            ),
+                            title: Text(
+                              guide.brand,
+                              style: TextStyle(
+                                color: colors.textPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            childrenPadding:
+                                const EdgeInsets.fromLTRB(16, 0, 16, 16),
                             children: [
-                              Text('${i + 1}. '),
-                              Expanded(child: Text(guide.steps[i])),
+                              for (var i = 0; i < guide.steps.length; i++)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${i + 1}. ',
+                                        style: TextStyle(
+                                          color: colors.textSecondary,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          guide.steps[i],
+                                          style: TextStyle(
+                                            color: colors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                             ],
                           ),
                         ),
-                    ],
-                  ),
-                ),
+                      ),
+                    ),
+                ],
+              ],
             ],
-          ],
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -233,19 +324,18 @@ class _ReadyBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
+    final colors = HiqeoColors.of(context);
+    final accent = ready ? colors.successText : colors.warningText;
+    return HiqeoGlassCard(
+      borderRadius: 24,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: ready ? scheme.secondaryContainer : scheme.errorContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      borderColor: (ready ? colors.success : colors.warning)
+          .withValues(alpha: 0.42),
       child: Row(
         children: [
           Icon(
             ready ? Icons.check_circle_outline : Icons.error_outline,
-            color:
-                ready ? scheme.onSecondaryContainer : scheme.onErrorContainer,
+            color: accent,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -255,9 +345,7 @@ class _ReadyBanner extends StatelessWidget {
                   : 'Izin belum lengkap untuk rekaman latar belakang. '
                       'Lengkapi daftar di bawah.',
               style: TextStyle(
-                color: ready
-                    ? scheme.onSecondaryContainer
-                    : scheme.onErrorContainer,
+                color: colors.textPrimary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -276,7 +364,9 @@ class _Checklist extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return HiqeoGlassCard(
+      borderRadius: 24,
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
         children: [
           _CheckItem(
@@ -307,8 +397,7 @@ class _Checklist extends StatelessWidget {
             _CheckItem(
               ok: report.ignoringBatteryOptimizations,
               title: 'Dikecualikan dari optimasi baterai',
-              hint: 'Disarankan; sangat penting pada ROM dengan pembunuh '
-                  'aplikasi latar.',
+              hint: 'Disarankan agar pelacakan tetap aktif saat layar mati.',
             ),
         ],
       ),
@@ -325,16 +414,24 @@ class _CheckItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final colors = HiqeoColors.of(context);
     return ListTile(
       dense: true,
       leading: Icon(
         ok ? Icons.check_circle : Icons.radio_button_unchecked,
-        color: ok ? scheme.primary : scheme.error,
+        color: ok ? colors.successText : colors.warningText,
       ),
-      title: Text(title),
-      subtitle: hint == null ? null : Text(hint!),
-      trailing: Text(ok ? 'Siap' : 'Belum'),
+      title: Text(title, style: TextStyle(color: colors.textPrimary)),
+      subtitle: hint == null
+          ? null
+          : Text(hint!, style: TextStyle(color: colors.textSecondary)),
+      trailing: Text(
+        ok ? 'Siap' : 'Belum',
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: ok ? colors.successText : colors.textSecondary,
+        ),
+      ),
     );
   }
 }
@@ -364,92 +461,131 @@ class _PermissionActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+    return HiqeoGlassCard(
+      borderRadius: 24,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Langkah izin',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: colors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Izin dasar diminta lebih dulu. Izin "Selalu" diminta terpisah; '
+            'pada Android terbaru sistem dapat mengarahkan ke halaman setelan.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          HiqeoButton(
+            label: report.locationWhileInUse
+                ? 'Periksa ulang izin dasar'
+                : 'Aktifkan izin dasar',
+            leading: Icon(
+              Icons.my_location,
+              size: 18,
+              color: colors.onPrimary,
+            ),
+            onPressed: busy ? null : () => unawaited(onCore()),
+          ),
+          if (!report.locationAlways) ...[
+            const SizedBox(height: 8),
+            HiqeoButton(
+              label: 'Izinkan lokasi "Selalu"',
+              leading: Icon(Icons.public, size: 18, color: colors.onPrimary),
+              onPressed: busy ? null : () => unawaited(onBackground()),
+            ),
+          ],
+          if (!report.locationServiceEnabled) ...[
+            const SizedBox(height: 8),
+            HiqeoButton(
+              label: 'Aktifkan layanan lokasi',
+              variant: HiqeoButtonVariant.secondary,
+              leading: Icon(
+                Icons.location_off_outlined,
+                size: 18,
+                color: colors.textPrimary,
+              ),
+              onPressed: busy ? null : () => unawaited(onOpenLocationSettings()),
+            ),
+          ],
+          if (!report.preciseLocation) ...[
+            const SizedBox(height: 8),
+            HiqeoButton(
+              label: 'Buka setelan lokasi presisi',
+              variant: HiqeoButtonVariant.secondary,
+              leading: Icon(
+                Icons.gps_fixed,
+                size: 18,
+                color: colors.textPrimary,
+              ),
+              onPressed: busy ? null : () => unawaited(onOpenSettings()),
+            ),
+          ],
+          const SizedBox(height: 8),
+          HiqeoButton(
+            label: 'Buka setelan aplikasi',
+            variant: HiqeoButtonVariant.secondary,
+            leading: Icon(
+              Icons.settings_outlined,
+              size: 18,
+              color: colors.textPrimary,
+            ),
+            onPressed: busy ? null : () => unawaited(onOpenSettings()),
+          ),
+          if (android) ...[
+            Divider(height: 32, color: colors.hairline),
             Text(
-              'Langkah izin',
-              style: Theme.of(context).textTheme.titleMedium,
+              'Baterai (Android)',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: colors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Izin dasar diminta lebih dulu. Izin "Selalu" diminta terpisah; '
-              'pada Android 11+ sistem dapat mengarahkan ke halaman setelan.',
+            Text(
+              'Pengecualian optimasi baterai membantu pelacakan tetap aktif '
+              'saat layar mati. Jika dialog tidak muncul, buka setelan baterai '
+              'lewat tombol di bawah sesuai merek perangkat.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.textSecondary,
+              ),
             ),
             const SizedBox(height: 12),
-            FilledButton.tonalIcon(
-              onPressed: busy ? null : () => unawaited(onCore()),
-              icon: const Icon(Icons.my_location),
-              label: Text(
-                report.locationWhileInUse
-                    ? 'Periksa ulang izin dasar'
-                    : 'Aktifkan izin dasar',
-              ),
-            ),
-            if (!report.locationAlways) ...[
-              const SizedBox(height: 8),
-              FilledButton.icon(
-                onPressed: busy ? null : () => unawaited(onBackground()),
-                icon: const Icon(Icons.public),
-                label: const Text('Izinkan lokasi "Selalu"'),
-              ),
-            ],
-            if (!report.locationServiceEnabled) ...[
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed:
-                    busy ? null : () => unawaited(onOpenLocationSettings()),
-                icon: const Icon(Icons.location_off_outlined),
-                label: const Text('Aktifkan layanan lokasi'),
-              ),
-            ],
-            if (!report.preciseLocation) ...[
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: busy ? null : () => unawaited(onOpenSettings()),
-                icon: const Icon(Icons.gps_fixed),
-                label: const Text('Buka setelan lokasi presisi'),
-              ),
-            ],
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: busy ? null : () => unawaited(onOpenSettings()),
-              icon: const Icon(Icons.settings_outlined),
-              label: const Text('Buka setelan aplikasi'),
-            ),
-            if (android) ...[
-              const Divider(height: 32),
-              Text(
-                'Baterai (Android)',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Pengecualian optimasi baterai membantu layanan latar tetap '
-                'hidup. Beberapa merek menonaktifkan dialog ini; gunakan '
-                'tombol setelan baterai dan panduan merek di bawah.',
-              ),
-              const SizedBox(height: 12),
-              if (!report.ignoringBatteryOptimizations)
-                FilledButton.tonalIcon(
-                  onPressed: busy ? null : () => unawaited(onBatteryRequest()),
-                  icon: const Icon(Icons.battery_charging_full),
-                  label: const Text('Minta pengecualian optimasi baterai'),
+            if (!report.ignoringBatteryOptimizations) ...[
+              HiqeoButton(
+                label: 'Minta pengecualian optimasi baterai',
+                variant: HiqeoButtonVariant.secondary,
+                leading: Icon(
+                  Icons.battery_charging_full,
+                  size: 18,
+                  color: colors.textPrimary,
                 ),
-              if (!report.ignoringBatteryOptimizations)
-                const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed:
-                    busy ? null : () => unawaited(onOpenBatterySettings()),
-                icon: const Icon(Icons.battery_saver_outlined),
-                label: const Text('Buka setelan baterai'),
+                onPressed: busy ? null : () => unawaited(onBatteryRequest()),
               ),
+              const SizedBox(height: 8),
             ],
+            HiqeoButton(
+              label: 'Buka setelan baterai',
+              variant: HiqeoButtonVariant.secondary,
+              leading: Icon(
+                Icons.battery_saver_outlined,
+                size: 18,
+                color: colors.textPrimary,
+              ),
+              onPressed:
+                  busy ? null : () => unawaited(onOpenBatterySettings()),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -460,33 +596,37 @@ class _BrandGuideDisclaimer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+    return HiqeoGlassCard(
+      borderRadius: 24,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.menu_book_outlined, color: scheme.primary),
+              Icon(Icons.menu_book_outlined, color: colors.primary),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Panduan baterai per merek Android',
-                  style: Theme.of(context).textTheme.titleMedium,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: colors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Nama menu berubah antar versi OS dan ROM. Panduan ini adalah '
-            'titik awal dan BELUM DIUJI di perangkat nyata; verifikasi tiap '
-            'langkah sebelum disampaikan ke pengguna.',
+          Text(
+            'Nama menu bisa sedikit berbeda tergantung versi Android di '
+            'perangkatmu. Ikuti langkah yang paling sesuai dengan pengaturan '
+            'baterai di HP-mu.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
           ),
         ],
       ),
@@ -499,36 +639,48 @@ class _Banner extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.body,
+    this.isWarning = false,
   });
 
   final IconData icon;
   final String title;
   final String body;
+  final bool isWarning;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      color: scheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: scheme.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: Theme.of(context).textTheme.titleSmall),
-                  const SizedBox(height: 4),
-                  Text(body),
-                ],
-              ),
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+    return HiqeoGlassCard(
+      borderRadius: 24,
+      padding: const EdgeInsets.all(16),
+      borderColor: isWarning ? colors.warning.withValues(alpha: 0.4) : null,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: isWarning ? colors.warningText : colors.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: isWarning ? colors.warningText : colors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

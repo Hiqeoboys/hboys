@@ -1,7 +1,10 @@
+import '../domain/tracking_session.dart';
 import 'tracking_status.dart';
 
 class TrackingTaskProtocol {
   static const databasePathKey = 'tracking.databasePath';
+  static const activityTypeKey = 'tracking.activityType';
+  static const ownerUserIdKey = 'tracking.ownerUserId';
   static const commandKey = 'command';
   static const stopCommand = 'stop';
   static const statusCommand = 'status';
@@ -51,7 +54,7 @@ abstract interface class TrackingBackend {
 
   Future<bool> isRunning();
 
-  Future<void> start();
+  Future<void> start({String activityType = TrackingSession.activityHiking});
 
   Future<TrackingStopResult> stop();
 

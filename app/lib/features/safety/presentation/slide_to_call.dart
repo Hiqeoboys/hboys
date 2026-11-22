@@ -287,9 +287,6 @@ class _Knob extends StatelessWidget {
     required this.trackWidth,
   });
 
-  /// Blur knob lebih halus daripada blur kartu karena luasnya kecil.
-  static const double _blurSigma = HiqeoGlass.blurSigma / 2;
-
   final String label;
   final TextStyle? labelStyle;
   final HiqeoColors colors;
@@ -307,15 +304,7 @@ class _Knob extends StatelessWidget {
         child: Stack(
           children: <Widget>[
             Positioned.fill(
-              child: blur
-                  ? BackdropFilter(
-                      filter: ui.ImageFilter.blur(
-                        sigmaX: _blurSigma,
-                        sigmaY: _blurSigma,
-                      ),
-                      child: ColoredBox(color: colors.glassFill),
-                    )
-                  : ColoredBox(color: colors.glassFillFallback),
+              child: ColoredBox(color: colors.glassFillSafe),
             ),
             Positioned.fill(
               child: CustomPaint(painter: _KnobPainter(colors: colors)),

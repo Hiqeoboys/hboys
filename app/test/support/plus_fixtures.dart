@@ -68,13 +68,15 @@ EntitlementPayload plusPayload({
 
 CloudBackupState cloudBackupState({
   bool autoBackup = false,
+  bool wifiOnly = true,
   String recoveryCode = 'ABCD-EFGH-JKLM-NPQR',
   List<BackupDevice>? devices,
-  bool connected = false,
+  bool connected = true,
   DateTime? lastBackupAtUtc,
 }) =>
     CloudBackupState(
       autoBackup: autoBackup,
+      wifiOnly: wifiOnly,
       recoveryCode: recoveryCode,
       devices: devices ??
           <BackupDevice>[
@@ -186,12 +188,15 @@ class FakeCloudBackupRepository implements CloudBackupRepository {
     this.state, {
     this.failLoad = false,
     this.failSet = false,
+    this.failSync = false,
   });
 
   CloudBackupState state;
   bool failLoad;
   bool failSet;
+  bool failSync;
   int writes = 0;
+  int syncCalls = 0;
 
   @override
   Future<CloudBackupState> load() async {
@@ -204,6 +209,25 @@ class FakeCloudBackupRepository implements CloudBackupRepository {
     if (failSet) throw StateError('gagal');
     state = state.copyWith(autoBackup: enabled);
     writes++;
+    return state;
+  }
+
+  @override
+  Future<CloudBackupState> setWifiOnly(bool wifiOnly) async {
+    if (failSet) throw StateError('gagal');
+    state = state.copyWith(wifiOnly: wifiOnly);
+    writes++;
+    return state;
+  }
+
+  @override
+  Future<CloudBackupState> syncNow({bool ignoreWifiOnly = false}) async {
+    if (failSync) throw StateError('gagal');
+    syncCalls++;
+    state = state.copyWith(
+      connected: true,
+      lastBackupAtUtc: DateTime.utc(2026, 11, 20, 12),
+    );
     return state;
   }
 }
@@ -412,6 +436,12 @@ class FakeTrackingRepository implements TrackingRepository {
 
   @override
   Future<void> addPoint(String sessionId, TrackPoint point) async {}
+
+  @override
+  Future<void> clearPoints(String sessionId) async {
+    pointsBySession = Map<String, List<TrackPoint>>.from(pointsBySession)
+      ..remove(sessionId);
+  }
 
   @override
   Future<List<TrackPoint>> points(String sessionId) async {

@@ -1,282 +1,395 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../design/widgets/hiqeo_back_button.dart';
+import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../core/config/supabase_config.dart';
+import '../../../design/background/app_background.dart';
+import '../../../design/glass/glass_surface.dart';
+import '../../../design/glass/hiqeo_liquid_glass.dart';
+import '../../../design/layout.dart';
+import '../../../design/tokens.dart';
+import '../../../design/widgets/hiqeo_button.dart';
+import '../../../design/widgets/line_icons.dart';
+import '../../../design/widgets/persistent_media_image.dart';
+import '../../../infrastructure/database/database_connection.dart';
+import '../../../infrastructure/storage/avatar_image_processor.dart';
+import '../../../infrastructure/storage/r2_uploader.dart';
 import '../../../infrastructure/supabase/supabase_services.dart';
-import '../../groups/application/group_key_manager.dart';
-import '../../groups/domain/group_remote_service.dart';
 import '../application/account_controller.dart';
 import '../domain/auth_service.dart';
+import 'change_username_sheet.dart';
 
+/// Halaman Akun: mengelola username (dengan jeda 7 hari & moderasi server),
+/// akun penyedia masuk (Google/Apple), ganti akun, keluar, dan hapus akun.
+///
+/// Seluruh tampilan grup dan undangan telah dipindahkan ke tab Grup.
 class AccountPage extends StatefulWidget {
-  AccountPage({super.key, AccountController? controller})
-      : _controller =
+  AccountPage({
+    super.key,
+    AccountController? controller,
+    this.onClearAllLocalData,
+    this.pickAvatarBytes,
+    this.avatarUploader,
+    this.bannerDismissDuration = const Duration(milliseconds: 4500),
+  })  : _controller =
             controller ?? SupabaseServices.createAccountController(),
         _ownsController = controller == null;
 
   final AccountController _controller;
   final bool _ownsController;
+  final Future<void> Function()? onClearAllLocalData;
+  final Future<Uint8List?> Function(ImageSource source)? pickAvatarBytes;
+  final R2Uploader? avatarUploader;
+  final Duration bannerDismissDuration;
 
   @override
   State<AccountPage> createState() => _AccountPageState();
 }
 
 class _AccountPageState extends State<AccountPage> {
-  final _usernameController = TextEditingController();
+  bool _deletingAccount = false;
+  Timer? _bannerAutoDismissTimer;
+  Timer? _bannerClearTimer;
+  String? _activeBannerKey;
+  String? _displayedBannerMessage;
+  bool _displayedBannerIsError = false;
+  bool _bannerVisible = false;
 
   @override
   void initState() {
     super.initState();
+    widget._controller.addListener(_handleControllerChanged);
     widget._controller.initialize();
+    _syncStatusBanner(scheduleSetState: false);
+  }
+
+  @override
+  void didUpdateWidget(covariant AccountPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget._controller != widget._controller) {
+      oldWidget._controller.removeListener(_handleControllerChanged);
+      widget._controller.addListener(_handleControllerChanged);
+      _syncStatusBanner(scheduleSetState: false);
+    }
   }
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    widget._controller.removeListener(_handleControllerChanged);
+    _bannerAutoDismissTimer?.cancel();
+    _bannerClearTimer?.cancel();
     if (widget._ownsController) widget._controller.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Akun & Grup')),
-      body: AnimatedBuilder(
-        animation: widget._controller,
-        builder: (context, _) {
-          final controller = widget._controller;
-          if (!controller.isConfigured) return _setupView(context);
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-            children: [
-              if (controller.isLoading || controller.isBusy)
-                const LinearProgressIndicator(),
-              if (controller.error != null)
-                _messageCard(
-                  context,
-                  controller.error!,
-                  isError: true,
-                ),
-              if (controller.notice != null)
-                _messageCard(context, controller.notice!),
-              const SizedBox(height: 8),
-              if (controller.user == null)
-                _signedOutView(context, controller)
-              else ...[
-                _accountCard(context, controller),
-                const SizedBox(height: 12),
-                if (controller.profile == null)
-                  _usernameForm(context, controller)
-                else ...[
-                  if (controller.deviceKeyMismatch)
-                    _keyMismatchCard(context, controller),
-                  _invitationsSection(context, controller),
-                  const SizedBox(height: 12),
-                  _groupsSection(context, controller),
-                ],
-              ],
-              const SizedBox(height: 24),
-              Text(
-                'Fitur grup memerlukan internet. Kunci grup disimpan di '
-                'keystore/Keychain perangkat; bila perangkat hilang, kunci '
-                'lama tidak dapat dipulihkan. Semua perilaku server dan login '
-                'belum diuji di perangkat nyata.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          );
-        },
-      ),
-    );
+  void _handleControllerChanged() {
+    if (!mounted) return;
+    _syncStatusBanner(scheduleSetState: true);
   }
 
-  Widget _setupView(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
+  void _syncStatusBanner({required bool scheduleSetState}) {
+    final err = widget._controller.error?.trim();
+    final notice = widget._controller.notice?.trim();
+    final nextMsg = (err != null && err.isNotEmpty)
+        ? err
+        : ((notice != null && notice.isNotEmpty) ? notice : null);
+    final isErr = err != null && err.isNotEmpty;
+    final nextKey = nextMsg == null ? null : '${isErr ? 'e' : 'n'}:$nextMsg';
+
+    if (nextKey == _activeBannerKey) return;
+
+    _bannerAutoDismissTimer?.cancel();
+    _bannerClearTimer?.cancel();
+
+    if (nextKey == null) {
+      _activeBannerKey = null;
+      if (_bannerVisible && scheduleSetState && mounted) {
+        setState(() => _bannerVisible = false);
+      } else {
+        _bannerVisible = false;
+      }
+      return;
+    }
+
+    _activeBannerKey = nextKey;
+    void applyVisible() {
+      _displayedBannerMessage = nextMsg;
+      _displayedBannerIsError = isErr;
+      _bannerVisible = true;
+    }
+
+    if (scheduleSetState && mounted) {
+      setState(applyVisible);
+    } else {
+      applyVisible();
+    }
+
+    _bannerAutoDismissTimer = Timer(widget.bannerDismissDuration, () {
+      if (!mounted || _activeBannerKey != nextKey) return;
+      setState(() => _bannerVisible = false);
+      _bannerClearTimer = Timer(const Duration(milliseconds: 230), () {
+        if (!mounted || _activeBannerKey != nextKey) return;
+        if (isErr && widget._controller.error?.trim() == nextMsg) {
+          widget._controller.clearError();
+        } else if (!isErr && widget._controller.notice?.trim() == nextMsg) {
+          widget._controller.clearNotice();
+        }
+      });
+    });
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openChangeUsername(AccountController controller) async {
+    final saved = await showChangeUsernameSheet(
+      context,
+      controller: controller,
+    );
+    if (saved == true && mounted) {
+      final username = controller.profile?.username;
+      if (username != null && username.isNotEmpty) {
+        _showSnack('Username diubah menjadi @$username.');
+      }
+    }
+  }
+
+  Future<void> _openChangeAccountName(AccountController controller) async {
+    final current = controller.profile?.fullName?.trim().isNotEmpty == true
+        ? controller.profile!.fullName!.trim()
+        : (controller.user?.displayName?.trim() ?? '');
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ChangeAccountNameSheet(
+        controller: controller,
+        initialName: current,
+      ),
+    );
+    if (saved == true && mounted) {
+      _showSnack('Nama akun diperbarui.');
+    }
+  }
+
+  Future<void> _openChangeAvatar(AccountController controller) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      useRootNavigator: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        final colors = HiqeoColors.of(sheetCtx);
+        final safeBottom = MediaQuery.paddingOf(sheetCtx).bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + safeBottom),
+          child: GlassSurface(
+            tier: GlassTier.panel,
+            borderRadius: 28,
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.lock_outline,
-                      color: Theme.of(context).colorScheme.primary,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colors.textSecondary.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(HiqeoRadius.pill),
                     ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Supabase belum dikonfigurasi',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Login, username, direktori kunci, dan grup tidak aktif '
-                  'sampai kredensial publik Supabase diberikan saat build.',
+                const SizedBox(height: 8),
+                ListTile(
+                  key: const ValueKey<String>('avatar-source-camera'),
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('Ambil dari kamera'),
+                  onTap: () => Navigator.of(sheetCtx).pop(ImageSource.camera),
                 ),
-                const SizedBox(height: 12),
-                const SelectableText(
-                  'flutter run \\\n'
-                  '  --dart-define=SUPABASE_URL=https://PROJECT.supabase.co \\\n'
-                  '  --dart-define=SUPABASE_PUBLISHABLE_KEY=...',
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Daftarkan redirect URL id.nama.namaapp://login-callback di '
-                  'Supabase Auth > URL Configuration, aktifkan penyedia Google '
-                  'dan Apple, lalu cocokkan intent filter Android/'
-                  'CFBundleURLTypes iOS. Jangan memakai service role key.',
+                ListTile(
+                  key: const ValueKey<String>('avatar-source-gallery'),
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: const Text('Pilih dari galeri'),
+                  onTap: () => Navigator.of(sheetCtx).pop(ImageSource.gallery),
                 ),
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Rekaman GPS, peta offline, dan SOS tidak diubah oleh layar ini. '
-          'Tanpa akun, data grup memang tidak tersedia.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
+        );
+      },
     );
+    if (source == null || !mounted) return;
+
+    Uint8List? rawBytes;
+    if (widget.pickAvatarBytes != null) {
+      rawBytes = await widget.pickAvatarBytes!(source);
+    } else {
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (picked != null) {
+        rawBytes = await picked.readAsBytes();
+      }
+    }
+    if (rawBytes == null || rawBytes.isEmpty || !mounted) return;
+
+    try {
+      final webpBytes =
+          await AvatarImageProcessor.cropSquareAndCompressWebp(rawBytes);
+      if (!mounted) return;
+      final err = await controller.updateProfilePhoto(
+        webpBytes,
+        uploader: widget.avatarUploader,
+      );
+      if (!mounted) return;
+      _showSnack(err ?? 'Foto profil diperbarui.');
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('AccountPage._openChangeAvatar failed: $e');
+      }
+      if (!mounted) return;
+      _showSnack('Foto profil belum bisa diperbarui. Coba pilih foto lain.');
+    }
   }
 
-  Widget _signedOutView(
-    BuildContext context,
-    AccountController controller,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Masuk untuk grup',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Autentikasi memakai OAuth Google atau Apple. Aplikasi tidak '
-              'melihat kata sandi. Email hanya dipakai untuk identitas akun, '
-              'username tetap menjadi identitas publik.',
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: controller.isBusy
-                  ? null
-                  : () => controller.signIn(AuthProviderKind.google),
-              icon: const Icon(Icons.login),
-              label: const Text('Masuk dengan Google'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: controller.isBusy
-                  ? null
-                  : () => controller.signIn(AuthProviderKind.apple),
-              icon: const Icon(Icons.apple),
-              label: const Text('Masuk dengan Apple'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _accountCard(
-    BuildContext context,
-    AccountController controller,
-  ) {
-    final user = controller.user!;
-    final profile = controller.profile;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.person_outline),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    profile == null ? 'Akun masuk' : '@${profile.username}',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                TextButton(
-                  onPressed:
-                      controller.isBusy ? null : controller.signOut,
-                  child: const Text('Keluar'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              user.email ?? 'Email tidak tersedia',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _keyMismatchCard(
-    BuildContext context,
-    AccountController controller,
-  ) {
-    return Card(
-      color: Theme.of(context).colorScheme.errorContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Kunci perangkat berbeda dari direktori',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Kunci grup yang dibungkus untuk kunci lama tidak dapat dibuka. '
-              'Hanya lanjutkan bila perangkat lama memang hilang atau direset.',
-            ),
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: controller.isBusy
-                  ? null
-                  : () => _confirmKeyReplacement(context, controller),
-              child: const Text('Daftarkan kunci perangkat ini'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmKeyReplacement(
-    BuildContext context,
-    AccountController controller,
-  ) async {
+  Future<void> _confirmSignOut(AccountController controller) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) {
+        final colors = HiqeoColors.of(dialogContext);
+        return AlertDialog(
+          backgroundColor: colors.surface,
+          title: const Text('Keluar dari akun?'),
+          content: const Text(
+            'Kamu akan kembali ke mode tamu. Riwayat pendakian dan kontak '
+            'darurat yang tersimpan di HP ini tidak akan dihapus.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Batal'),
+            ),
+            TextButton(
+              key: const ValueKey<String>('account-confirm-signout'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Keluar'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+    await controller.signOut();
+    if (!mounted) return;
+    if (controller.user == null && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _confirmDeleteAccount(AccountController controller) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => const DeleteAccountConfirmDialog(),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingAccount = true);
+    final deleted = await controller.deleteAccount();
+    if (!mounted) return;
+
+    if (!deleted) {
+      setState(() => _deletingAccount = false);
+      if (controller.error != null) {
+        _showSnack(controller.error!);
+      }
+      return;
+    }
+
+    try {
+      final localClearer = widget.onClearAllLocalData;
+      if (localClearer != null) {
+        await localClearer();
+      } else {
+        await _wipeAllLocalData();
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+    setState(() => _deletingAccount = false);
+    _showSnack('Akun dan seluruh data telah dihapus.');
+
+    final router = GoRouter.maybeOf(context);
+    if (router != null) {
+      router.go('/profil');
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _wipeAllLocalData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+    } catch (_) {}
+    try {
+      final dbFile = await defaultAppDatabaseFile();
+      if (await dbFile.exists()) {
+        await dbFile.delete();
+      }
+    } catch (_) {}
+    try {
+      final tempDir = await getTemporaryDirectory();
+      if (await tempDir.exists()) {
+        await for (final entity in tempDir.list(followLinks: false)) {
+          try {
+            await entity.delete(recursive: true);
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final mapDir = Directory('${supportDir.path}/offline_maps');
+      if (await mapDir.exists()) {
+        await mapDir.delete(recursive: true);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _confirmKeyReplacement(AccountController controller) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Ganti kunci perangkat?'),
         content: const Text(
           'Anggota grup harus membagikan ulang kunci. Pesan dan kunci grup '
           'lama yang hanya dimiliki kunci sebelumnya tidak dapat dipulihkan.',
         ),
-        actions: [
+        actions: <Widget>[
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Batal'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Ganti kunci'),
           ),
         ],
@@ -285,398 +398,949 @@ class _AccountPageState extends State<AccountPage> {
     if (confirmed == true) await controller.registerCurrentDeviceKey();
   }
 
-  Widget _usernameForm(
-    BuildContext context,
-    AccountController controller,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Pilih username',
-              style: Theme.of(context).textTheme.titleMedium,
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+
+    return AppBackground(
+      page: AppBackgroundPage.pengaturan,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: const HiqeoBackButton(inAppBar: true),
+          leadingWidth: HiqeoBackButton.appBarWidth,
+          title: Text(
+            'Akun',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colors.textPrimary,
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Username bersifat publik dan dipakai untuk undangan dengan '
-              'pencocokan persis. Huruf kecil, angka, titik, atau garis bawah; '
-              '3-20 karakter. Kunci publik perangkat ikut didaftarkan.',
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _usernameController,
-              autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Username',
-                prefixText: '@',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: controller.isBusy
-                  ? null
-                  : () => controller.registerUsername(
-                        _usernameController.text,
+          ),
+        ),
+        body: SafeArea(
+          bottom: false,
+          child: ListenableBuilder(
+            listenable: widget._controller,
+            builder: (context, _) {
+              final controller = widget._controller;
+              if (!controller.isConfigured) {
+                return _buildNotConfiguredView(context, colors, theme);
+              }
+              final bottomSafePadding = math.max(
+                    AppLayout.bottomInset(context),
+                    MediaQuery.paddingOf(context).bottom +
+                        HiqeoMetrics.navbarHeight +
+                        24,
+                  ) +
+                  28;
+              return RepaintBoundary(
+                key: const ValueKey<String>('account-scroll-boundary'),
+                child: ListView(
+                  clipBehavior: Clip.hardEdge,
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    bottomSafePadding,
+                  ),
+                  children: <Widget>[
+                  if (controller.isLoading || controller.isBusy)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 12),
+                      child: LinearProgressIndicator(),
+                    ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 200),
+                      opacity: _bannerVisible ? 1 : 0,
+                      child: _bannerVisible && _displayedBannerMessage != null
+                          ? _StatusBanner(
+                              key: const ValueKey<String>(
+                                'account-status-banner',
+                              ),
+                              message: _displayedBannerMessage!,
+                              isError: _displayedBannerIsError,
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
+                  if (controller.user == null)
+                    _buildSignedOutView(context, controller, colors, theme)
+                  else ...<Widget>[
+                    _buildAvatarCard(context, controller, colors, theme),
+                    const SizedBox(height: 12),
+                    _buildAccountNameCard(context, controller, colors, theme),
+                    const SizedBox(height: 12),
+                    _buildUsernameCard(context, controller, colors, theme),
+                    const SizedBox(height: 12),
+                    if (controller.deviceKeyMismatch) ...<Widget>[
+                      _buildKeyMismatchCard(context, controller, colors, theme),
+                      const SizedBox(height: 12),
+                    ],
+                    _buildProviderCard(context, controller, colors, theme),
+                    const SizedBox(height: 16),
+                    HiqeoButton(
+                      key: const ValueKey<String>('account-switch-button'),
+                      label: 'Ganti akun',
+                      variant: HiqeoButtonVariant.secondary,
+                      onPressed: controller.isBusy || _deletingAccount
+                          ? null
+                          : () => unawaited(
+                                controller.switchAccount(
+                                  controller.user?.provider ??
+                                      AuthProviderKind.google,
+                                ),
+                              ),
+                    ),
+                    const SizedBox(height: 8),
+                    HiqeoButton(
+                      key: const ValueKey<String>('account-signout-button'),
+                      label: 'Keluar',
+                      variant: HiqeoButtonVariant.secondary,
+                      onPressed: controller.isBusy || _deletingAccount
+                          ? null
+                          : () => unawaited(_confirmSignOut(controller)),
+                    ),
+                    const SizedBox(height: 28),
+                    Center(
+                      child: TextButton(
+                        key: const ValueKey<String>('account-delete-button'),
+                        onPressed: controller.isBusy || _deletingAccount
+                            ? null
+                            : () =>
+                                unawaited(_confirmDeleteAccount(controller)),
+                        child: Text(
+                          _deletingAccount ? 'Menghapus akun…' : 'Hapus akun',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colors.warningText,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-              child: const Text('Daftarkan username'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _invitationsSection(
-    BuildContext context,
-    AccountController controller,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.mail_outline),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Undangan masuk',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Muat ulang',
-                  onPressed: controller.isBusy ? null : controller.refresh,
-                  icon: const Icon(Icons.refresh),
-                ),
-              ],
-            ),
-            if (controller.invitations.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('Tidak ada undangan pending.'),
-              )
-            else
-              for (final invitation in controller.invitations)
-                _InvitationTile(
-                  invitation: invitation,
-                  busy: controller.isBusy,
-                  onAccept: () => controller.respondToInvitation(
-                    invitation,
-                    accept: true,
-                  ),
-                  onReject: () => controller.respondToInvitation(
-                    invitation,
-                    accept: false,
-                  ),
-                ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _groupsSection(
-    BuildContext context,
-    AccountController controller,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.groups_outlined),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Grup',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: controller.isBusy
-                      ? null
-                      : () => _showCreateGroupDialog(context, controller),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Buat'),
-                ),
-              ],
-            ),
-            if (controller.groups.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('Belum ada grup. Buat grup lalu undang anggota.'),
-              )
-            else
-              for (final group in controller.groups)
-                _GroupTile(
-                  group: group,
-                  status: controller.keyStatusFor(group.group.id),
-                  keyError: controller.keyErrorFor(group.group.id),
-                  busy: controller.isBusy,
-                  onEnsureKey: () =>
-                      controller.ensureGroupKey(group.group.id),
-                  onInvite: group.isOwner && controller.profile != null
-                      ? () => _showInviteDialog(context, controller, group)
-                      : null,
-                ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showCreateGroupDialog(
-    BuildContext context,
-    AccountController controller,
-  ) async {
-    final nameController = TextEditingController();
-    final mountainController = TextEditingController();
-    final result = await showDialog<(String, String?)>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Buat grup'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              maxLength: 60,
-              decoration: const InputDecoration(
-                labelText: 'Nama grup',
-                border: OutlineInputBorder(),
+                    ),
+                  ],
+                ],
               ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: mountainController,
-              decoration: const InputDecoration(
-                labelText: 'Gunung (opsional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
+              );
+            },
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(
-              (nameController.text, mountainController.text),
-            ),
-            child: const Text('Buat'),
-          ),
-        ],
       ),
     );
-    nameController.dispose();
-    mountainController.dispose();
-    if (result != null) {
-      await controller.createGroup(result.$1, mountain: result.$2);
-    }
   }
 
-  Future<void> _showInviteDialog(
+  Widget _buildAvatarCard(
     BuildContext context,
     AccountController controller,
-    RemoteGroup group,
-  ) async {
-    final usernameController = TextEditingController();
-    final username = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Undang ke ${group.group.name}'),
-        content: TextField(
-          controller: usernameController,
-          autocorrect: false,
-          decoration: const InputDecoration(
-            labelText: 'Username (persis)',
-            prefixText: '@',
-            border: OutlineInputBorder(),
-          ),
+    HiqeoColors colors,
+    ThemeData theme,
+  ) {
+    final user = controller.user!;
+    final profile = controller.profile;
+    final avatarUrl = profile?.avatarUrl?.trim().isNotEmpty == true
+        ? profile!.avatarUrl!.trim()
+        : user.avatarUrl?.trim();
+    final localPath = profile?.localAvatarPath ?? controller.localAvatarPath;
+    final name = profile?.fullName?.trim().isNotEmpty == true
+        ? profile!.fullName!.trim()
+        : (user.displayName?.trim().isNotEmpty == true
+            ? user.displayName!.trim()
+            : (profile?.username ?? 'Pendaki'));
+    final initial = name.trim().isEmpty
+        ? 'P'
+        : String.fromCharCode(name.trim().runes.first).toUpperCase();
+    final File? localFile = AccountController.cachedLocalAvatarFile(localPath);
+
+    Widget avatarChild = Center(
+      child: Text(
+        initial,
+        style: theme.textTheme.headlineSmall?.copyWith(
+          color: colors.onPrimary,
+          fontWeight: FontWeight.w800,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(usernameController.text),
-            child: const Text('Kirim undangan'),
-          ),
-        ],
       ),
     );
-    usernameController.dispose();
-    if (username != null && username.trim().isNotEmpty) {
-      await controller.invite(
-        groupId: group.group.id,
-        username: username,
+    if (localFile != null) {
+      avatarChild = ClipOval(
+        child: Image.file(
+          localFile,
+          width: 64,
+          height: 64,
+          cacheWidth: 256,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => avatarChild,
+        ),
+      );
+    } else if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      avatarChild = ClipOval(
+        child: PersistentMediaImage(
+          url: avatarUrl,
+          width: 64,
+          height: 64,
+          cacheWidth: 256,
+          fit: BoxFit.cover,
+          enableRetryOnTap: false,
+          placeholder: avatarChild,
+          errorBuilder: (_) => avatarChild,
+        ),
       );
     }
-  }
 
-  Widget _messageCard(
-    BuildContext context,
-    String message, {
-    bool isError = false,
-  }) {
-    return Card(
-      color: isError
-          ? Theme.of(context).colorScheme.errorContainer
-          : Theme.of(context).colorScheme.secondaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Text(message),
-      ),
-    );
-  }
-}
-
-class _InvitationTile extends StatelessWidget {
-  const _InvitationTile({
-    required this.invitation,
-    required this.busy,
-    required this.onAccept,
-    required this.onReject,
-  });
-
-  final IncomingInvitation invitation;
-  final bool busy;
-  final VoidCallback onAccept;
-  final VoidCallback onReject;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            invitation.groupName,
-            style: Theme.of(context).textTheme.titleSmall,
+    return HiqeoGlassCard(
+      key: const ValueKey<String>('account-avatar-card'),
+      borderRadius: 24,
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: colors.primary,
+            ),
+            child: avatarChild,
           ),
-          Text(
-            'Dari @${invitation.inviterUsername} · berlaku sampai '
-            '${_formatDate(invitation.expiresAtUtc)}',
-            style: Theme.of(context).textTheme.bodySmall,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Foto profil',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Ketuk Ubah untuk mengganti foto',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              FilledButton(
-                onPressed: busy ? null : onAccept,
-                child: const Text('Terima'),
+          const SizedBox(width: 8),
+          FilledButton.tonal(
+            key: const ValueKey<String>('account-change-avatar-button'),
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.secondary,
+              foregroundColor: colors.textPrimary,
+              minimumSize: const Size(76, 44),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(HiqeoRadius.pill),
               ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: busy ? null : onReject,
-                child: const Text('Tolak'),
-              ),
-            ],
+            ),
+            onPressed: controller.isBusy
+                ? null
+                : () => unawaited(_openChangeAvatar(controller)),
+            child: const Text(
+              'Ubah',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
         ],
       ),
     );
   }
-}
 
-class _GroupTile extends StatelessWidget {
-  const _GroupTile({
-    required this.group,
-    required this.status,
-    required this.keyError,
-    required this.busy,
-    required this.onEnsureKey,
-    required this.onInvite,
-  });
+  Widget _buildAccountNameCard(
+    BuildContext context,
+    AccountController controller,
+    HiqeoColors colors,
+    ThemeData theme,
+  ) {
+    final profile = controller.profile;
+    final user = controller.user!;
+    final resolved = profile?.fullName?.trim().isNotEmpty == true
+        ? profile!.fullName!.trim()
+        : (user.displayName?.trim().isNotEmpty == true
+            ? user.displayName!.trim()
+            : (profile?.username?.trim().isNotEmpty == true
+                ? profile!.username!.trim()
+                : null));
 
-  final RemoteGroup group;
-  final GroupKeyStatus? status;
-  final String? keyError;
-  final bool busy;
-  final VoidCallback onEnsureKey;
-  final VoidCallback? onInvite;
-
-  @override
-  Widget build(BuildContext context) {
-    final version = group.group.keyVersion;
-    final keyText = keyError ??
-        switch (status?.availability) {
-          null => 'Kunci belum dimuat.',
-          GroupKeyAvailability.ready => group.isOwner
-              ? 'Kunci v$version siap untuk ${status!.memberCount} anggota.'
-              : 'Kunci v$version tersedia di perangkat.',
-          GroupKeyAvailability.waitingForOwner =>
-            'Menunggu kunci v$version dari pemilik.',
-        };
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    return HiqeoGlassCard(
+      key: const ValueKey<String>('account-name-card'),
+      borderRadius: 24,
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
+          Text(
+            'Nama akun',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
           Row(
-            children: [
+            children: <Widget>[
               Expanded(
                 child: Text(
-                  group.group.name,
-                  style: Theme.of(context).textTheme.titleSmall,
+                  resolved ?? 'Belum diatur',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: colors.textPrimary,
+                  ),
                 ),
               ),
-              Chip(
-                label: Text(group.isOwner ? 'Pemilik' : 'Anggota'),
-                visualDensity: VisualDensity.compact,
+              const SizedBox(width: 12),
+              FilledButton.tonal(
+                key: const ValueKey<String>('account-change-name-button'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: colors.secondary,
+                  foregroundColor: colors.textPrimary,
+                  minimumSize: const Size(76, 44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(HiqeoRadius.pill),
+                  ),
+                ),
+                onPressed: controller.isBusy
+                    ? null
+                    : () => unawaited(_openChangeAccountName(controller)),
+                child: const Text(
+                  'Ganti',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ],
           ),
-          if (group.group.mountain != null)
-            Text(
-              group.group.mountain!,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          const SizedBox(height: 4),
-          Text(keyText, style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              OutlinedButton(
-                onPressed: busy ? null : onEnsureKey,
+          Text(
+            'Tampil di Beranda, Profil, dan ruang obrolan.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsernameCard(
+    BuildContext context,
+    AccountController controller,
+    HiqeoColors colors,
+    ThemeData theme,
+  ) {
+    final username = controller.profile?.username;
+    final hasUsername = username != null && username.isNotEmpty;
+    final cooldownDays = controller.usernameCooldownDaysRemaining;
+    final nonCompliant = controller.hasNonCompliantUsername;
+
+    final String limitNote;
+    if (nonCompliant) {
+      limitNote =
+          'Username lamamu belum sesuai aturan baru. Kamu bisa langsung menggantinya sekarang.';
+    } else if (cooldownDays > 0) {
+      limitNote = 'Username baru bisa diganti lagi dalam $cooldownDays hari';
+    } else {
+      limitNote = 'Bisa diganti sekali tiap 7 hari.';
+    }
+
+    return HiqeoGlassCard(
+      key: const ValueKey<String>('account-username-card'),
+      borderRadius: 24,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Username',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: <Widget>[
+              Expanded(
                 child: Text(
-                  status?.availability == GroupKeyAvailability.ready
-                      ? 'Periksa kunci'
-                      : 'Muat kunci',
+                  hasUsername ? '@$username' : 'Belum ada username',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: colors.textPrimary,
+                  ),
                 ),
               ),
-              if (onInvite != null)
-                TextButton(
-                  onPressed: busy ? null : onInvite,
-                  child: const Text('Undang'),
+              const SizedBox(width: 12),
+              FilledButton.tonal(
+                key: const ValueKey<String>('account-change-username-button'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: colors.secondary,
+                  foregroundColor: colors.textPrimary,
+                  minimumSize: const Size(76, 44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(HiqeoRadius.pill),
+                  ),
                 ),
+                onPressed: controller.isBusy
+                    ? null
+                    : () => unawaited(_openChangeUsername(controller)),
+                child: Text(
+                  hasUsername ? 'Ganti' : 'Buat',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            limitNote,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: (cooldownDays > 0 || nonCompliant)
+                  ? colors.warningText
+                  : colors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProviderCard(
+    BuildContext context,
+    AccountController controller,
+    HiqeoColors colors,
+    ThemeData theme,
+  ) {
+    final user = controller.user!;
+    final isApple = user.provider == AuthProviderKind.apple;
+    final providerLabel =
+        isApple ? 'Masuk dengan Apple' : 'Masuk dengan Google';
+
+    return HiqeoGlassCard(
+      key: const ValueKey<String>('account-provider-card'),
+      borderRadius: 24,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Akun yang digunakan',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: colors.secondary,
+                ),
+                child: Center(
+                  child: isApple
+                      ? Image.asset(
+                          'assets/brand/apple_logo.png',
+                          height: 20,
+                          cacheWidth: 96,
+                          color: colors.textPrimary,
+                          colorBlendMode: BlendMode.srcIn,
+                          excludeFromSemantics: true,
+                        )
+                      : Image.asset(
+                          'assets/brand/google_g.png',
+                          width: 20,
+                          height: 20,
+                          cacheWidth: 96,
+                          fit: BoxFit.contain,
+                          excludeFromSemantics: true,
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      user.email ?? user.displayName ?? 'Akun terhubung',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      providerLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ],
       ),
     );
   }
+
+  Widget _buildKeyMismatchCard(
+    BuildContext context,
+    AccountController controller,
+    HiqeoColors colors,
+    ThemeData theme,
+  ) {
+    return HiqeoGlassCard(
+      borderRadius: 24,
+      padding: const EdgeInsets.all(16),
+      borderColor: colors.warning,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Kunci perangkat berbeda dari direktori',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: colors.warningText,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Kunci grup lama tidak dapat dibuka di perangkat ini. Daftarkan '
+            'ulang kunci bila perangkat lama hilang atau direset.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          HiqeoButton(
+            label: 'Daftarkan kunci perangkat ini',
+            variant: HiqeoButtonVariant.secondary,
+            onPressed: controller.isBusy
+                ? null
+                : () => unawaited(_confirmKeyReplacement(controller)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSignedOutView(
+    BuildContext context,
+    AccountController controller,
+    HiqeoColors colors,
+    ThemeData theme,
+  ) {
+    final showApple = defaultTargetPlatform != TargetPlatform.android ||
+        SupabaseConfig.isAppleConfigured;
+    return HiqeoGlassCard(
+      borderRadius: 24,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            'Masuk ke akun Hiqeo',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Kelola username publik dan sinkronisasi grup. Riwayat pendakian '
+            'di HP ini tetap tersimpan lokal.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 52,
+            child: HiqeoButton(
+              label: 'Masuk dengan Google',
+              variant: HiqeoButtonVariant.secondary,
+              leading: Image.asset(
+                'assets/brand/google_g.png',
+                width: 20,
+                height: 20,
+                cacheWidth: 96,
+                excludeFromSemantics: true,
+              ),
+              onPressed: controller.isBusy
+                  ? null
+                  : () => unawaited(controller.signIn(AuthProviderKind.google)),
+            ),
+          ),
+          if (showApple) ...<Widget>[
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 52,
+              child: HiqeoButton(
+                label: 'Masuk dengan Apple',
+                onPressed: controller.isBusy
+                    ? null
+                    : () =>
+                        unawaited(controller.signIn(AuthProviderKind.apple)),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotConfiguredView(
+    BuildContext context,
+    HiqeoColors colors,
+    ThemeData theme,
+  ) {
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        AppLayout.bottomInset(context),
+      ),
+      children: <Widget>[
+        HiqeoGlassCard(
+          borderRadius: 24,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  HiqeoIcon(HiqeoIcons.lock, color: colors.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Layanan akun sedang tidak tersedia',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Masuk akun dan pengaturan username belum dapat digunakan '
+                'saat ini. Rekaman GPS, peta offline, kontak darurat, dan '
+                'SOS tetap berjalan normal di HP ini.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-String _formatDate(DateTime utc) {
-  final local = utc.toLocal();
-  final day = local.day.toString().padLeft(2, '0');
-  final month = local.month.toString().padLeft(2, '0');
-  return '$day-$month-${local.year}';
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({
+    super.key,
+    required this.message,
+    this.isError = false,
+  });
+
+  final String message;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isError
+              ? colors.warning.withValues(alpha: 0.14)
+              : colors.primary.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isError
+                ? colors.warning.withValues(alpha: 0.45)
+                : colors.primary.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Text(
+          message,
+          style: TextStyle(
+            fontSize: 13,
+            color: isError ? colors.warningText : colors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dialog konfirmasi bertingkat untuk penghapusan akun permanen (ketik HAPUS
+/// atau tunggu hitung mundur 5 detik).
+class DeleteAccountConfirmDialog extends StatefulWidget {
+  const DeleteAccountConfirmDialog({super.key});
+
+  @override
+  State<DeleteAccountConfirmDialog> createState() =>
+      _DeleteAccountConfirmDialogState();
+}
+
+class _DeleteAccountConfirmDialogState
+    extends State<DeleteAccountConfirmDialog> {
+  final TextEditingController _controller = TextEditingController();
+  int _remainingSeconds = 5;
+  Timer? _countdownTimer;
+
+  bool get _canConfirm =>
+      _controller.text.trim().toUpperCase() == 'HAPUS' ||
+      _remainingSeconds <= 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_remainingSeconds > 0) {
+        setState(() => _remainingSeconds--);
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    return AlertDialog(
+      backgroundColor: colors.surface,
+      title: Text(
+        'Hapus akun permanen?',
+        style: TextStyle(color: colors.warningText),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'Tindakan ini tidak dapat dibatalkan. Akun Hiqeo dan seluruh '
+            'data pendakian di HP ini akan dihapus permanen.',
+          ),
+          const SizedBox(height: HiqeoSpacing.md),
+          Text(
+            _remainingSeconds > 0
+                ? 'Ketik HAPUS di bawah (atau tunggu $_remainingSeconds detik) untuk mengonfirmasi:'
+                : 'Ketik HAPUS atau tekan tombol konfirmasi di bawah:',
+          ),
+          const SizedBox(height: HiqeoSpacing.sm),
+          TextField(
+            key: const ValueKey<String>('account-delete-confirm-input'),
+            controller: _controller,
+            maxLength: 16,
+            decoration: const InputDecoration(
+              hintText: 'HAPUS',
+              counterText: '',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Batal'),
+        ),
+        TextButton(
+          key: const ValueKey<String>('account-confirm-delete-button'),
+          onPressed:
+              _canConfirm ? () => Navigator.of(context).pop(true) : null,
+          child: Text(
+            'Hapus permanen',
+            style: TextStyle(
+              color: _canConfirm ? colors.warningText : colors.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ChangeAccountNameSheet extends StatefulWidget {
+  const _ChangeAccountNameSheet({
+    required this.controller,
+    required this.initialName,
+  });
+
+  final AccountController controller;
+  final String initialName;
+
+  @override
+  State<_ChangeAccountNameSheet> createState() =>
+      _ChangeAccountNameSheetState();
+}
+
+class _ChangeAccountNameSheetState extends State<_ChangeAccountNameSheet> {
+  late final TextEditingController _input =
+      TextEditingController(text: widget.initialName);
+  String? _errorText;
+  bool _hasEdited = false;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  String? _validate(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return 'Nama akun tidak boleh kosong.';
+    }
+    if (trimmed.length > AccountController.maxAccountNameLength) {
+      return 'Nama akun maksimal ${AccountController.maxAccountNameLength} karakter.';
+    }
+    return null;
+  }
+
+  Future<void> _submit() async {
+    final validationError = _validate(_input.text);
+    if (validationError != null) {
+      setState(() {
+        _hasEdited = true;
+        _errorText = validationError;
+      });
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _errorText = null;
+    });
+    final error = await widget.controller.updateFullName(_input.text.trim());
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() {
+        _submitting = false;
+        _errorText = error;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+    final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final trimmed = _input.text.trim();
+    final liveError =
+        _errorText ?? (_hasEdited ? _validate(_input.text) : null);
+    final canSave =
+        !_submitting && _validate(_input.text) == null && trimmed != widget.initialName.trim();
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.only(bottom: keyboardBottom),
+      child: GlassSurface(
+        key: const ValueKey<String>('change-name-sheet'),
+        tier: GlassTier.panel,
+        borderRadius: 28,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(20, 12, 20, 28 + safeBottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colors.textSecondary.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(HiqeoRadius.pill),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Ganti nama akun',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Maksimal ${AccountController.maxAccountNameLength} karakter. Langsung tampil di Beranda, Profil, dan chat.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const ValueKey<String>('change-name-input'),
+                controller: _input,
+                enabled: !_submitting,
+                textCapitalization: TextCapitalization.words,
+                maxLength: AccountController.maxAccountNameLength,
+                onChanged: (value) {
+                  setState(() {
+                    _hasEdited = true;
+                    _errorText = _validate(value);
+                  });
+                },
+                decoration: InputDecoration(
+                  labelText: 'Nama akun',
+                  hintText: 'Masukkan nama tampilan',
+                  filled: true,
+                  fillColor: colors.surface,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  errorText: liveError,
+                  errorMaxLines: 2,
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 52,
+                child: HiqeoButton(
+                  key: const ValueKey<String>('change-name-save-button'),
+                  label: _submitting ? 'Menyimpan…' : 'Simpan nama',
+                  isLoading: _submitting,
+                  onPressed: canSave ? _submit : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

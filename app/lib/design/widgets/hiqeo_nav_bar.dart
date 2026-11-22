@@ -1,13 +1,17 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../glass/glass_surface.dart';
-import '../gooey/gooey_layer.dart';
+import '../glass/hiqeo_liquid_glass.dart';
 import '../motion/visual_effect_policy.dart';
 import '../tokens.dart';
+import '../typography.dart';
 import 'line_icons.dart';
+import 'nav_bar_layout.dart';
 
+/// Item navigasi pada navbar Hiqeo.
 class HiqeoNavBarItem {
   const HiqeoNavBarItem({
     required this.label,
@@ -20,82 +24,42 @@ class HiqeoNavBarItem {
   final String route;
 }
 
-/// Kemajuan kepala blob: pegas kaku dengan pantulan yang dibatasi 4,4%.
-///
-/// `easeOutBack` memantul sekitar 9,9%; sebagian pantulan itu dibuang agar
-/// total pantulan tetap di bawah 5% jarak perpindahan.
+/// Matriks saturasi 1,5 (150%) untuk efek kaca navbar.
 @visibleForTesting
-double navBarHeadProgress(double t) {
-  final eased = Curves.easeOutBack.transform(t);
-  return 1 + (eased - 1) * HiqeoNavBar.headOvershootScale;
+const List<double> kNavBarSaturate150 = kGlassSaturate150;
+
+/// Status cincin sisa yang sedang berjalan secara mandiri.
+class _ResidualRing {
+  _ResidualRing({
+    required this.center,
+    required this.controller,
+  });
+
+  final double center;
+  final AnimationController controller;
+
+  double get scale {
+    final t = controller.value;
+    if (t <= 0.12) return 1.0;
+    final progress = (t - 0.12) / (1.0 - 0.12);
+    final curve = Curves.easeOut.transform(progress.clamp(0.0, 1.0));
+    return ui.lerpDouble(1.0, 1.14, curve)!;
+  }
+
+  double get opacity {
+    final t = controller.value;
+    if (t <= 0.12) return 0.95;
+    final progress = (t - 0.12) / (1.0 - 0.12);
+    final curve = Curves.easeOut.transform(progress.clamp(0.0, 1.0));
+    return ui.lerpDouble(0.95, 0.0, curve)!;
+  }
 }
 
-/// Kemajuan ekor blob: menyusul lebih lambat dan tanpa pantulan.
-@visibleForTesting
-double navBarTailProgress(double t) =>
-    const Interval(0.12, 1, curve: Curves.easeOutCubic).transform(t);
-
-/// Alfa tint navbar saat melayang di atas peta pada mode gelap.
+/// Navigasi bawah melayang 5 tab "lensa kaca" dengan gerak morphing tiga segmen.
 ///
-/// Peta OUTDOORS tetap terang walau diperedup 35%; tanpa tint, label terang
-/// di atas kaca 8% tidak akan mencapai kontras 4,5:1. Tint navy 60% (token
-/// `background`) menjaga kontras di atas peta paling terang dan masih
-/// menyisakan 40% peta kabur di belakang kaca.
-@visibleForTesting
-const double navBarMapTintAlpha = 0.6;
-
-/// Tint kaca navbar saat di atas peta. Mode terang tidak perlu tint karena
-/// kaca 55% krem sudah menerangkan latar; mode gelap memakai navy 60%.
-@visibleForTesting
-Color? navBarMapTint(HiqeoColors colors) {
-  if (colors.brightness != Brightness.dark) return null;
-  return colors.background.withValues(alpha: navBarMapTintAlpha);
-}
-
-/// Warna label tab: teks sekunder saat tab diam, krem/navy saat tertutup blob.
-///
-/// Di atas peta, label diam memakai `textPrimary` agar kontras tetap ≥4,5:1
-/// terhadap peta terang maupun gelap.
-@visibleForTesting
-Color navBarLabelColor({
-  required HiqeoColors colors,
-  required bool overMap,
-  required double coverage,
-}) {
-  final idle = overMap ? colors.textPrimary : colors.textSecondary;
-  return Color.lerp(idle, colors.onPrimary, coverage)!;
-}
-
-/// Bagian area pill tab yang tertutup blob, 0..1.
-///
-/// Dipakai untuk memindahkan warna ikon/label saat blob benar-benar menutup
-/// atau meninggalkan tab, bukan serentak di awal atau akhir animasi.
-@visibleForTesting
-double navBarCoverage({
-  required double tabCenter,
-  required double headCenter,
-  required double tailCenter,
-  required double pillWidth,
-}) {
-  final pillLeft = (headCenter < tailCenter ? headCenter : tailCenter) -
-      pillWidth / 2;
-  final pillRight = (headCenter > tailCenter ? headCenter : tailCenter) +
-      pillWidth / 2;
-  final tabLeft = tabCenter - pillWidth / 2;
-  final tabRight = tabCenter + pillWidth / 2;
-  final overlap = (pillRight < tabRight ? pillRight : tabRight) -
-      (pillLeft > tabLeft ? pillLeft : tabLeft);
-  if (overlap <= 0) return 0;
-  return (overlap / pillWidth).clamp(0.0, 1.0);
-}
-
-/// Navigasi bawah melayang: tinggi 64 px, radius 32, menjorok 16 px dari tepi.
-///
-/// Satu blob krem (warna primer tema) bergerak di antara tab. Kepala bergerak
-/// lebih dulu dengan pegas kaku, ekor menyusul dengan pegas lembut; selama
-/// bergerak keduanya disatukan [GooeyLayer] sehingga membentuk satu cairan yang
-/// memanjang, tanpa gelembung atau tetesan terpisah. Kaca dan bayangan navbar
-/// berada di luar lapisan gooey sehingga tidak ikut dikaburkan.
+/// Lapisan kaca memakai komponen tunggal [GlassSurface] tier [GlassTier.navbar]
+/// dengan pantulan vertikal simetris dan fill aman. Lensa aktif digambar tanpa
+/// [BackdropFilter].
 class HiqeoNavBar extends StatefulWidget {
   const HiqeoNavBar({
     super.key,
@@ -103,222 +67,583 @@ class HiqeoNavBar extends StatefulWidget {
     required this.items,
     required this.onTap,
     this.overMap = false,
+    this.blurEnabledOverride,
+    this.badgeCounts = const <int, int>{},
   });
 
   final int currentIndex;
   final List<HiqeoNavBarItem> items;
   final ValueChanged<int> onTap;
-
-  /// Benar saat kaca melayang di atas peta; menyalakan tint dan label
-  /// `textPrimary` supaya kontras label tetap ≥4,5:1 di atas tile peta.
   final bool overMap;
+  final bool? blurEnabledOverride;
 
-  static const Duration slideDuration = Duration(milliseconds: 500);
-  static const Duration reducedSlideDuration = Duration(milliseconds: 180);
+  /// Jumlah lencana notifikasi per indeks tab (mis. `{3: 2}` untuk tab Grup).
+  final Map<int, int> badgeCounts;
 
-  /// Bagian pantulan `easeOutBack` yang dipakai (≈4,4% jarak).
-  static const double headOvershootScale = 0.45;
+  static const Duration slideDuration = Duration(milliseconds: 600);
+  static const Duration reducedSlideDuration = Duration(milliseconds: 150);
 
   @override
   State<HiqeoNavBar> createState() => _HiqeoNavBarState();
 }
 
 class _HiqeoNavBarState extends State<HiqeoNavBar>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _slide;
-  late double _startHead;
-  late double _startTail;
-  late double _target;
+    with TickerProviderStateMixin {
+  late final AnimationController _transitionController;
+  late final List<AnimationController> _pressControllers;
+  final List<_ResidualRing> _residualRings = <_ResidualRing>[];
+
+  late int _activeTabIndex;
+  late int _oldActiveTabIndex;
+
+  double _lastPillWidth = 0.0;
+  NavBarLayout? _currentLayout;
+  NavBarLayout? _startLayout;
+  NavBarLayout? _targetLayout;
+
+  double _startLensCenter = 0.0;
+  double _startLensWidth = 0.0;
+  double _targetLensCenter = 0.0;
+  double _targetLensWidth = 0.0;
+
   bool _reduceMotion = false;
+
+  static const double _kSlotTop = 5.0;
+  static const double _kSlotHeight = 52.0;
+  static const double _kLensRadius = 26.0;
 
   @override
   void initState() {
     super.initState();
-    _target = widget.currentIndex.toDouble();
-    _startHead = _target;
-    _startTail = _target;
-    _slide = AnimationController(
+    _activeTabIndex = widget.currentIndex;
+    _oldActiveTabIndex = widget.currentIndex;
+
+    _transitionController = AnimationController(
       vsync: this,
       duration: HiqeoNavBar.slideDuration,
-      value: 1,
+      value: 1.0,
+    );
+
+    _pressControllers = List<AnimationController>.generate(
+      widget.items.length,
+      (index) => AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 140),
+        reverseDuration: const Duration(milliseconds: 160),
+        value: 0.0,
+      ),
     );
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final reduceMotion = VisualEffectPolicyScope.of(context).reduceMotion;
-    if (reduceMotion == _reduceMotion) return;
-    _reduceMotion = reduceMotion;
-    _slide.duration = reduceMotion
-        ? HiqeoNavBar.reducedSlideDuration
-        : HiqeoNavBar.slideDuration;
+    final reduce = VisualEffectPolicyScope.of(context).reduceMotion ||
+        MediaQuery.disableAnimationsOf(context);
+    if (reduce != _reduceMotion) {
+      _reduceMotion = reduce;
+      _transitionController.duration = reduce
+          ? HiqeoNavBar.reducedSlideDuration
+          : HiqeoNavBar.slideDuration;
+    }
   }
 
   @override
   void didUpdateWidget(HiqeoNavBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.currentIndex == oldWidget.currentIndex) return;
-    // Mulai dari posisi yang sedang terlihat supaya ketukan beruntun tidak
-    // melompat; kepala dan ekor lalu mengejar tab baru dari tempat masing-masing.
-    _startHead = _headPosition;
-    _startTail = _tailPosition;
-    _target = widget.currentIndex.toDouble();
-    _slide.forward(from: 0);
+    if (widget.currentIndex != oldWidget.currentIndex) {
+      if (widget.currentIndex != _activeTabIndex) {
+        _startTransition(widget.currentIndex);
+      }
+    }
   }
 
   @override
   void dispose() {
-    _slide.dispose();
+    _transitionController.dispose();
+    for (final controller in _pressControllers) {
+      controller.dispose();
+    }
+    for (final ring in _residualRings) {
+      ring.controller.dispose();
+    }
+    _residualRings.clear();
     super.dispose();
   }
 
-  double get _headPosition => ui.lerpDouble(
-        _startHead,
-        _target,
-        _reduceMotion ? _slide.value : navBarHeadProgress(_slide.value),
-      )!;
+  void _onTabTapDown(int tabIndex) {
+    if (tabIndex == _activeTabIndex) return;
+    _pressControllers[tabIndex].animateTo(1.0, curve: Curves.easeOut);
+  }
 
-  double get _tailPosition => ui.lerpDouble(
-        _startTail,
-        _target,
-        _reduceMotion ? _slide.value : navBarTailProgress(_slide.value),
+  void _onTabTapUp(int tabIndex) {
+    if (tabIndex == _activeTabIndex) return;
+    _pressControllers[tabIndex].animateTo(0.0, curve: Curves.easeOut);
+  }
+
+  void _onTabTapCancel(int tabIndex) {
+    if (tabIndex == _activeTabIndex) return;
+    _pressControllers[tabIndex].animateTo(0.0, curve: Curves.easeOut);
+  }
+
+  void _handleTap(int targetIndex) {
+    if (targetIndex == _activeTabIndex) {
+      widget.onTap(targetIndex);
+      return;
+    }
+
+    widget.onTap(targetIndex);
+    _pressControllers[targetIndex].animateTo(0.0, curve: Curves.easeOut);
+    _startTransition(targetIndex);
+  }
+
+  void _startTransition(int targetIndex) {
+    if (_lastPillWidth <= 0) {
+      _activeTabIndex = targetIndex;
+      _oldActiveTabIndex = targetIndex;
+      return;
+    }
+
+    final newTargetLayout = computeNavBarLayout(
+      pillWidth: _lastPillWidth,
+      activeTabIndex: targetIndex,
+      items: widget.items,
+    );
+
+    if (_reduceMotion) {
+      _oldActiveTabIndex = _activeTabIndex;
+      _activeTabIndex = targetIndex;
+      _startLayout = _currentLayout ?? newTargetLayout;
+      _targetLayout = newTargetLayout;
+      _currentLayout = newTargetLayout;
+      _startLensCenter = newTargetLayout.lensCenter;
+      _startLensWidth = newTargetLayout.lensWidth;
+      _targetLensCenter = newTargetLayout.lensCenter;
+      _targetLensWidth = newTargetLayout.lensWidth;
+      _transitionController.forward(from: 0.0);
+      return;
+    }
+
+    if (_transitionController.isAnimating) {
+      final currentCenter = _getLensCenter(_transitionController.value);
+      final currentWidth = _getLensWidth(_transitionController.value);
+      final currentLayout = _getInterpolatedLayout(_transitionController.value);
+
+      _spawnResidualRing(currentCenter);
+
+      _startLensCenter = currentCenter;
+      _startLensWidth = currentWidth;
+      _startLayout = currentLayout;
+    } else {
+      final currentLayout = _targetLayout ??
+          computeNavBarLayout(
+            pillWidth: _lastPillWidth,
+            activeTabIndex: _activeTabIndex,
+            items: widget.items,
+          );
+
+      _spawnResidualRing(currentLayout.lensCenter);
+
+      _startLensCenter = currentLayout.lensCenter;
+      _startLensWidth = currentLayout.lensWidth;
+      _startLayout = currentLayout;
+    }
+
+    _oldActiveTabIndex = _activeTabIndex;
+    _activeTabIndex = targetIndex;
+    _targetLayout = newTargetLayout;
+    _targetLensCenter = newTargetLayout.lensCenter;
+    _targetLensWidth = newTargetLayout.lensWidth;
+
+    _transitionController.forward(from: 0.0);
+  }
+
+  void _spawnResidualRing(double center) {
+    if (_reduceMotion) return;
+
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
+    final ring = _ResidualRing(center: center, controller: controller);
+    _residualRings.add(ring);
+
+    controller.addListener(() {
+      if (mounted) setState(() {});
+    });
+
+    controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _residualRings.remove(ring);
+        ring.controller.dispose();
+        if (mounted) setState(() {});
+      }
+    });
+
+    controller.forward(from: 0.0);
+  }
+
+  double _getLensWidth(double t) {
+    if (_reduceMotion) return _targetLensWidth;
+    if (t <= 0.0) return _startLensWidth;
+    if (t >= 1.0) return _targetLensWidth;
+
+    // Segmen 1 (0..28%): menyusut ke 52 dp, Cubic(0.4, 0, 0.2, 1)
+    if (t < 0.28) {
+      final p = t / 0.28;
+      final c = const Cubic(0.4, 0.0, 0.2, 1.0).transform(p);
+      return ui.lerpDouble(_startLensWidth, 52.0, c)!;
+    }
+
+    // Segmen 2 (28..62%): lebar tetap 52 dp
+    if (t < 0.62) {
+      return 52.0;
+    }
+
+    // Segmen 3 (62..100%): tumbuh ke wA, Cubic(0.3, 1.3, 0.5, 1)
+    final p = (t - 0.62) / (1.0 - 0.62);
+    final c = const Cubic(0.3, 1.3, 0.5, 1.0).transform(p);
+    return ui.lerpDouble(52.0, _targetLensWidth, c)!;
+  }
+
+  double _getLensCenter(double t) {
+    if (_reduceMotion) return _targetLensCenter;
+    if (t <= 0.0) return _startLensCenter;
+    if (t >= 1.0) return _targetLensCenter;
+
+    // Segmen 1 (0..28%): bergeser 30% menuju target, Cubic(0.4, 0, 0.2, 1)
+    if (t < 0.28) {
+      final p = t / 0.28;
+      final c = const Cubic(0.4, 0.0, 0.2, 1.0).transform(p);
+      return ui.lerpDouble(_startLensCenter, _targetLensCenter, 0.30 * c)!;
+    }
+
+    // Segmen 2 (28..62%): bergerak dari 30% ke 94% jarak target, Cubic(0.3, 0.7, 0.3, 1)
+    if (t < 0.62) {
+      final p = (t - 0.28) / (0.62 - 0.28);
+      final c = const Cubic(0.3, 0.7, 0.3, 1.0).transform(p);
+      return ui.lerpDouble(
+        _startLensCenter,
+        _targetLensCenter,
+        0.30 + (0.94 - 0.30) * c,
       )!;
+    }
+
+    // Segmen 3 (62..100%): tiba di pusat target, Cubic(0.3, 1.3, 0.5, 1)
+    final p = (t - 0.62) / (1.0 - 0.62);
+    final c = const Cubic(0.3, 1.3, 0.5, 1.0).transform(p);
+    return ui.lerpDouble(
+      _startLensCenter,
+      _targetLensCenter,
+      0.94 + (1.0 - 0.94) * c,
+    )!;
+  }
+
+  NavBarLayout _getInterpolatedLayout(double t) {
+    final start = _startLayout;
+    final target = _targetLayout;
+    if (start == null || target == null || _reduceMotion || t >= 1.0) {
+      return target ??
+          computeNavBarLayout(
+            pillWidth: _lastPillWidth,
+            activeTabIndex: _activeTabIndex,
+            items: widget.items,
+          );
+    }
+    if (t <= 0.0) return start;
+
+    final curveT = const Cubic(0.3, 1.15, 0.4, 1.0).transform(t.clamp(0.0, 1.0));
+
+    final slots = <NavBarSlotLayout>[];
+    for (int i = 0; i < 5; i++) {
+      final s = start.slots[i];
+      final tgt = target.slots[i];
+      slots.add(
+        NavBarSlotLayout(
+          index: i,
+          isActive: i == target.activeSlotIndex,
+          left: ui.lerpDouble(s.left, tgt.left, curveT)!,
+          width: ui.lerpDouble(s.width, tgt.width, curveT)!,
+          iconXInSlot: ui.lerpDouble(s.iconXInSlot, tgt.iconXInSlot, curveT)!,
+          labelXInSlot: ui.lerpDouble(s.labelXInSlot, tgt.labelXInSlot, curveT)!,
+          labelWidth: tgt.labelWidth,
+          hPadding: tgt.hPadding,
+        ),
+      );
+    }
+
+    return NavBarLayout(
+      pillWidth: target.pillWidth,
+      innerW: target.innerW,
+      activeTabIndex: target.activeTabIndex,
+      activeSlotIndex: target.activeSlotIndex,
+      slots: slots,
+      wA: target.wA,
+      wI: target.wI,
+      lensLeft: slots[target.activeSlotIndex].left,
+      lensWidth: slots[target.activeSlotIndex].width,
+      lensCenter: slots[target.activeSlotIndex].center,
+      reducedPadding: target.reducedPadding,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
-    final gooey = GooeyLayer.enabledOf(context) && !_reduceMotion;
-    return Semantics(
-      container: true,
-      explicitChildNodes: true,
-      child: GlassSurface(
-        borderRadius: HiqeoRadius.navbar,
-        tint: widget.overMap ? navBarMapTint(colors) : null,
+
+    // Lensa tab aktif dibuat lebih ringan daripada kaca penuh agar pil navbar
+    // membiarkan efek blur di belakangnya tetap terasa hidup.
+    final lensFillColor = Colors.white.withValues(
+      alpha: colors.brightness == Brightness.dark ? 0.18 : 0.42,
+    );
+    final lensBorderColor = HiqeoGlassTokens.border(colors.brightness);
+
+    final animListenable = Listenable.merge(<Listenable>[
+      _transitionController,
+      ..._pressControllers,
+    ]);
+
+    return HiqeoLiquidGlassSurface(
+      key: const ValueKey<String>('navbar-liquid-glass'),
+      borderRadius: HiqeoRadius.navbar,
+      overMap: widget.overMap,
+      blurEnabledOverride: widget.blurEnabledOverride,
+      child: SizedBox(
+        height: HiqeoMetrics.navbarHeight,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            final count = widget.items.length;
-            final cellWidth = width / count;
-            return AnimatedBuilder(
-              animation: _slide,
-              builder: (context, _) {
-                final headCenter = (_headPosition + 0.5) * cellWidth;
-                final tailCenter = (_tailPosition + 0.5) * cellWidth;
-                final blob = CustomPaint(
-                  key: const ValueKey<String>('navbar-blob'),
-                  painter: NavBarBlobPainter(
-                    headCenter: headCenter,
-                    tailCenter: tailCenter,
-                    pillWidth: HiqeoMetrics.navbarPillWidth,
-                    pillHeight: HiqeoMetrics.navbarPillHeight,
-                    color: colors.primary,
-                  ),
-                );
-                // Hanya selama bergerak bentuknya cair; saat diam digambar
-                // tajam supaya tepi pill bersih dan tidak ada filter tersisa.
-                // Nilai 0 berarti belum ada perpindahan, jadi belum perlu cair.
-                final morphing = _slide.isAnimating && _slide.value > 0;
-                return SizedBox(
-                  height: HiqeoMetrics.navbarHeight,
-                  child: Stack(
-                    children: <Widget>[
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: ExcludeSemantics(
-                            child: morphing && gooey
-                                ? GooeyLayer(shapes: blob)
-                                : blob,
-                          ),
-                        ),
+            final pillWidth = constraints.maxWidth;
+            if (pillWidth != _lastPillWidth) {
+              _lastPillWidth = pillWidth;
+              _targetLayout = computeNavBarLayout(
+                pillWidth: pillWidth,
+                activeTabIndex: _activeTabIndex,
+                items: widget.items,
+              );
+              _startLayout ??= _targetLayout;
+              _startLensCenter = _targetLayout!.lensCenter;
+              _startLensWidth = _targetLayout!.lensWidth;
+              _targetLensCenter = _targetLayout!.lensCenter;
+              _targetLensWidth = _targetLayout!.lensWidth;
+            }
+
+            return Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                // 1. Lapisan Lensa, Cincin Sisa, dan Efek Tekan (di atas kaca, di bawah ikon)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: RepaintBoundary(
+                      child: AnimatedBuilder(
+                        animation: animListenable,
+                        builder: (context, _) {
+                          final t = _transitionController.value;
+                          final lensWidth = _getLensWidth(t);
+                          final lensCenter = _getLensCenter(t);
+                          final currentLayout = _getInterpolatedLayout(t);
+
+                          return CustomPaint(
+                            key: const ValueKey<String>('navbar-lens'),
+                            painter: _NavBarLensPainter(
+                              colors: colors,
+                              lensCenter: lensCenter,
+                              lensWidth: lensWidth,
+                              lensTop: _kSlotTop,
+                              lensHeight: _kSlotHeight,
+                              lensRadius: _kLensRadius,
+                              lensFillColor: lensFillColor,
+                              lensBorderColor: lensBorderColor,
+                              rings: _residualRings,
+                              pressControllers: _pressControllers,
+                              layout: currentLayout,
+                            ),
+                          );
+                        },
                       ),
-                      Row(
+                    ),
+                  ),
+                ),
+
+                // 2. Lapisan 5 Tab (Beranda, Peta, Track, Grup, Profil)
+                Positioned.fill(
+                  child: AnimatedBuilder(
+                    animation: animListenable,
+                    builder: (context, _) {
+                      final t = _transitionController.value;
+                      final currentLayout = _getInterpolatedLayout(t);
+
+                      return Stack(
                         children: <Widget>[
-                          for (int i = 0; i < count; i++)
-                            Expanded(
-                              child: _NavBarTab(
-                                item: widget.items[i],
-                                active: i == widget.currentIndex,
-                                overMap: widget.overMap,
-                                coverage: navBarCoverage(
-                                  tabCenter: (i + 0.5) * cellWidth,
-                                  headCenter: headCenter,
-                                  tailCenter: tailCenter,
-                                  pillWidth:
-                                      HiqeoMetrics.navbarPillWidth,
-                                ),
-                                onTap: () => widget.onTap(i),
-                              ),
+                          for (int i = 0; i < widget.items.length; i++)
+                            _buildTabSlot(
+                              tabIndex: i,
+                              layout: currentLayout,
+                              colors: colors,
+                              t: t,
                             ),
                         ],
-                      ),
-                    ],
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+              ],
             );
           },
         ),
       ),
     );
   }
-}
 
-class _NavBarTab extends StatelessWidget {
-  const _NavBarTab({
-    required this.item,
-    required this.active,
-    required this.coverage,
-    required this.overMap,
-    required this.onTap,
-  });
+  Widget _buildTabSlot({
+    required int tabIndex,
+    required NavBarLayout layout,
+    required HiqeoColors colors,
+    required double t,
+  }) {
+    final item = widget.items[tabIndex];
+    final slot = layout.slots[tabIndex];
+    final isActive = tabIndex == _activeTabIndex;
+    final isOldActive =
+        tabIndex == _oldActiveTabIndex && _transitionController.isAnimating;
 
-  final HiqeoNavBarItem item;
-  final bool active;
-  final bool overMap;
+    // Crossfade warna ikon 200 ms (t / 0.333)
+    final colorProgress =
+        _reduceMotion ? 1.0 : (t / (200.0 / 600.0)).clamp(0.0, 1.0);
+    final Color iconColor;
+    if (isActive) {
+      iconColor =
+          Color.lerp(colors.textSecondary, colors.textPrimary, colorProgress)!;
+    } else if (isOldActive) {
+      iconColor =
+          Color.lerp(colors.textPrimary, colors.textSecondary, colorProgress)!;
+    } else {
+      iconColor = colors.textSecondary;
+    }
 
-  /// 0 = blob jauh, 1 = blob menutup penuh area pill tab ini.
-  final double coverage;
-  final VoidCallback onTap;
+    // Label opacity
+    double labelOpacity = 0.0;
+    if (_reduceMotion) {
+      labelOpacity = isActive ? 1.0 : 0.0;
+    } else if (isActive) {
+      // Fade in 200 ms setelah jeda 320 ms (interval 0.533 s.d. 0.867)
+      const startT = 320.0 / 600.0;
+      const endT = 520.0 / 600.0;
+      if (t >= endT) {
+        labelOpacity = 1.0;
+      } else if (t > startT) {
+        labelOpacity = Curves.easeOut.transform((t - startT) / (endT - startT));
+      }
+    } else if (isOldActive) {
+      // Fade out 100 ms (easeIn)
+      const fadeOutEnd = 100.0 / 600.0;
+      if (t <= fadeOutEnd) {
+        labelOpacity = 1.0 - Curves.easeIn.transform(t / fadeOutEnd);
+      }
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    final colors = HiqeoColors.of(context);
-    final theme = Theme.of(context);
-    final iconColor =
-        Color.lerp(colors.textPrimary, colors.onPrimary, coverage)!;
-    final labelColor = navBarLabelColor(
-      colors: colors,
-      overMap: overMap,
-      coverage: coverage,
-    );
-    return Semantics(
-      button: true,
-      selected: active,
-      label: item.label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+    final badgeCount = widget.badgeCounts[tabIndex] ?? 0;
+
+    return Positioned(
+      left: slot.left,
+      top: 0,
+      width: slot.width,
+      height: HiqeoMetrics.navbarHeight,
+      child: Semantics(
+        button: true,
+        selected: isActive,
+        label: badgeCount > 0 ? '${item.label}, $badgeCount undangan baru' : item.label,
+        tooltip: isActive ? null : item.label,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => _onTabTapDown(tabIndex),
+          onTapUp: (_) => _onTabTapUp(tabIndex),
+          onTapCancel: () => _onTabTapCancel(tabIndex),
+          onTap: () => _handleTap(tabIndex),
+          child: Stack(
+            clipBehavior: Clip.none,
             children: <Widget>[
-              HiqeoIcon(item.icon, size: 22, color: iconColor),
-              const SizedBox(height: 2),
-              // Label diambil dari Semantics di atas; teks terlihat
-              // dikecualikan agar nama aksesibel tidak dobel.
-              ExcludeSemantics(
-                child: Text(
-                  item.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight:
-                        coverage >= 0.5 ? FontWeight.w700 : FontWeight.w500,
-                    color: labelColor,
+              // Ikon
+              Positioned(
+                left: slot.iconXInSlot,
+                top: _kSlotTop + (_kSlotHeight - 24.0) / 2.0,
+                width: 24.0,
+                height: 24.0,
+                child: ExcludeSemantics(
+                  child: HiqeoIcon(
+                    item.icon,
+                    size: 24.0,
+                    color: iconColor,
+                    strokeWidth: HiqeoMetrics.iconStroke,
                   ),
                 ),
               ),
+
+              // Lencana notifikasi (mis. undangan grup baru di tab Grup)
+              if (badgeCount > 0)
+                Positioned(
+                  left: slot.iconXInSlot + 14.0,
+                  top: _kSlotTop + (_kSlotHeight - 24.0) / 2.0 - 5.0,
+                  child: ExcludeSemantics(
+                    child: Container(
+                      key: ValueKey<String>('navbar-badge-$tabIndex'),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: colors.warning,
+                        borderRadius: BorderRadius.circular(HiqeoRadius.pill),
+                        border: Border.all(
+                          color: colors.surface,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          badgeCount > 9 ? '9+' : '$badgeCount',
+                          style: TextStyle(
+                            fontFamily: HiqeoTypography.family,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
+                            height: 1.1,
+                            color: HiqeoColors.light.glassHighlight,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Label (hanya aktif atau saat fade out tab lama) tanpa Opacity saveLayer
+              if (labelOpacity > 0.0)
+                Positioned(
+                  left: slot.labelXInSlot,
+                  top: _kSlotTop,
+                  height: _kSlotHeight,
+                  child: ExcludeSemantics(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.fade,
+                        softWrap: false,
+                        style: const TextStyle(
+                          fontFamily: HiqeoTypography.family,
+                          fontSize: 12.0,
+                          fontWeight: FontWeight.w700,
+                          height: 1.2,
+                        ).copyWith(
+                          color: colors.textPrimary.withValues(
+                            alpha: labelOpacity.clamp(0.0, 1.0),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -327,77 +652,136 @@ class _NavBarTab extends StatelessWidget {
   }
 }
 
-/// Melukis blob sebagai satu bentuk: pill kepala, pill ekor, dan leher yang
-/// menyambung keduanya. Leher menipis saat blob memanjang, tetapi tidak pernah
-/// terputus, jadi tidak ada bagian yang terlepas.
-@visibleForTesting
-class NavBarBlobPainter extends CustomPainter {
-  const NavBarBlobPainter({
-    required this.headCenter,
-    required this.tailCenter,
-    required this.pillWidth,
-    required this.pillHeight,
-    required this.color,
+/// Melukis lensa (indikator aktif), cincin sisa, dan efek tekan tanpa
+/// BackdropFilter dan tanpa bercak putih lokal.
+class _NavBarLensPainter extends CustomPainter {
+  const _NavBarLensPainter({
+    required this.colors,
+    required this.lensCenter,
+    required this.lensWidth,
+    required this.lensTop,
+    required this.lensHeight,
+    required this.lensRadius,
+    required this.lensFillColor,
+    required this.lensBorderColor,
+    required this.rings,
+    required this.pressControllers,
+    required this.layout,
   });
 
-  final double headCenter;
-  final double tailCenter;
-  final double pillWidth;
-  final double pillHeight;
-  final Color color;
+  final HiqeoColors colors;
+  final double lensCenter;
+  final double lensWidth;
+  final double lensTop;
+  final double lensHeight;
+  final double lensRadius;
+  final Color lensFillColor;
+  final Color lensBorderColor;
+  final List<_ResidualRing> rings;
+  final List<AnimationController> pressControllers;
+  final NavBarLayout layout;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final radius = Radius.circular(pillHeight / 2);
-    final centerY = size.height / 2;
-    Path pill(double centerX) => Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromCenter(
-            center: Offset(centerX, centerY),
-            width: pillWidth,
-            height: pillHeight,
-          ),
-          radius,
-        ),
-      );
+    final centerY = lensTop + lensHeight / 2.0;
 
-    var path = Path.combine(
-      ui.PathOperation.union,
-      pill(headCenter),
-      pill(tailCenter),
-    );
-    final gap = (headCenter - tailCenter).abs();
-    if (gap > 0.5) {
-      final stretch = (gap / (pillWidth * 2)).clamp(0.0, 1.0);
-      final neckHeight = pillHeight * (1 - 0.5 * stretch);
-      final neck = Path()
-        ..addRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTRB(
-              headCenter < tailCenter ? headCenter : tailCenter,
-              centerY - neckHeight / 2,
-              headCenter > tailCenter ? headCenter : tailCenter,
-              centerY + neckHeight / 2,
-            ),
-            Radius.circular(neckHeight / 2),
-          ),
+    // 1. Cincin Sisa di posisi lensa lama
+    for (final ring in rings) {
+      final ringOpacity = ring.opacity;
+      if (ringOpacity > 0.0) {
+        final ringRadius = (lensHeight / 2.0) * ring.scale;
+        final ringCenter = Offset(ring.center, centerY);
+
+        final ringFill = lensFillColor.withValues(
+          alpha: lensFillColor.a * ringOpacity,
         );
-      path = Path.combine(ui.PathOperation.union, path, neck);
+        final ringBorder = lensBorderColor.withValues(
+          alpha: lensBorderColor.a * ringOpacity,
+        );
+
+        canvas.drawCircle(ringCenter, ringRadius, Paint()..color = ringFill);
+        canvas.drawCircle(
+          ringCenter,
+          math.max(0.0, ringRadius - 0.6),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..color = ringBorder,
+        );
+      }
     }
-    canvas.drawPath(
-      path,
+
+    // 2. Efek Tekan di tab tidak aktif
+    for (int i = 0; i < pressControllers.length; i++) {
+      final val = pressControllers[i].value;
+      if (val > 0.0) {
+        final slot = layout.slots[i];
+        final iconCenter = Offset(
+          slot.left + slot.iconXInSlot + 12.0,
+          centerY,
+        );
+
+        final pressScale = ui.lerpDouble(0.6, 1.0, val)!;
+        final pressOpacity = val.clamp(0.0, 1.0);
+        final radius = (lensHeight / 2.0) * pressScale;
+
+        final fill = lensFillColor.withValues(
+          alpha: lensFillColor.a * pressOpacity,
+        );
+        final border = colors.hairline.withValues(
+          alpha: colors.hairline.a * pressOpacity,
+        );
+
+        canvas.drawCircle(iconCenter, radius, Paint()..color = fill);
+        canvas.drawCircle(
+          iconCenter,
+          math.max(0.0, radius - 0.5),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.0
+            ..color = border,
+        );
+      }
+    }
+
+    // 3. Lensa aktif (fill + border + bayangan lembut; tanpa bercak putih)
+    final lensLeft = lensCenter - lensWidth / 2.0;
+    final lensRect = Rect.fromLTWH(lensLeft, lensTop, lensWidth, lensHeight);
+    final lensRRect = RRect.fromRectAndRadius(
+      lensRect,
+      Radius.circular(lensRadius),
+    );
+
+    final shadowPaint = Paint()
+      ..color = colors.glassShadow
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7.0);
+    canvas.drawRRect(lensRRect.shift(const Offset(0, 4)), shadowPaint);
+
+    canvas.drawRRect(lensRRect, Paint()..color = lensFillColor);
+
+    canvas.drawRRect(
+      lensRRect.deflate(0.5),
       Paint()
-        ..color = color
-        ..isAntiAlias = true,
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0
+        ..color = lensBorderColor,
     );
   }
 
   @override
-  bool shouldRepaint(NavBarBlobPainter oldDelegate) =>
-      oldDelegate.headCenter != headCenter ||
-      oldDelegate.tailCenter != tailCenter ||
-      oldDelegate.pillWidth != pillWidth ||
-      oldDelegate.pillHeight != pillHeight ||
-      oldDelegate.color != color;
+  bool shouldRepaint(_NavBarLensPainter oldDelegate) {
+    if (lensCenter != oldDelegate.lensCenter ||
+        lensWidth != oldDelegate.lensWidth ||
+        lensFillColor != oldDelegate.lensFillColor ||
+        lensBorderColor != oldDelegate.lensBorderColor ||
+        colors != oldDelegate.colors ||
+        rings.isNotEmpty ||
+        oldDelegate.rings.isNotEmpty) {
+      return true;
+    }
+    for (final c in pressControllers) {
+      if (c.value > 0.0) return true;
+    }
+    return false;
+  }
 }

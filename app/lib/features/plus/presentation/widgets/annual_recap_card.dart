@@ -611,8 +611,8 @@ class _PeakBadgesPanel extends StatelessWidget {
           ),
           const SizedBox(height: HiqeoSpacing.sm),
           Text(
-            'Katalog puncak terverifikasi belum tersedia di build ini, jadi '
-            'lencana belum bisa diberikan.',
+            'Lencana puncak akan terbuka secara bertahap seiring bertambahnya '
+            'daftar gunung yang didukung.',
             style: theme.textTheme.bodySmall?.copyWith(
               fontSize: 10.5,
               height: 1.3,
