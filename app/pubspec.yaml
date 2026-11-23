@@ -77,6 +77,8 @@ flutter:
     - assets/map_packs/
     - assets/brand/
     - assets/gpx/
+    - assets/routes/
+    - assets/guides/
   fonts:
     - family: PlusJakartaSans
       fonts:

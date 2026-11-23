@@ -1,11 +1,65 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geo_utils/geo_utils.dart';
 
 import '../../trails/data/gpx_loader.dart';
+import 'indonesia_region_resolver.dart';
 import 'map_package.dart';
 import 'mountain_pack.dart';
+
+/// Hasil parsing nama berkas GPX berformat `"NAMA GUNUNG VIA RUTE.gpx"`.
+@immutable
+class ParsedGpxFileName {
+  const ParsedGpxFileName({
+    required this.mountainId,
+    required this.mountainName,
+    required this.trailId,
+    required this.trailName,
+  });
+
+  final String mountainId;
+  final String mountainName;
+  final String trailId;
+  final String trailName;
+}
+
+class _DiscoveredTrail {
+  const _DiscoveredTrail({
+    required this.trail,
+    required this.startLat,
+    required this.startLon,
+    required this.region,
+  });
+
+  final MapTrail trail;
+  final double? startLat;
+  final double? startLon;
+  final String? region;
+}
+
+class _MutableMountainGroup {
+  _MutableMountainGroup({
+    required this.id,
+    required this.name,
+    required this.province,
+    required this.elevationM,
+    required this.sizeMb,
+    required this.isDownloaded,
+    this.fallbackBounds,
+  });
+
+  final String id;
+  final String name;
+  String province;
+  int elevationM;
+  int sizeMb;
+  final bool isDownloaded;
+  final GeoBounds? fallbackBounds;
+  final Map<String, MapTrail> trailsById = <String, MapTrail>{};
+}
 
 /// Katalog gunung resmi Hiqeo yang 100% bersumber dari berkas GPX lokal
 /// di `assets/gpx`. Path berkas GPX bersifat internal dan tidak pernah
@@ -313,120 +367,338 @@ class MountainPackData {
     ];
   }
 
-  /// Menghidrasi seluruh jalur dari berkas GPX lokal (`assets/gpx/*.gpx`)
-  /// sehingga koordinat, jarak, tanjakan, elevasi maks, dan bounding box
-  /// berasal langsung dari berkas GPX sebenarnya.
+  /// Mem-parsing nama berkas GPX berformat `"NAMA GUNUNG VIA RUTE.gpx"`.
+  /// Pemisahan kata `VIA` bersifat case-insensitive.
+  static ParsedGpxFileName parseGpxFilename(String assetPath) {
+    final decoded = Uri.decodeFull(assetPath);
+    final slash = math.max(decoded.lastIndexOf('/'), decoded.lastIndexOf('\\'));
+    final fileName = slash >= 0 ? decoded.substring(slash + 1) : decoded;
+    final stem = fileName
+        .replaceFirst(RegExp(r'\.gpx$', caseSensitive: false), '')
+        .trim();
+
+    final viaMatch =
+        RegExp(r'\s+via\s+', caseSensitive: false).firstMatch(stem);
+    final String rawMountain;
+    final String? rawTrail;
+    if (viaMatch != null) {
+      rawMountain = stem.substring(0, viaMatch.start).trim();
+      rawTrail = stem.substring(viaMatch.end).trim();
+    } else {
+      rawMountain = stem;
+      rawTrail = null;
+    }
+
+    final bareMountain = rawMountain
+        .replaceFirst(
+          RegExp(r'^(?:gunung|gn\.?|mt\.?)\s+', caseSensitive: false),
+          '',
+        )
+        .trim();
+    final safeMountain = bareMountain.isEmpty ? stem : bareMountain;
+    final mountainId = _slugify(safeMountain);
+    final mountainName = 'Gunung ${_toTitleCase(safeMountain)}';
+
+    final String trailName;
+    final String trailSlugPart;
+    if (rawTrail == null || rawTrail.isEmpty) {
+      trailName = 'Jalur Utama';
+      trailSlugPart = 'utama';
+    } else {
+      final bareTrail = rawTrail
+          .replaceFirst(RegExp(r'^via\s+', caseSensitive: false), '')
+          .trim();
+      final safeTrail = bareTrail.isEmpty ? rawTrail : bareTrail;
+      trailName = 'Via ${_toTitleCase(safeTrail)}';
+      trailSlugPart = _slugify(safeTrail);
+    }
+
+    return ParsedGpxFileName(
+      mountainId: mountainId,
+      mountainName: mountainName,
+      trailId: '${mountainId}_$trailSlugPart',
+      trailName: trailName,
+    );
+  }
+
+  /// Memindai seluruh aset `.gpx` pada `assets/gpx/` dan `assets/routes/`
+  /// dari `AssetManifest` Flutter secara otomatis.
+  static Future<List<String>> discoverGpxAssetPaths({
+    AssetBundle? bundle,
+  }) async {
+    final effectiveBundle = bundle ?? rootBundle;
+    var candidates = <String>[];
+
+    try {
+      final manifest = await AssetManifest.loadFromAssetBundle(effectiveBundle);
+      candidates = manifest.listAssets();
+    } catch (_) {
+      try {
+        final raw = await effectiveBundle.loadString('AssetManifest.json');
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          candidates = decoded.keys.map((k) => k.toString()).toList();
+        }
+      } catch (_) {
+        return const <String>[];
+      }
+    }
+
+    final gpxPaths = <String>[];
+    for (final rawPath in candidates) {
+      final decoded = Uri.decodeFull(rawPath).replaceAll('\\', '/');
+      final lower = decoded.toLowerCase();
+      final inRoutesFolder =
+          lower.startsWith('assets/gpx/') || lower.startsWith('assets/routes/');
+      if (inRoutesFolder && lower.endsWith('.gpx')) {
+        gpxPaths.add(decoded);
+      }
+    }
+
+    // Prioritaskan `assets/routes/` jika ada nama berkas jalur identik di kedua folder.
+    gpxPaths.sort((a, b) {
+      final aRoutes = a.toLowerCase().startsWith('assets/routes/') ? 0 : 1;
+      final bRoutes = b.toLowerCase().startsWith('assets/routes/') ? 0 : 1;
+      if (aRoutes != bRoutes) return aRoutes.compareTo(bRoutes);
+      return a.compareTo(b);
+    });
+    return List<String>.unmodifiable(gpxPaths);
+  }
+
+  /// Memindai dan menghidrasi seluruh jalur dari berkas GPX lokal
+  /// (`assets/gpx/` dan `assets/routes/`) agar setiap file GPX baru langsung
+  /// muncul otomatis di Peta dan Siapkan Pendakian.
   static Future<List<MountainPack>> loadHydratedPacks({
     Set<String> downloadedIds = const <String>{},
     AssetBundle? bundle,
   }) async {
-    final basePacks = createDefaultPacks(downloadedIds: downloadedIds);
-    final hydrated = <MountainPack>[];
+    final discoveredPaths = await discoverGpxAssetPaths(bundle: bundle);
+    final useOnlyDiscovered = bundle != null && discoveredPaths.isNotEmpty;
+    final groups = <String, _MutableMountainGroup>{};
 
-    for (final pack in basePacks) {
-      final hydratedTrails = <MapTrail>[];
-      double? minLat, maxLat, minLon, maxLon;
-
-      for (final trail in pack.package.trails) {
-        final assetPath = trail.gpxAssetPath;
-        if (assetPath == null || assetPath.isEmpty) {
-          hydratedTrails.add(trail);
-          continue;
-        }
-        try {
-          final route = await GpxLoader.loadAsset(
-            assetPath,
-            bundle: bundle,
-            id: trail.id,
-            defaultName: trail.name,
-            simplifyToleranceM: 6.0,
-          );
-          final pts = route.simplifiedPositions.length >= 2
-              ? route.simplifiedPositions
-              : route.positions;
-          if (pts.length >= 2) {
-            for (final p in pts) {
-              minLat = minLat == null ? p.lat : math.min(minLat, p.lat);
-              maxLat = maxLat == null ? p.lat : math.max(maxLat, p.lat);
-              minLon = minLon == null ? p.lon : math.min(minLon, p.lon);
-              maxLon = maxLon == null ? p.lon : math.max(maxLon, p.lon);
-            }
-            hydratedTrails.add(
-              trail.copyWith(
-                points: pts,
-                distanceM: route.totalDistanceM > 0
-                    ? route.totalDistanceM
-                    : trail.distanceM,
-                elevationGainM: route.totalElevationGainM > 0
-                    ? route.totalElevationGainM
-                    : trail.elevationGainM,
-                maxElevationM: route.maxElevationM ?? trail.maxElevationM,
-              ),
-            );
-          } else {
-            hydratedTrails.add(trail);
-          }
-        } catch (_) {
-          hydratedTrails.add(trail);
-        }
-      }
-
-      // Tambahkan margin kecil (~1,8 km) mengelilingi seluruh jalur gunung
-      // agar Mapbox Offline hanya mengunduh kotak area sekitar gunung saja.
-      const padDeg = 0.018;
-      final bounds = (minLat != null &&
-              maxLat != null &&
-              minLon != null &&
-              maxLon != null)
-          ? GeoBounds(
-              south: minLat - padDeg,
-              west: minLon - padDeg,
-              north: maxLat + padDeg,
-              east: maxLon + padDeg,
-            )
-          : pack.package.offline.bounds;
-
-      final updatedPkg = MountainMapPackage(
-        id: pack.package.id,
-        name: pack.package.name,
-        version: pack.package.version,
-        dataDateUtc: pack.package.dataDateUtc,
-        verified: pack.package.verified,
-        verifiedAtUtc: pack.package.verifiedAtUtc,
-        verifiedBy: pack.package.verifiedBy,
-        notes: pack.package.notes,
-        province: pack.package.province,
-        elevationM: pack.package.elevationM,
-        sizeMb: pack.package.sizeMb,
-        gpxAssetPath: hydratedTrails.first.gpxAssetPath,
-        offline: OfflineConfig(
-          bounds: bounds,
-          minZoom: pack.package.offline.minZoom,
-          maxZoom: pack.package.offline.maxZoom,
-          maxAreaKm2: pack.package.offline.maxAreaKm2,
-          maxTiles: pack.package.offline.maxTiles,
-        ),
-        trails: hydratedTrails,
-      );
-
-      hydrated.add(
-        MountainPack(
+    if (!useOnlyDiscovered) {
+      for (final pack in createDefaultPacks(downloadedIds: downloadedIds)) {
+        final group = _MutableMountainGroup(
           id: pack.id,
           name: pack.name,
           province: pack.province,
           elevationM: pack.elevationM,
-          trailCount: hydratedTrails.length,
           sizeMb: pack.sizeMb,
-          package: updatedPkg,
-          status: pack.status,
-          progress: pack.progress,
-          version: pack.version,
-          gpxAssetPath: hydratedTrails.first.gpxAssetPath,
+          isDownloaded: downloadedIds.contains(pack.id),
+          fallbackBounds: pack.package.offline.bounds,
+        );
+        for (final trail in pack.package.trails) {
+          group.trailsById[trail.id] = trail;
+        }
+        groups[pack.id] = group;
+      }
+    }
+
+    final existingAssetPaths = <String, _DiscoveredTrail>{};
+    for (final assetPath in discoveredPaths) {
+      final parsed = parseGpxFilename(assetPath);
+      if (existingAssetPaths.containsKey(parsed.trailId)) continue;
+
+      final discovered = await _loadTrailFromGpxAsset(
+        assetPath: assetPath,
+        parsed: parsed,
+        bundle: bundle,
+      );
+      if (discovered == null) continue;
+      existingAssetPaths[parsed.trailId] = discovered;
+
+      final group = groups[parsed.mountainId];
+      if (group == null) {
+        final region = discovered.region ?? 'Indonesia';
+        final elev = (discovered.trail.maxElevationM ?? 0).round();
+        groups[parsed.mountainId] = _MutableMountainGroup(
+          id: parsed.mountainId,
+          name: parsed.mountainName,
+          province: region,
+          elevationM: elev,
+          sizeMb: 36,
+          isDownloaded: downloadedIds.contains(parsed.mountainId),
+        )..trailsById[discovered.trail.id] = discovered.trail;
+      } else {
+        group.trailsById[discovered.trail.id] = discovered.trail;
+        final elev = (discovered.trail.maxElevationM ?? 0).round();
+        if (elev > group.elevationM) {
+          group.elevationM = elev;
+        }
+        if ((group.province == 'Indonesia' || group.province.isEmpty) &&
+            discovered.region != null) {
+          group.province = discovered.region!;
+        }
+      }
+    }
+
+    // Jika mode standar tanpa bundle test, pastikan jalur bawaan tanpa entry
+    // discoveredPaths yang berhasil juga tetap terhidrasi bila tersedia.
+    if (!useOnlyDiscovered) {
+      for (final group in groups.values) {
+        for (final entry in group.trailsById.entries.toList()) {
+          final trail = entry.value;
+          final path = trail.gpxAssetPath;
+          if (path == null || path.isEmpty) continue;
+          if (existingAssetPaths.containsKey(trail.id)) continue;
+          final reloaded = await _loadTrailFromGpxAsset(
+            assetPath: path,
+            parsed: ParsedGpxFileName(
+              mountainId: group.id,
+              mountainName: group.name,
+              trailId: trail.id,
+              trailName: trail.name,
+            ),
+            bundle: bundle,
+          );
+          if (reloaded != null) {
+            group.trailsById[trail.id] = trail.copyWith(
+              points: reloaded.trail.points,
+              distanceM: (reloaded.trail.distanceM ?? 0) > 0
+                  ? reloaded.trail.distanceM
+                  : trail.distanceM,
+              elevationGainM: (reloaded.trail.elevationGainM ?? 0) > 0
+                  ? reloaded.trail.elevationGainM
+                  : trail.elevationGainM,
+              maxElevationM:
+                  reloaded.trail.maxElevationM ?? trail.maxElevationM,
+            );
+          }
+        }
+      }
+    }
+
+    final hydrated = <MountainPack>[];
+    for (final group in groups.values) {
+      final hydratedTrails = group.trailsById.values.toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+      if (hydratedTrails.isEmpty) continue;
+
+      double? minLat, maxLat, minLon, maxLon;
+      var computedMaxElevation = group.elevationM;
+      for (final trail in hydratedTrails) {
+        final trailMaxEle = (trail.maxElevationM ?? 0).round();
+        if (trailMaxEle > computedMaxElevation) {
+          computedMaxElevation = trailMaxEle;
+        }
+        for (final p in trail.points) {
+          minLat = minLat == null ? p.lat : math.min(minLat, p.lat);
+          maxLat = maxLat == null ? p.lat : math.max(maxLat, p.lat);
+          minLon = minLon == null ? p.lon : math.min(minLon, p.lon);
+          maxLon = maxLon == null ? p.lon : math.max(maxLon, p.lon);
+        }
+      }
+
+      // Margin kecil (~1,8 km) mengelilingi seluruh jalur gunung untuk offline tiles.
+      const padDeg = 0.018;
+      final bounds =
+          (minLat != null && maxLat != null && minLon != null && maxLon != null)
+              ? GeoBounds(
+                  south: minLat - padDeg,
+                  west: minLon - padDeg,
+                  north: maxLat + padDeg,
+                  east: maxLon + padDeg,
+                )
+              : (group.fallbackBounds ??
+                  const GeoBounds(
+                    south: -7.5,
+                    west: 110.0,
+                    north: -7.4,
+                    east: 110.1,
+                  ));
+
+      final estimatedMb = group.sizeMb > 0 && group.fallbackBounds != null
+          ? group.sizeMb
+          : (((bounds.north - bounds.south) * (bounds.east - bounds.west)) *
+                  18000)
+              .round()
+              .clamp(24, 90);
+
+      hydrated.add(
+        _buildMountain(
+          id: group.id,
+          name: group.name,
+          province: group.province,
+          elevationM: computedMaxElevation,
+          sizeMb: estimatedMb,
+          bounds: bounds,
+          trails: hydratedTrails,
+          isDownloaded: group.isDownloaded,
         ),
       );
     }
 
+    hydrated.sort((a, b) => a.name.compareTo(b.name));
     return hydrated;
+  }
+
+  static Future<_DiscoveredTrail?> _loadTrailFromGpxAsset({
+    required String assetPath,
+    required ParsedGpxFileName parsed,
+    AssetBundle? bundle,
+  }) async {
+    try {
+      final route = await GpxLoader.loadAsset(
+        assetPath,
+        bundle: bundle,
+        id: parsed.trailId,
+        defaultName: parsed.trailName,
+        simplifyToleranceM: 6.0,
+      );
+      final pts = route.simplifiedPositions.length >= 2
+          ? route.simplifiedPositions
+          : route.positions;
+      if (pts.length < 2) return null;
+
+      final start = pts.first;
+      final region = IndonesiaRegionResolver.resolve(
+        lat: start.lat,
+        lon: start.lon,
+        regionHint: route.regionHint,
+        description: route.description,
+      );
+      final trail = _trail(
+        id: parsed.trailId,
+        name: parsed.trailName,
+        gpxAssetPath: assetPath,
+        distanceM: route.totalDistanceM,
+        elevationGainM: route.totalElevationGainM,
+        maxElevationM: route.maxElevationM ?? 0,
+        points: pts,
+      );
+      return _DiscoveredTrail(
+        trail: trail,
+        startLat: start.lat,
+        startLon: start.lon,
+        region: region,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _slugify(String value) {
+    final normalized = value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    return normalized.isEmpty ? 'jalur' : normalized;
+  }
+
+  static String _toTitleCase(String value) {
+    final words = value
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .toList(growable: false);
+    if (words.isEmpty) return '';
+    return words
+        .map(
+          (w) => w.length == 1
+              ? w.toUpperCase()
+              : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}',
+        )
+        .join(' ');
   }
 
   static MapTrail _trail({

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../design/glass/hiqeo_liquid_glass.dart';
 import '../../design/tokens.dart';
-import '../../design/typography.dart';
 import '../../design/widgets/hiqeo_button.dart';
 import '../guides/domain/field_sketch_spec.dart';
 import '../guides/presentation/widgets/field_sketch_stepper.dart';
@@ -12,11 +11,9 @@ class BeginnerGuideHomeCard extends StatelessWidget {
   const BeginnerGuideHomeCard({
     super.key,
     required this.onOpenAll,
-    required this.onOpenTopic,
   });
 
   final VoidCallback onOpenAll;
-  final ValueChanged<String> onOpenTopic;
 
   @override
   Widget build(BuildContext context) {
@@ -31,25 +28,17 @@ class BeginnerGuideHomeCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      'PANDUAN OFFLINE GRATIS',
-                      style: HiqeoTypography.overline(colors.textSecondary),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Panduan Pemula',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        color: colors.textPrimary,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Panduan Pemula',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: colors.textPrimary,
+                  ),
                 ),
               ),
+              const SizedBox(width: 12),
               Container(
                 width: 40,
                 height: 40,
@@ -65,7 +54,7 @@ class BeginnerGuideHomeCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             'Bekal dasar naik gunung dengan diagram teknis lapangan: susun carrier, dirikan tenda, hingga etika jalur.',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -80,31 +69,6 @@ class BeginnerGuideHomeCard extends StatelessWidget {
             borderRadius: 16,
             enableZoom: false,
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              _TopicQuickShortcutChip(
-                chipKey: const ValueKey<String>('home-guide-shortcut-tent'),
-                icon: Icons.holiday_village_outlined,
-                label: 'Dirikan Tenda',
-                onTap: () => onOpenTopic('pitch_tent'),
-              ),
-              _TopicQuickShortcutChip(
-                chipKey: const ValueKey<String>('home-guide-shortcut-carrier'),
-                icon: Icons.backpack_outlined,
-                label: 'Susun Carrier',
-                onTap: () => onOpenTopic('carrier_packing'),
-              ),
-              _TopicQuickShortcutChip(
-                chipKey: const ValueKey<String>('home-guide-shortcut-layering'),
-                icon: Icons.layers_outlined,
-                label: 'Lapis Pakaian',
-                onTap: () => onOpenTopic('layering'),
-              ),
-            ],
-          ),
           const SizedBox(height: 14),
           HiqeoButton(
             key: const ValueKey<String>('home-guide-open-all'),
@@ -112,60 +76,6 @@ class BeginnerGuideHomeCard extends StatelessWidget {
             onPressed: onOpenAll,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _TopicQuickShortcutChip extends StatelessWidget {
-  const _TopicQuickShortcutChip({
-    this.chipKey,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final Key? chipKey;
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = HiqeoColors.of(context);
-    return Semantics(
-      button: true,
-      label: label,
-      child: InkWell(
-        key: chipKey,
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-            decoration: BoxDecoration(
-              color: colors.background,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: colors.hairline),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Icon(icon, size: 15, color: colors.primary),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12.2,
-                    fontWeight: FontWeight.w700,
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

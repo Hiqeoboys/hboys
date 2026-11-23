@@ -271,6 +271,7 @@ class ChatRoomHeaderBar extends StatelessWidget {
     final pill = HiqeoLiquidGlassSurface(
       key: headerPillKey,
       borderRadius: 28,
+      blurSigma: 8.0,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       child: Row(
         children: <Widget>[
@@ -411,29 +412,33 @@ class ChatRoomHeaderBar extends StatelessWidget {
             ),
           );
 
-    return SizedBox(
-      height: height,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: <Widget>[
-          HiqeoBackButton(
-            key: backKey,
-            onTap: onBack,
-          ),
-          const SizedBox(width: 10),
-          Expanded(child: centerWidget),
-          const SizedBox(width: 10),
-          HiqeoGlassCircleButton(
-            key: menuButtonKey,
-            semanticsLabel: menuSemanticsLabel,
-            onTap: onMenuTap,
-            child: const Icon(
-              Icons.menu_rounded,
-              size: 20,
-              color: ChatRoomPalette.textPrimary,
+    return RepaintBoundary(
+      child: SizedBox(
+        height: height,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            HiqeoBackButton(
+              key: backKey,
+              blurSigma: 8.0,
+              onTap: onBack,
             ),
-          ),
-        ],
+            const SizedBox(width: 10),
+            Expanded(child: centerWidget),
+            const SizedBox(width: 10),
+            HiqeoGlassCircleButton(
+              key: menuButtonKey,
+              semanticsLabel: menuSemanticsLabel,
+              blurSigma: 8.0,
+              onTap: onMenuTap,
+              child: const Icon(
+                Icons.menu_rounded,
+                size: 20,
+                color: ChatRoomPalette.textPrimary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -804,4 +809,223 @@ String formatChatDayDividerLabel(DateTime utc, DateTime nowUtc) {
     'Des',
   ];
   return '${local.day} ${months[local.month - 1]} ${local.year}';
+}
+
+/// Pil input pesan komposer bawah putih solid dengan border tegas dan bayangan
+/// gelap lembut agar konsisten di Android & iOS dan tidak menyatu ke gelembung
+/// obrolan di belakangnya.
+class ChatSolidComposerPill extends StatelessWidget {
+  const ChatSolidComposerPill({
+    super.key,
+    required this.child,
+    this.borderRadius = 26,
+    this.padding,
+  });
+
+  static const Color backgroundColor = Color(0xFFFFFFFF);
+  static const Color borderColor = Color(0x33161B29);
+  static const Color textColor = Color(0xFF242B40);
+  static const Color hintColor = Color(0xFF647087);
+  static const Color iconColor = Color(0xFF242B40);
+  static const List<BoxShadow> shadow = <BoxShadow>[
+    BoxShadow(
+      color: Color(0x470B0F1A),
+      blurRadius: 16,
+      offset: Offset(0, 6),
+    ),
+  ];
+
+  final Widget child;
+  final double borderRadius;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(borderRadius);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: radius,
+        border: Border.all(color: borderColor, width: 1.2),
+        boxShadow: shadow,
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: radius,
+        child: Padding(
+          padding: padding ?? EdgeInsets.zero,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Tombol kirim pesan berbentuk lingkaran putih solid (tanpa Liquid Glass)
+/// agar tetap konsisten dan kontras tinggi di Android & iOS pada komposer chat.
+class ChatSolidSendButton extends StatelessWidget {
+  const ChatSolidSendButton({
+    super.key,
+    required this.semanticsLabel,
+    required this.enabled,
+    required this.sending,
+    required this.onTap,
+    this.size = 50,
+  });
+
+  static const Color backgroundColor = Color(0xFFFFFFFF);
+  static const Color activeIconColor = Color(0xFF242B40);
+  static const Color disabledIconColor = Color(0x66242B40);
+  static const Color borderColor = ChatSolidComposerPill.borderColor;
+
+  final String semanticsLabel;
+  final bool enabled;
+  final bool sending;
+  final VoidCallback? onTap;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: enabled && !sending,
+      label: semanticsLabel,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: borderColor, width: 1.2),
+            boxShadow: ChatSolidComposerPill.shadow,
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              splashColor:
+                  enabled ? const Color(0x1A242B40) : Colors.transparent,
+              highlightColor:
+                  enabled ? const Color(0x12242B40) : Colors.transparent,
+              onTap: sending ? null : onTap,
+              child: Center(
+                child: sending
+                    ? const Padding(
+                        padding: EdgeInsets.all(13),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: activeIconColor,
+                        ),
+                      )
+                    : Icon(
+                        Icons.send_rounded,
+                        size: 20,
+                        color: enabled ? activeIconColor : disabledIconColor,
+                      ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pil kapsul gelap semi-transparan untuk cap waktu & status centang di sudut
+/// kanan bawah gelembung foto/video tanpa caption.
+class ChatMediaTimestampBadge extends StatelessWidget {
+  const ChatMediaTimestampBadge({
+    super.key,
+    this.badgeKey,
+    required this.timeStr,
+    required this.isMe,
+  });
+
+  final Key? badgeKey;
+  final String timeStr;
+  final bool isMe;
+
+  static const Color backgroundColor = Color(0x99121724);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: badgeKey,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            timeStr,
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          if (isMe) ...<Widget>[
+            const SizedBox(width: 3),
+            const Icon(
+              Icons.check_rounded,
+              size: 13,
+              color: Color(0xFFE2E8F0),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Pil kapsul gelap semi-transparan untuk indikator durasi video di sudut
+/// kiri atas thumbnail video obrolan.
+class ChatVideoDurationBadge extends StatelessWidget {
+  const ChatVideoDurationBadge({
+    super.key,
+    this.badgeKey,
+    required this.durationText,
+  });
+
+  final Key? badgeKey;
+  final String durationText;
+
+  static const Color backgroundColor = Color(0x99121724);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: badgeKey,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(
+            Icons.videocam_rounded,
+            size: 12,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            durationText,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

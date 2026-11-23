@@ -28,6 +28,7 @@ import '../preparation/application/packing_list_store.dart';
 import '../profile/domain/profile_summary.dart';
 import '../safety/domain/safety_repository.dart';
 import '../safety/presentation/emergency_contacts_sheet.dart';
+import '../shell/hiqeo_shell.dart';
 import '../tracking/domain/tracking_repository.dart';
 import '../tracking/domain/tracking_session.dart';
 import 'beginner_guide_home_card.dart';
@@ -398,7 +399,12 @@ class _BerandaPageState extends State<BerandaPage> {
       bottom: false,
       child: ListenableBuilder(
         listenable: Listenable.merge(
-          <Listenable>[_account, _planStore, _notifications],
+          <Listenable>[
+            _account,
+            _planStore,
+            _notifications,
+            HiqeoShell.activeBranchIndex,
+          ],
         ),
         builder: (context, _) {
           final groupPlan = _planStore.activePlan;
@@ -505,6 +511,7 @@ class _BerandaPageState extends State<BerandaPage> {
                   data: _summary,
                   mountain: _mountainOf(_summarySession),
                   unavailableReason: _summaryError,
+                  isActive: HiqeoShell.activeBranchIndex.value == 0,
                   onViewKartu: sessionId == null
                       ? null
                       : () => context.push(
@@ -518,9 +525,6 @@ class _BerandaPageState extends State<BerandaPage> {
               RepaintBoundary(
                 child: BeginnerGuideHomeCard(
                   onOpenAll: () => context.push('/panduan-pemula'),
-                  onOpenTopic: (topicId) => context.push(
-                    '/panduan-pemula?topik=${Uri.encodeQueryComponent(topicId)}',
-                  ),
                 ),
               ),
             ],

@@ -163,6 +163,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(BackdropFilter), findsNothing);
-    expect(find.byType(HiqeoGlassCard), findsNWidgets(4));
+    expect(find.byType(HiqeoGlassCard), findsNWidgets(5));
   });
 }

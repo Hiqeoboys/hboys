@@ -12,6 +12,8 @@ class HiqeoBackButton extends StatelessWidget {
     this.onTap,
     this.inAppBar = false,
     this.overMap = false,
+    this.brightness,
+    this.blurSigma,
   });
 
   /// Bawaan: `Navigator.maybePop`.
@@ -23,21 +25,34 @@ class HiqeoBackButton extends StatelessWidget {
   /// Dipakai di atas peta Mapbox (tanpa blur, fill rapat).
   final bool overMap;
 
+  /// Penimpaan palet terang/gelap opsional (mis. di atas kanvas media gelap).
+  final Brightness? brightness;
+
+  /// Radius blur opsional untuk efisiensi GPU pada header menggulir.
+  final double? blurSigma;
+
   static const double size = 44;
   static const double appBarWidth = size + HiqeoSpacing.lg + HiqeoSpacing.sm;
 
   @override
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
+    final iconColor = brightness == Brightness.dark
+        ? HiqeoColors.dark.textPrimary
+        : (brightness == Brightness.light
+            ? HiqeoColors.light.textPrimary
+            : colors.textPrimary);
     final button = HiqeoGlassCircleButton(
       semanticsLabel: 'Kembali',
       size: size,
       overMap: overMap,
+      brightness: brightness,
+      blurSigma: blurSigma,
       onTap: onTap ?? () => Navigator.of(context).maybePop(),
       child: HiqeoIcon(
         HiqeoIcons.chevronLeft,
         size: 20,
-        color: colors.textPrimary,
+        color: iconColor,
       ),
     );
     if (!inAppBar) return button;

@@ -10,9 +10,13 @@ import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../kartu/domain/kartu_data.dart';
 
-/// Durasi gambar-turut 700 ms; hitung-naik selesai pada 600 ms di dalamnya.
+/// Durasi gambar-turut intro 700 ms; hitung-naik selesai pada 600 ms di dalamnya.
 const Duration _kIntroDuration = Duration(milliseconds: 700);
 const double _kCountFraction = 600 / 700;
+
+/// Durasi satu siklus animasi loop lembut garis elevasi & rute GPS:
+/// ~2,8 detik gerak garis + 2,0 detik jeda diam di ujung (100%) + 0,2 detik pudar.
+const Duration _kLoopDuration = Duration(milliseconds: 5000);
 
 /// 44 px membuat tinggi kartu 207 px, masih di dalam sasaran 190-210 px.
 const double _kTraceSize = 44;
@@ -32,6 +36,7 @@ class LastTripSummaryCard extends StatefulWidget {
     this.mountain,
     this.onViewKartu,
     this.unavailableReason,
+    this.isActive = true,
   });
 
   /// Ringkasan sesi selesai terbaru; null bila belum ada atau gagal dibaca.
@@ -46,40 +51,161 @@ class LastTripSummaryCard extends StatefulWidget {
   /// Alasan jujur bila riwayat ada tetapi tidak dapat dibaca dari HP.
   final String? unavailableReason;
 
+  /// Menghentikan animasi loop saat tab Beranda tidak sedang aktif.
+  final bool isActive;
+
+  /// Mengembalikan `(sweep, tipAlpha)` dari progres siklus loop [t] (0..1):
+  /// 0..0.56 (~2,8s) menggambar dari awal ke ujung, 0.56..0.96 (2,0s) jeda diam
+  /// di ujung kanan, lalu 0.96..1.0 (~0,2s) memudar sebelum mengulang.
+  @visibleForTesting
+  static (double sweep, double tipAlpha) loopSweepFor(double t) {
+    const drawPhaseEnd = 0.56;
+    const pausePhaseEnd = 0.96;
+    if (t < drawPhaseEnd) {
+      return (
+        Curves.easeInOutCubic.transform((t / drawPhaseEnd).clamp(0.0, 1.0)),
+        1.0,
+      );
+    }
+    if (t < pausePhaseEnd) {
+      return (1.0, 1.0);
+    }
+    final fadeOut = ((1.0 - t) / (1.0 - pausePhaseEnd)).clamp(0.0, 1.0);
+    return (1.0, fadeOut);
+  }
+
+  /// Menghitung koordinat titik ujung garis serta sub-daftar titik polyline
+  /// sampai fraksi panjang [progress] (`0..1`) secara konsisten di semua device.
+  @visibleForTesting
+  static (List<Offset> segmentPoints, Offset tip) samplePolylineAt(
+    List<Offset> points,
+    double progress,
+  ) {
+    if (points.isEmpty) return (const <Offset>[], Offset.zero);
+    if (points.length == 1 || progress <= 0) {
+      return (<Offset>[points.first], points.first);
+    }
+    final clamped = progress.clamp(0.0, 1.0);
+    if (clamped >= 1.0) {
+      return (points, points.last);
+    }
+
+    var totalLength = 0.0;
+    final segLengths = <double>[];
+    for (var i = 1; i < points.length; i++) {
+      final len = (points[i] - points[i - 1]).distance;
+      segLengths.add(len);
+      totalLength += len;
+    }
+    if (totalLength <= 0.0001) {
+      return (points, points.last);
+    }
+
+    final target = totalLength * clamped;
+    var acc = 0.0;
+    final out = <Offset>[points.first];
+    for (var i = 0; i < segLengths.length; i++) {
+      final segLen = segLengths[i];
+      final p0 = points[i];
+      final p1 = points[i + 1];
+      if (acc + segLen >= target) {
+        final localT = segLen <= 0.0001
+            ? 1.0
+            : ((target - acc) / segLen).clamp(0.0, 1.0);
+        final tip = Offset.lerp(p0, p1, localT) ?? p1;
+        out.add(tip);
+        return (out, tip);
+      }
+      out.add(p1);
+      acc += segLen;
+    }
+    return (points, points.last);
+  }
+
   @override
   State<LastTripSummaryCard> createState() => _LastTripSummaryCardState();
 }
 
 class _LastTripSummaryCardState extends State<LastTripSummaryCard>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _intro;
+  late final AnimationController _loop;
   bool _played = false;
   bool _reduceMotion = false;
+  bool _tickerEnabled = true;
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
 
   @override
   void initState() {
     super.initState();
-    _intro = AnimationController(vsync: this, duration: _kIntroDuration);
+    WidgetsBinding.instance.addObserver(this);
+    _intro = AnimationController(vsync: this, duration: _kIntroDuration)
+      ..addStatusListener(_onIntroStatus);
+    _loop = AnimationController(vsync: this, duration: _kLoopDuration);
     if (widget.data != null) _play();
+  }
+
+  void _onIntroStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _syncLoopState();
+      if (mounted) setState(() {});
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_lifecycleState == state) return;
+    _lifecycleState = state;
+    _syncLoopState();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _reduceMotion = VisualEffectPolicyScope.of(context).reduceMotion;
+    _tickerEnabled = TickerMode.valuesOf(context).enabled;
     if (_reduceMotion) _intro.value = 1;
+    _syncLoopState();
   }
 
   @override
   void didUpdateWidget(LastTripSummaryCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.data == null && widget.data != null) _play();
+    if (widget.data == null) {
+      _loop.stop();
+    } else if (oldWidget.isActive != widget.isActive ||
+        oldWidget.data?.isJogging != widget.data?.isJogging) {
+      _syncLoopState();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _intro.removeStatusListener(_onIntroStatus);
+    _loop.dispose();
     _intro.dispose();
     super.dispose();
+  }
+
+  bool get _shouldAnimateLoop =>
+      widget.data != null &&
+      widget.isActive &&
+      !_reduceMotion &&
+      _tickerEnabled &&
+      _lifecycleState == AppLifecycleState.resumed &&
+      _intro.isCompleted;
+
+  void _syncLoopState() {
+    if (!mounted) return;
+    if (_shouldAnimateLoop) {
+      if (!_loop.isAnimating) {
+        unawaited(_loop.repeat());
+      }
+    } else if (_loop.isAnimating) {
+      _loop.stop();
+    }
   }
 
   /// Animasi masuk hanya sekali, saat data pertama kali tersedia.
@@ -268,24 +394,39 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
   Widget _trace(HiqeoColors colors, KartuData data) {
     final route = data.route;
     final hasRoute = route != null && route.length >= 2;
+    final fitted = hasRoute
+        ? KartuData.fitRoute(
+            route,
+            const Size.square(_kTraceSize),
+            padding: 2,
+          )
+        : const <Offset>[];
     return Semantics(
       container: hasRoute,
       label: hasRoute ? 'Jejak rute pendakian' : null,
-      child: SizedBox(
-        width: _kTraceSize,
-        height: _kTraceSize,
-        child: CustomPaint(
-          key: const ValueKey<String>('ringkasan-rute'),
-          painter: _MiniRoutePainter(
-            points: hasRoute
-                ? KartuData.fitRoute(
-                    route,
-                    const Size.square(_kTraceSize),
-                    padding: 2,
-                  )
-                : const <Offset>[],
-            progress: _draw,
-            color: colors.textPrimary,
+      child: RepaintBoundary(
+        child: SizedBox(
+          width: _kTraceSize,
+          height: _kTraceSize,
+          child: AnimatedBuilder(
+            animation: _loop,
+            builder: (context, _) {
+              final animateRouteLoop = hasRoute && _shouldAnimateLoop;
+              final (sweep, tipAlpha) = animateRouteLoop
+                  ? LastTripSummaryCard.loopSweepFor(_loop.value)
+                  : (1.0, 0.0);
+              return CustomPaint(
+                key: const ValueKey<String>('ringkasan-rute'),
+                painter: _MiniRoutePainter(
+                  points: fitted,
+                  progress: _draw,
+                  color: colors.textPrimary,
+                  showTracer: animateRouteLoop,
+                  loopProgress: sweep,
+                  tipAlpha: tipAlpha,
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -319,12 +460,26 @@ class _LastTripSummaryCardState extends State<LastTripSummaryCard>
             clipBehavior: Clip.none,
             children: <Widget>[
               Positioned.fill(
-                child: CustomPaint(
-                  key: const ValueKey<String>('ringkasan-elevasi'),
-                  painter: _SparklinePainter(
-                    geometry: geometry,
-                    progress: _draw,
-                    color: colors.textPrimary,
+                child: RepaintBoundary(
+                  child: AnimatedBuilder(
+                    animation: _loop,
+                    builder: (context, _) {
+                      final animateElevationLoop = _shouldAnimateLoop;
+                      final (sweep, tipAlpha) = animateElevationLoop
+                          ? LastTripSummaryCard.loopSweepFor(_loop.value)
+                          : (1.0, 0.0);
+                      return CustomPaint(
+                        key: const ValueKey<String>('ringkasan-elevasi'),
+                        painter: _SparklinePainter(
+                          geometry: geometry,
+                          progress: _draw,
+                          color: colors.textPrimary,
+                          showTracer: animateElevationLoop,
+                          loopProgress: sweep,
+                          tipAlpha: tipAlpha,
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -446,18 +601,12 @@ class _SparkGeometry {
   }
 }
 
-/// Menggambar sebagian kurva sesuai [progress] supaya tampak tumbuh dari kiri.
-Path _partialPath(Path path, double progress) {
-  final metric = path.computeMetrics().first;
-  return metric.extractPath(0, metric.length * progress.clamp(0.0, 1.0));
-}
-
-Offset _endOf(Path path, double progress, Offset fallback) {
-  final metric = path.computeMetrics().first;
-  final tangent = metric.getTangentForOffset(
-    metric.length * progress.clamp(0.0, 1.0),
-  );
-  return tangent?.position ?? fallback;
+Path _polylinePath(List<Offset> pts) {
+  final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+  for (final p in pts.skip(1)) {
+    path.lineTo(p.dx, p.dy);
+  }
+  return path;
 }
 
 class _SparklinePainter extends CustomPainter {
@@ -465,24 +614,98 @@ class _SparklinePainter extends CustomPainter {
     required this.geometry,
     required this.progress,
     required this.color,
+    this.showTracer = false,
+    this.loopProgress = 1.0,
+    this.tipAlpha = 0.0,
   });
 
   final _SparkGeometry geometry;
   final double progress;
   final Color color;
+  final bool showTracer;
+  final double loopProgress;
+  final double tipAlpha;
 
   @override
   void paint(Canvas canvas, Size size) {
     final points = geometry.points;
     if (points.length < 2 || progress <= 0) return;
-    final path = Path()..moveTo(points.first.dx, points.first.dy);
-    for (final point in points.skip(1)) {
-      path.lineTo(point.dx, point.dy);
+    final fullPath = _polylinePath(points);
+
+    if (showTracer) {
+      // Latar jejak elevasi halus utuh sepanjang profil.
+      canvas.drawPath(
+        fullPath,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = HiqeoMetrics.iconStroke * 0.85
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..color = color.withValues(alpha: 0.22),
+      );
+      final activeT = loopProgress.clamp(0.0, 1.0);
+      if (activeT > 0.005) {
+        final (segPts, tip) = LastTripSummaryCard.samplePolylineAt(
+          points,
+          activeT,
+        );
+        final drawn = _polylinePath(segPts);
+        final fill = Path.from(drawn)
+          ..lineTo(tip.dx, size.height)
+          ..lineTo(points.first.dx, size.height)
+          ..close();
+        canvas.drawPath(
+          fill,
+          Paint()
+            ..shader = ui.Gradient.linear(
+              Offset.zero,
+              Offset(0, size.height),
+              <Color>[
+                color.withValues(alpha: 0.20),
+                color.withValues(alpha: 0.0),
+              ],
+            ),
+        );
+        canvas.drawPath(
+          drawn,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = HiqeoMetrics.iconStroke
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round
+            ..color = color,
+        );
+        if (tipAlpha > 0.01) {
+          canvas.drawCircle(
+            tip,
+            7.5,
+            Paint()..color = color.withValues(alpha: 0.14 * tipAlpha),
+          );
+          canvas.drawCircle(
+            tip,
+            4.5,
+            Paint()..color = color.withValues(alpha: 0.30 * tipAlpha),
+          );
+          canvas.drawCircle(
+            tip,
+            2.6,
+            Paint()..color = color.withValues(alpha: tipAlpha),
+          );
+        }
+        if (tip.dx >= geometry.peak.dx - 0.5) {
+          canvas.drawCircle(geometry.peak, 3.0, Paint()..color = color);
+        }
+      }
+      return;
     }
-    final drawn = _partialPath(path, progress);
-    final end = _endOf(path, progress, points.last);
+
+    final (segPts, tip) = LastTripSummaryCard.samplePolylineAt(
+      points,
+      progress,
+    );
+    final drawn = _polylinePath(segPts);
     final fill = Path.from(drawn)
-      ..lineTo(end.dx, size.height)
+      ..lineTo(tip.dx, size.height)
       ..lineTo(points.first.dx, size.height)
       ..close();
     canvas.drawPath(
@@ -506,7 +729,7 @@ class _SparklinePainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round
         ..color = color,
     );
-    if (end.dx >= geometry.peak.dx - 0.5) {
+    if (tip.dx >= geometry.peak.dx - 0.5) {
       canvas.drawCircle(geometry.peak, 3.2, Paint()..color = color);
     }
   }
@@ -515,7 +738,10 @@ class _SparklinePainter extends CustomPainter {
   bool shouldRepaint(_SparklinePainter oldDelegate) =>
       oldDelegate.progress != progress ||
       oldDelegate.color != color ||
-      oldDelegate.geometry != geometry;
+      oldDelegate.geometry != geometry ||
+      oldDelegate.showTracer != showTracer ||
+      oldDelegate.loopProgress != loopProgress ||
+      oldDelegate.tipAlpha != tipAlpha;
 }
 
 class _MiniRoutePainter extends CustomPainter {
@@ -523,21 +749,65 @@ class _MiniRoutePainter extends CustomPainter {
     required this.points,
     required this.progress,
     required this.color,
+    this.showTracer = false,
+    this.loopProgress = 1.0,
+    this.tipAlpha = 0.0,
   });
 
   final List<Offset> points;
   final double progress;
   final Color color;
+  final bool showTracer;
+  final double loopProgress;
+  final double tipAlpha;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (points.length < 2 || progress <= 0) return;
-    final path = Path()..moveTo(points.first.dx, points.first.dy);
-    for (final point in points.skip(1)) {
-      path.lineTo(point.dx, point.dy);
+    final fullPath = _polylinePath(points);
+    if (showTracer) {
+      canvas.drawPath(
+        fullPath,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..color = color.withValues(alpha: 0.26),
+      );
+      final activeT = loopProgress.clamp(0.0, 1.0);
+      if (activeT > 0.005) {
+        final (segPts, tip) = LastTripSummaryCard.samplePolylineAt(
+          points,
+          activeT,
+        );
+        canvas.drawPath(
+          _polylinePath(segPts),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.2
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round
+            ..color = color.withValues(alpha: 0.92),
+        );
+        if (tipAlpha > 0.01) {
+          canvas.drawCircle(
+            tip,
+            5.8,
+            Paint()..color = color.withValues(alpha: 0.24 * tipAlpha),
+          );
+          canvas.drawCircle(
+            tip,
+            2.6,
+            Paint()..color = color.withValues(alpha: tipAlpha),
+          );
+        }
+      }
+      return;
     }
+    final (segPts, _) = LastTripSummaryCard.samplePolylineAt(points, progress);
     canvas.drawPath(
-      _partialPath(path, progress),
+      _polylinePath(segPts),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2
@@ -551,5 +821,8 @@ class _MiniRoutePainter extends CustomPainter {
   bool shouldRepaint(_MiniRoutePainter oldDelegate) =>
       oldDelegate.progress != progress ||
       oldDelegate.color != color ||
-      oldDelegate.points != points;
+      oldDelegate.points != points ||
+      oldDelegate.showTracer != showTracer ||
+      oldDelegate.loopProgress != loopProgress ||
+      oldDelegate.tipAlpha != tipAlpha;
 }

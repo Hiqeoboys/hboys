@@ -4,38 +4,171 @@ import 'package:flutter/services.dart';
 import '../../../../design/glass/hiqeo_liquid_glass.dart';
 import '../../../../design/tokens.dart';
 import '../../domain/field_sketch_spec.dart';
-import 'field_sketch_beginner_painter.dart';
-import 'field_sketch_safety_painter.dart';
-import 'field_sketch_survival_painter.dart';
 import 'field_sketch_tokens.dart';
 
-/// CustomPainter utama untuk seluruh diagram Technical Field Sketch 100% offline.
-class FieldSketchPainter extends CustomPainter {
-  const FieldSketchPainter({
+/// Tampilan diagram sketsa teknis offline berbasis aset terkompresi `.webp`.
+class _GuideSketchImage extends StatelessWidget {
+  const _GuideSketchImage({
     required this.sketchId,
+    required this.fit,
+    required this.isZoom,
     this.overlay,
+    this.fallbackTitle,
   });
 
   final FieldSketchId sketchId;
+  final BoxFit fit;
+  final bool isZoom;
   final FieldSketchOverlay? overlay;
+  final String? fallbackTitle;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    FieldSketchPrimitives.withVirtualCanvas(canvas, size, (c) {
-      final name = sketchId.name;
-      if (name.startsWith('p3k')) {
-        paintSafetySketch(c, sketchId);
-      } else if (name.startsWith('surv')) {
-        paintSurvivalSketch(c, sketchId);
-      } else {
-        paintBeginnerSketch(c, sketchId, overlay: overlay);
-      }
-    });
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final logicalW = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? constraints.maxWidth
+            : 360.0;
+        final cacheWidth = (logicalW * dpr).round().clamp(320, isZoom ? 2048 : 1200);
+        return Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            Image.asset(
+              sketchId.assetPath,
+              fit: fit,
+              cacheWidth: cacheWidth,
+              filterQuality: isZoom ? FilterQuality.high : FilterQuality.medium,
+              gaplessPlayback: true,
+              errorBuilder: (_, __, ___) => _SketchAssetFallback(
+                assetPath: sketchId.assetPath,
+                title: fallbackTitle,
+              ),
+            ),
+            if (overlay != null)
+              Positioned(
+                left: 10,
+                top: 10,
+                right: 10,
+                child: IgnorePointer(
+                  child: _SketchOverlayPills(overlay: overlay!),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _SketchAssetFallback extends StatelessWidget {
+  const _SketchAssetFallback({
+    required this.assetPath,
+    this.title,
+  });
+
+  final String assetPath;
+  final String? title;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(color: FieldSketchPalette.canvas),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+              const Icon(
+                Icons.architecture_rounded,
+                size: 32,
+                color: FieldSketchPalette.sage,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title ?? 'Ilustrasi Teknis Lapangan',
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: FieldSketchPalette.ink,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: FieldSketchPalette.ink.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Text(
+                  assetPath,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: FieldSketchPalette.inkSoft,
+                  ),
+                ),
+              ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SketchOverlayPills extends StatelessWidget {
+  const _SketchOverlayPills({required this.overlay});
+
+  final FieldSketchOverlay overlay;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: <Widget>[
+        _badge(overlay.sizeTag, accent: true),
+        _badge(overlay.personBadge),
+        _badge(overlay.stakesBadge),
+        if (overlay.showVestibuleRidgePole) _badge('+ Ridge Pole', accent: true),
+      ],
+    );
   }
 
-  @override
-  bool shouldRepaint(FieldSketchPainter oldDelegate) =>
-      oldDelegate.sketchId != sketchId || oldDelegate.overlay != overlay;
+  Widget _badge(String text, {bool accent = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: FieldSketchPalette.canvas.withValues(alpha: 0.84),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: (accent ? FieldSketchPalette.sage : FieldSketchPalette.ink)
+              .withValues(alpha: 0.42),
+        ),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: accent ? FieldSketchPalette.sage : FieldSketchPalette.ink,
+        ),
+      ),
+    );
+  }
 }
 
 /// Kanvas sketsa teknis terisolasi `RepaintBoundary` dengan dukungan Tap-to-Zoom layar penuh.
@@ -99,11 +232,12 @@ class FieldSketchCanvas extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: <Widget>[
-                CustomPaint(
-                  painter: FieldSketchPainter(
-                    sketchId: sketchId,
-                    overlay: overlay,
-                  ),
+                _GuideSketchImage(
+                  sketchId: sketchId,
+                  overlay: overlay,
+                  fit: BoxFit.cover,
+                  isZoom: false,
+                  fallbackTitle: stepTitle,
                 ),
                 if (enableZoom)
                   Positioned(
@@ -306,11 +440,12 @@ class _FieldSketchZoomDialogState extends State<FieldSketchZoomDialog> {
                     child: AspectRatio(
                       aspectRatio: 400 / 240,
                       child: RepaintBoundary(
-                        child: CustomPaint(
-                          painter: FieldSketchPainter(
-                            sketchId: widget.sketchId,
-                            overlay: widget.overlay,
-                          ),
+                        child: _GuideSketchImage(
+                          sketchId: widget.sketchId,
+                          overlay: widget.overlay,
+                          fit: BoxFit.contain,
+                          isZoom: true,
+                          fallbackTitle: widget.stepTitle,
                         ),
                       ),
                     ),

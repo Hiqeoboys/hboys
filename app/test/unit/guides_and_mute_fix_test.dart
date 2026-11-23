@@ -1,9 +1,13 @@
+import 'dart:io';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nama_app/design/app_theme.dart';
 import 'package:nama_app/features/chat/domain/group_chat_models.dart';
+import 'package:nama_app/features/chat/presentation/chat_media_preview_page.dart';
+import 'package:nama_app/features/chat/presentation/chat_room_chrome.dart';
 import 'package:nama_app/features/guides/domain/beginner_guide_data.dart';
 import 'package:nama_app/features/guides/domain/field_sketch_spec.dart';
 import 'package:nama_app/features/guides/presentation/beginner_guide_page.dart';
@@ -12,6 +16,8 @@ import 'package:nama_app/features/home/beginner_guide_home_card.dart';
 import 'package:nama_app/features/safety/domain/first_aid_data.dart';
 import 'package:nama_app/features/safety/presentation/first_aid_guide_page.dart';
 import 'package:nama_app/features/social/data/chat_mute_service.dart';
+import 'package:nama_app/features/social/data/community_service.dart';
+import 'package:nama_app/features/social/presentation/community_chat_page.dart';
 import 'package:nama_app/infrastructure/notifications/device_notification_group_store.dart';
 import 'package:nama_app/infrastructure/notifications/push_notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -150,9 +156,8 @@ void main() {
   });
 
   group('Widget UI: Beranda Card, BeginnerGuidePage, Zoom & FirstAidGuidePage', () {
-    testWidgets('BeginnerGuideHomeCard menampilkan pratinjau, 3 pintasan & aksi', (tester) async {
+    testWidgets('BeginnerGuideHomeCard menampilkan pratinjau, ringkasan & tombol tanpa 3 pintasan', (tester) async {
       var openedAll = false;
-      String? openedTopic;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -162,7 +167,6 @@ void main() {
               padding: const EdgeInsets.all(16),
               child: BeginnerGuideHomeCard(
                 onOpenAll: () => openedAll = true,
-                onOpenTopic: (t) => openedTopic = t,
               ),
             ),
           ),
@@ -170,23 +174,113 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.text('PANDUAN OFFLINE GRATIS'), findsNothing);
       expect(find.text('Panduan Pemula'), findsOneWidget);
-      expect(find.text('Dirikan Tenda'), findsOneWidget);
-      expect(find.text('Susun Carrier'), findsOneWidget);
-      expect(find.text('Lapis Pakaian'), findsOneWidget);
+      expect(find.text('Dirikan Tenda'), findsNothing);
+      expect(find.text('Susun Carrier'), findsNothing);
+      expect(find.text('Lapis Pakaian'), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('home-guide-shortcut-tent')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('home-guide-shortcut-carrier')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('home-guide-shortcut-layering')),
+        findsNothing,
+      );
       expect(find.text('Buka Panduan Lengkap'), findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey<String>('home-guide-shortcut-tent')));
-      expect(openedTopic, 'pitch_tent');
-
-      await tester.tap(find.byKey(const ValueKey<String>('home-guide-shortcut-carrier')));
-      expect(openedTopic, 'carrier_packing');
-
-      await tester.tap(find.byKey(const ValueKey<String>('home-guide-shortcut-layering')));
-      expect(openedTopic, 'layering');
 
       await tester.tap(find.byKey(const ValueKey<String>('home-guide-open-all')));
       expect(openedAll, isTrue);
+    });
+
+    testWidgets('BeginnerGuidePage akordeon auto-close hanya membuka 1 topik & memutar ikon chevron', (tester) async {
+      tester.view.physicalSize = const Size(390, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: hiqeoLightTheme,
+          home: const BeginnerGuidePage(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final t1 = kBeginnerGuideTopics[0].id;
+      final t2 = kBeginnerGuideTopics[1].id;
+
+      // Keadaan awal tertutup semua
+      expect(
+        tester
+            .widget<AnimatedRotation>(
+              find.byKey(ValueKey<String>('beginner-topic-chevron-$t1')),
+            )
+            .turns,
+        0.0,
+      );
+      expect(
+        tester
+            .widget<AnimatedRotation>(
+              find.byKey(ValueKey<String>('beginner-topic-chevron-$t2')),
+            )
+            .turns,
+        0.0,
+      );
+
+      // Buka topik 1 -> chevron berputar 180 derajat (0.5 turn)
+      await tester.tap(find.byKey(ValueKey<String>('beginner-topic-toggle-$t1')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<AnimatedRotation>(
+              find.byKey(ValueKey<String>('beginner-topic-chevron-$t1')),
+            )
+            .turns,
+        0.5,
+      );
+
+      // Buka topik 2 -> topik 1 otomatis menutup
+      final toggle2 = find.byKey(ValueKey<String>('beginner-topic-toggle-$t2'));
+      await tester.ensureVisible(toggle2);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle2);
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<AnimatedRotation>(
+              find.byKey(ValueKey<String>('beginner-topic-chevron-$t1')),
+            )
+            .turns,
+        0.0,
+      );
+      expect(
+        tester
+            .widget<AnimatedRotation>(
+              find.byKey(ValueKey<String>('beginner-topic-chevron-$t2')),
+            )
+            .turns,
+        0.5,
+      );
+
+      // Ketuk ulang topik 2 -> menutup kembali
+      await tester.ensureVisible(toggle2);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle2);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<AnimatedRotation>(
+              find.byKey(ValueKey<String>('beginner-topic-chevron-$t2')),
+            )
+            .turns,
+        0.0,
+      );
     });
 
     testWidgets('BeginnerGuidePage membuka topik tenda, mengganti jenis/ukuran, & Tap-to-Zoom InteractiveViewer', (tester) async {
@@ -207,8 +301,10 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        expect(find.text('100% Gratis & Bisa Dibaca Offline'), findsNothing);
+        expect(find.textContaining('Ketuk tiap diagram teknis'), findsNothing);
         expect(find.text('Pilih Jenis Tenda'), findsOneWidget);
-        expect(find.text('1 orang'), findsOneWidget);
+        expect(find.text('1 orang'), findsAtLeastNWidgets(1));
 
         // Ubah ukuran menjadi 3-4 Orang -> overlay & label berubah dinamis
         final sizeBtn = find.byKey(
@@ -218,7 +314,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(sizeBtn);
         await tester.pumpAndSettle();
-        expect(find.text('2 orang saat tegakkan frame'), findsOneWidget);
+        expect(find.text('2 orang saat tegakkan frame'), findsAtLeastNWidgets(1));
 
         // Ubah jenis menjadi Tunnel
         final tunnelBtn = find.byKey(const ValueKey<String>('tent-type-tunnel'));
@@ -228,7 +324,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           find.textContaining('Pasak Kuat Ujung Ekor Belakang'),
-          findsOneWidget,
+          findsAtLeastNWidgets(1),
         );
 
         // Tap-to-Zoom pada kanvas langkah
@@ -445,6 +541,174 @@ void main() {
       );
       expect(shown, hasLength(1));
       expect(shown.single.title, 'DARURAT SOS HIQEO');
+    });
+  });
+
+  group('Real Guide Assets, Chat Media Preview & Caption Bubble', () {
+    test('seluruh FieldSketchId memetakan slug unik assets/guides/*.webp tanpa duplikat', () {
+      final paths = FieldSketchId.values.map((e) => e.assetPath).toList();
+      expect(paths, hasLength(102));
+      expect(paths.toSet(), hasLength(102));
+      for (final p in paths) {
+        expect(p, matches(RegExp(r'^assets/guides/[a-z0-9_]+\.webp$')));
+      }
+    });
+
+    testWidgets('FieldSketchCanvas merender Image.asset + overlay tenda + Zoom tanpa CustomPainter stickman', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: hiqeoLightTheme,
+          home: const Scaffold(
+            body: Padding(
+              padding: EdgeInsets.all(16),
+              child: FieldSketchCanvas(
+                sketchId: FieldSketchId.domeCrossStep2PolesX,
+                overlay: FieldSketchOverlay(
+                  personBadge: '2 orang saat tegakkan frame',
+                  stakesBadge: 'Min. 6-8 pasak',
+                  guylineSpanLabel: 'Rentang guyline 1,5 m',
+                  showVestibuleRidgePole: true,
+                  showExtraStormGuys: false,
+                  sizeTag: '3-4P',
+                ),
+                stepTitle: 'Rangkai 2 Frame Silang',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('3-4P'), findsOneWidget);
+      expect(find.text('+ Ridge Pole'), findsOneWidget);
+
+      await tester.tap(find.byType(FieldSketchCanvas));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('field-sketch-interactive-viewer')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('ChatMediaPreviewPage menampilkan InteractiveViewer, pil keterangan putih solid, & mengembalikan caption', (tester) async {
+      CapturedMediaSubmission? result;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: hiqeoDarkTheme,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    result = await Navigator.of(context)
+                        .push<CapturedMediaSubmission>(
+                      MaterialPageRoute<CapturedMediaSubmission>(
+                        builder: (_) => ChatMediaPreviewPage(
+                          file: File('/tmp/nonexistent_preview.webp'),
+                          isVideo: false,
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('Buka Preview'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Buka Preview'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('media-preview-interactive-viewer')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('media-preview-back')),
+        findsOneWidget,
+      );
+      expect(find.text('Tambahkan keterangan...'), findsOneWidget);
+      expect(
+        find.byType(ChatSolidComposerPill),
+        findsOneWidget,
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('media-preview-caption-input')),
+        'Pos 3 sudah cerah!',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('media-preview-send')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(result, isNotNull);
+      expect(result!.isVideo, isFalse);
+      expect(result!.caption, 'Pos 3 sudah cerah!');
+    });
+
+    testWidgets('Bubble foto komunitas memakai badge waktu di sudut saat tanpa caption & menaruhnya di bawah teks saat ada caption', (tester) async {
+      final community = CommunitySummary(
+        id: 'comm-cap',
+        name: 'Pendaki Jawa',
+        description: 'Info jalur',
+        ownerId: 'u-1',
+        memberCount: 5,
+        isJoined: true,
+        createdAt: DateTime.utc(2026, 11, 1),
+      );
+      final messages = <CommunityMessage>[
+        CommunityMessage(
+          id: 'img-no-cap',
+          communityId: 'comm-cap',
+          senderId: 'u-1',
+          senderName: 'Raka',
+          messageType: CommunityMessageType.image,
+          mediaUrl: 'local_missing_1.webp',
+          content: null,
+          createdAt: DateTime.utc(2026, 11, 22, 8, 10),
+        ),
+        CommunityMessage(
+          id: 'img-with-cap',
+          communityId: 'comm-cap',
+          senderId: 'u-1',
+          senderName: 'Raka',
+          messageType: CommunityMessageType.image,
+          mediaUrl: 'local_missing_2.webp',
+          content: 'Pemandangan sunrise Pos 4',
+          createdAt: DateTime.utc(2026, 11, 22, 8, 12),
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: hiqeoDarkTheme,
+          home: CommunityChatPage(
+            community: community,
+            currentUserIdOverride: 'u-1',
+            initialMessages: messages,
+            hasFullSocialOverride: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final noCapBadge = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('community-photo-time-img-no-cap')),
+      );
+      expect(
+        (noCapBadge.decoration! as BoxDecoration).color,
+        ChatMediaTimestampBadge.backgroundColor,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('community-photo-time-img-with-cap')),
+        findsNothing,
+      );
+      expect(find.text('Pemandangan sunrise Pos 4'), findsOneWidget);
     });
   });
 }

@@ -80,7 +80,7 @@ class GpxLoader {
         ),
       );
       if (cacheKey != null) {
-        if (_assetCache.length >= 24) {
+        if (_assetCache.length >= 64) {
           _assetCache.remove(_assetCache.keys.first);
         }
         _assetCache[cacheKey] = route;
@@ -104,11 +104,16 @@ class GpxLoader {
     final gpx = GpxReader().fromString(xmlString);
     final points = <TrackRoutePoint>[];
     String? resolvedName;
+    String? resolvedDescription = gpx.metadata?.desc?.trim();
 
     // 1. Baca semua <trk> dan <trkseg>
     for (final trk in gpx.trks) {
       if (resolvedName == null && (trk.name?.trim().isNotEmpty ?? false)) {
         resolvedName = trk.name!.trim();
+      }
+      if ((resolvedDescription == null || resolvedDescription.isEmpty) &&
+          (trk.desc?.trim().isNotEmpty ?? false)) {
+        resolvedDescription = trk.desc!.trim();
       }
       for (final seg in trk.trksegs) {
         for (final pt in seg.trkpts) {
@@ -165,6 +170,16 @@ class GpxLoader {
     }
 
     final waypoints = _extractWaypoints(gpx.wpts, points);
+    double? maxWptElevation;
+    for (final wpt in waypoints) {
+      final ele = wpt.elevationM;
+      if (ele != null &&
+          ele.isFinite &&
+          (maxWptElevation == null || ele > maxWptElevation)) {
+        maxWptElevation = ele;
+      }
+    }
+    final regionHint = _extractRegionTag(xmlString);
 
     return TrackRoute.fromPoints(
       id: id,
@@ -173,7 +188,24 @@ class GpxLoader {
       waypoints: waypoints,
       simplifyToleranceM: simplifyToleranceM,
       elevationThresholdM: elevationThresholdM,
+      description: (resolvedDescription != null && resolvedDescription.isNotEmpty)
+          ? resolvedDescription
+          : null,
+      regionHint: regionHint,
+      maxElevationOverrideM: maxWptElevation,
     );
+  }
+
+  static final RegExp _regionTagRegex = RegExp(
+    r'<\s*(?:[a-zA-Z0-9_-]+:)?region\s*>\s*([^<]+?)\s*<\s*/\s*(?:[a-zA-Z0-9_-]+:)?region\s*>',
+    caseSensitive: false,
+  );
+
+  static String? _extractRegionTag(String xml) {
+    final match = _regionTagRegex.firstMatch(xml);
+    final raw = match?.group(1)?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    return raw;
   }
 
   static List<TrackWaypoint> _extractWaypoints(

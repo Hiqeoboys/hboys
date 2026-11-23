@@ -73,6 +73,8 @@ class TrackRoute {
     required List<double> elevationProfile,
     this.minElevationM,
     this.maxElevationM,
+    this.description,
+    this.regionHint,
     List<TrackWaypoint> waypoints = const <TrackWaypoint>[],
   })  : points = List<TrackRoutePoint>.unmodifiable(points),
         simplifiedPoints = List<TrackRoutePoint>.unmodifiable(simplifiedPoints),
@@ -87,6 +89,9 @@ class TrackRoute {
     double simplifyToleranceM = 5.0,
     double elevationThresholdM = 2.5,
     int elevationSmoothingWindow = 5,
+    String? description,
+    String? regionHint,
+    double? maxElevationOverrideM,
   }) {
     final distanceM = computeHaversineDistanceM(points);
     final eleStats = computeElevationStats(
@@ -103,6 +108,12 @@ class TrackRoute {
       points,
       smoothing: elevationSmoothingWindow,
     );
+    var resolvedMaxEle = eleStats.maxElevationM;
+    if (maxElevationOverrideM != null &&
+        maxElevationOverrideM.isFinite &&
+        (resolvedMaxEle == null || maxElevationOverrideM > resolvedMaxEle)) {
+      resolvedMaxEle = maxElevationOverrideM;
+    }
 
     return TrackRoute(
       id: id,
@@ -113,15 +124,19 @@ class TrackRoute {
       totalElevationGainM: eleStats.gainM,
       totalElevationLossM: eleStats.lossM,
       minElevationM: eleStats.minElevationM,
-      maxElevationM: eleStats.maxElevationM,
+      maxElevationM: resolvedMaxEle,
       bounds: bounds,
       elevationProfile: profile,
       waypoints: waypoints,
+      description: description,
+      regionHint: regionHint,
     );
   }
 
   final String id;
   final String name;
+  final String? description;
+  final String? regionHint;
 
   /// Daftar pos/waypoint bermakna dari `<wpt>` GPX yang diurutkan sepanjang jalur.
   final List<TrackWaypoint> waypoints;

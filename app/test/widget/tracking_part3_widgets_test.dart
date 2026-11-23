@@ -253,7 +253,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 800));
     expect(find.text('JOGGING TERAKHIR'), findsOneWidget);
     expect(find.text('Jogging 20 Nov 2026'), findsOneWidget);
     expect(find.text('PUNCAK'), findsNothing);

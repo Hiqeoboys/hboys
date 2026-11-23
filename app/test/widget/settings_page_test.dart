@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nama_app/core/config/supabase_config.dart';
 import 'package:nama_app/design/app_theme.dart';
 import 'package:nama_app/design/background/background_motion_controller.dart';
+import 'package:nama_app/design/glass/hiqeo_liquid_glass.dart';
 import 'package:nama_app/design/theme_mode_controller.dart';
 import 'package:nama_app/features/auth/application/account_controller.dart';
 import 'package:nama_app/features/auth/domain/auth_service.dart';
@@ -53,8 +54,9 @@ Future<_SettingsHarness> _pumpSettings(
   bool signedIn = true,
   PermissionReport? permissions,
   PlusController? plus,
+  Size size = const Size(390, 2800),
 }) async {
-  tester.view.physicalSize = const Size(390, 2800);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -157,7 +159,7 @@ Future<_SettingsHarness> _pumpSettings(
 
 void main() {
   testWidgets(
-      'merender semua bagian secara berurutan dan menyembunyikan Batalkan langganan untuk non-Plus',
+      'seluruh 4 menu dropdown mulai dalam keadaan tertutup dan isi dibuka di tempat',
       (tester) async {
     final harness = await _pumpSettings(tester);
 
@@ -171,11 +173,47 @@ void main() {
     expect(find.text('Tema'), findsOneWidget);
     expect(find.text('Kebijakan privasi'), findsOneWidget);
     expect(find.text('Hapus cache'), findsOneWidget);
+    expect(find.text('Batalkan langganan'), findsOneWidget);
     expect(
       find.text('Cache peta: 42 MB, Data sementara: 8 MB'),
       findsOneWidget,
     );
-    expect(find.text('Batalkan langganan'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('settings-scroll-boundary')),
+        matching: find.byType(BackdropFilter),
+      ),
+      findsNothing,
+    );
+    expect(find.byType(HiqeoGlassCard), findsNWidgets(5));
+
+    // Keadaan awal tertutup (turns == 0.0, isi tidak dirender di pohon)
+    for (final chevronKey in const <String>[
+      'settings-chevron-theme',
+      'settings-chevron-privacy',
+      'settings-chevron-cache',
+      'settings-chevron-subscription',
+    ]) {
+      final rot = tester.widget<AnimatedRotation>(
+        find.byKey(ValueKey<String>(chevronKey)),
+      );
+      expect(rot.turns, 0.0);
+    }
+    expect(
+      find.byKey(const ValueKey('settings-theme-dark')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-open-privacy-policy')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-clear-cache-button')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('settings-dropdown-privacy')));
+    await tester.pumpAndSettle();
 
     await tester.tap(
       find.byKey(const ValueKey('settings-open-privacy-policy')),
@@ -185,15 +223,99 @@ void main() {
   });
 
   testWidgets(
-      'menampilkan bagian Batalkan langganan hanya ketika pengguna berstatus Plus',
+      'auto-close akordeon: membuka menu baru menutup menu sebelumnya & ketuk ulang menutup diri',
       (tester) async {
+    await _pumpSettings(tester);
+
+    await tester.tap(find.byKey(const ValueKey('settings-dropdown-theme')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<AnimatedRotation>(
+            find.byKey(const ValueKey('settings-chevron-theme')),
+          )
+          .turns,
+      0.5,
+    );
+    expect(find.byKey(const ValueKey('settings-theme-dark')), findsOneWidget);
+
+    // Ketuk Hapus cache -> Tema otomatis menutup, Hapus cache membuka
+    await tester.tap(find.byKey(const ValueKey('settings-dropdown-cache')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<AnimatedRotation>(
+            find.byKey(const ValueKey('settings-chevron-theme')),
+          )
+          .turns,
+      0.0,
+    );
+    expect(find.byKey(const ValueKey('settings-theme-dark')), findsNothing);
+    expect(
+      tester
+          .widget<AnimatedRotation>(
+            find.byKey(const ValueKey('settings-chevron-cache')),
+          )
+          .turns,
+      0.5,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-clear-cache-button')),
+      findsOneWidget,
+    );
+
+    // Ketuk ulang Hapus cache -> menutup kembali
+    await tester.tap(find.byKey(const ValueKey('settings-dropdown-cache')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<AnimatedRotation>(
+            find.byKey(const ValueKey('settings-chevron-cache')),
+          )
+          .turns,
+      0.0,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-clear-cache-button')),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
+      'dropdown Batalkan langganan menampilkan ringkasan gratis untuk non-Plus & opsi toko untuk Plus',
+      (tester) async {
+    // 1. Pengguna Gratis
+    await _pumpSettings(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('settings-dropdown-subscription')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Gratis'), findsOneWidget);
+    expect(
+      find.textContaining('Tidak ada langganan berbayar aktif'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-manage-store-subscription')),
+      findsNothing,
+    );
+
+    // 2. Pengguna Plus aktif
     final plus = await buildPlusController(
       token: 'valid-token',
       payload: plusPayload(),
     );
     await _pumpSettings(tester, plus: plus);
+    await tester.tap(
+      find.byKey(const ValueKey('settings-dropdown-subscription')),
+    );
+    await tester.pumpAndSettle();
 
-    expect(find.text('Batalkan langganan'), findsOneWidget);
+    expect(find.textContaining('Aktif ('), findsOneWidget);
     expect(
       find.byKey(const ValueKey('settings-manage-store-subscription')),
       findsOneWidget,
@@ -205,6 +327,9 @@ void main() {
     final harness = await _pumpSettings(tester);
 
     expect(harness.theme.mode, ThemeMode.system);
+    await tester.tap(find.byKey(const ValueKey('settings-dropdown-theme')));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byKey(const ValueKey('settings-theme-dark')));
     await tester.pumpAndSettle();
 
@@ -216,6 +341,9 @@ void main() {
   testWidgets('membersihkan cache menampilkan konfirmasi dan mereset ukuran',
       (tester) async {
     final harness = await _pumpSettings(tester);
+
+    await tester.tap(find.byKey(const ValueKey('settings-dropdown-cache')));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('settings-clear-cache-button')));
     await tester.pumpAndSettle();
@@ -244,10 +372,14 @@ void main() {
     );
     expect(find.text('Ganti akun'), findsNothing);
     expect(find.text('Hapus akun'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('settings-dropdown-privacy')));
+    await tester.pumpAndSettle();
     expect(find.textContaining('bersifat sukarela (baku nonaktif)'), findsOneWidget);
   });
 
-  testWidgets('sakelar gerak latar dihapus dari Pengaturan dan gerak latar selalu aktif',
+  testWidgets(
+      'sakelar gerak latar dihapus dari Pengaturan dan gerak latar selalu aktif',
       (tester) async {
     await _pumpSettings(tester);
 
@@ -256,6 +388,44 @@ void main() {
       find.byKey(const ValueKey('settings-background-motion')),
       findsNothing,
     );
-    expect(await const SharedPreferencesBackgroundMotionStore().readEnabled(), isTrue);
+    expect(
+      await const SharedPreferencesBackgroundMotionStore().readEnabled(),
+      isTrue,
+    );
+  });
+
+  testWidgets(
+      'akordeon Pengaturan bebas overflow di viewport sempit 360px untuk tema terang dan gelap',
+      (tester) async {
+    for (final brightness in <Brightness>[Brightness.light, Brightness.dark]) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      final harness = await _pumpSettings(
+        tester,
+        size: const Size(360, 780),
+      );
+      if (brightness == Brightness.dark) {
+        await harness.theme.setMode(ThemeMode.dark);
+        await tester.pumpAndSettle();
+      }
+
+      for (final headerKey in const <String>[
+        'settings-dropdown-theme',
+        'settings-dropdown-privacy',
+        'settings-dropdown-cache',
+        'settings-dropdown-subscription',
+      ]) {
+        final finder = find.byKey(ValueKey<String>(headerKey));
+        await tester.scrollUntilVisible(
+          finder,
+          180,
+          scrollable: find.byType(Scrollable),
+        );
+        await tester.ensureVisible(finder);
+        await tester.pumpAndSettle();
+        await tester.tap(finder);
+        await tester.pumpAndSettle();
+      }
+      expect(tester.takeException(), isNull);
+    }
   });
 }

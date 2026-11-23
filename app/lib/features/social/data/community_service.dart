@@ -1136,10 +1136,13 @@ class CommunityService extends ChangeNotifier {
     });
     final nowUtc = DateTime.now().toUtc();
     recordLatestActivity(communityId, nowUtc);
+    final trimmedCaption = caption?.trim() ?? '';
     SocialUnreadStore.instance.recordCommunityActivity(
       communityId: communityId,
       createdAtUtc: nowUtc,
-      snippet: '${sender.senderName}: Foto',
+      snippet: trimmedCaption.isEmpty
+          ? '${sender.senderName}: Foto'
+          : '${sender.senderName}: Foto · $trimmedCaption',
       senderId: user.id,
       markUnread: false,
     );
@@ -1219,10 +1222,13 @@ class CommunityService extends ChangeNotifier {
     }
     final nowUtc = DateTime.now().toUtc();
     recordLatestActivity(communityId, nowUtc);
+    final trimmedCaption = caption?.trim() ?? '';
     SocialUnreadStore.instance.recordCommunityActivity(
       communityId: communityId,
       createdAtUtc: nowUtc,
-      snippet: '${sender.senderName}: Video',
+      snippet: trimmedCaption.isEmpty
+          ? '${sender.senderName}: Video'
+          : '${sender.senderName}: Video · $trimmedCaption',
       senderId: user.id,
       markUnread: false,
     );

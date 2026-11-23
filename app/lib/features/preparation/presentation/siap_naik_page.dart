@@ -151,6 +151,7 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
   bool _starting = false;
   bool _syncingRemote = false;
   bool _refreshingDownloadStatus = false;
+  bool _pendingCatalogRefresh = false;
   bool _requestedInitialRepoLoad = false;
   bool _syncedFromPlan = false;
   Timer? _snackBarTimer;
@@ -211,29 +212,35 @@ class _SiapNaikPageState extends State<SiapNaikPage> {
   }
 
   Future<void> _refreshDownloadedStatus() async {
-    if (_refreshingDownloadStatus) return;
+    if (_refreshingDownloadStatus) {
+      _pendingCatalogRefresh = true;
+      return;
+    }
     _refreshingDownloadStatus = true;
     try {
-      final repo = MountainCatalogRepository.instance;
-      if (repo.packs.isNotEmpty) {
-        _mountains = repo.packs;
-      } else if (!_requestedInitialRepoLoad && !repo.isLoading) {
-        _requestedInitialRepoLoad = true;
-        unawaited(repo.loadPacks());
-      }
-      final nextIds = <String>{};
-      for (final pack in _mountains) {
-        if (await _isMountainMapDownloaded(pack)) {
-          nextIds.add(pack.id);
+      do {
+        _pendingCatalogRefresh = false;
+        final repo = MountainCatalogRepository.instance;
+        if (repo.packs.isNotEmpty) {
+          _mountains = repo.packs;
+        } else if (!_requestedInitialRepoLoad && !repo.isLoading) {
+          _requestedInitialRepoLoad = true;
+          unawaited(repo.loadPacks());
         }
-      }
-      if (!mounted) return;
-      setState(() {
-        _downloadedMountainIds = nextIds;
-        if (_selectedMountain != null) {
-          _applyMountainId(_selectedMountain!.id, _selectedTrail?.id);
+        final nextIds = <String>{};
+        for (final pack in _mountains) {
+          if (await _isMountainMapDownloaded(pack)) {
+            nextIds.add(pack.id);
+          }
         }
-      });
+        if (!mounted) return;
+        setState(() {
+          _downloadedMountainIds = nextIds;
+          if (_selectedMountain != null) {
+            _applyMountainId(_selectedMountain!.id, _selectedTrail?.id);
+          }
+        });
+      } while (_pendingCatalogRefresh && mounted);
     } finally {
       _refreshingDownloadStatus = false;
     }

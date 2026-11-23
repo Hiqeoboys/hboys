@@ -65,6 +65,7 @@ class HiqeoLiquidGlassSurface extends StatelessWidget {
     this.overMap = false,
     this.enableBlur = true,
     this.blurEnabledOverride,
+    this.blurSigma,
   });
 
   final double borderRadius;
@@ -94,6 +95,9 @@ class HiqeoLiquidGlassSurface extends StatelessWidget {
 
   /// Penimpaan status blur khusus uji; null mengikuti kebijakan efek.
   final bool? blurEnabledOverride;
+
+  /// Radius blur opsional (bawaan [HiqeoGlassTokens.blurSigma]).
+  final double? blurSigma;
 
   @override
   Widget build(BuildContext context) {
@@ -177,8 +181,8 @@ class HiqeoLiquidGlassSurface extends StatelessWidget {
     final Widget filtered = blur
         ? BackdropFilter(
             filter: ui.ImageFilter.blur(
-              sigmaX: HiqeoGlassTokens.blurSigma,
-              sigmaY: HiqeoGlassTokens.blurSigma,
+              sigmaX: blurSigma ?? HiqeoGlassTokens.blurSigma,
+              sigmaY: blurSigma ?? HiqeoGlassTokens.blurSigma,
               tileMode: GlassConfig.activeTileMode,
             ),
             child: body,
@@ -216,6 +220,7 @@ class HiqeoGlassCircleButton extends StatelessWidget {
     this.brightness,
     this.emphasized = false,
     this.overMap = false,
+    this.blurSigma,
   });
 
   /// Ikon (sudah berwarna) di tengah tombol.
@@ -228,6 +233,7 @@ class HiqeoGlassCircleButton extends StatelessWidget {
   final Brightness? brightness;
   final bool emphasized;
   final bool overMap;
+  final double? blurSigma;
 
   @override
   Widget build(BuildContext context) {
@@ -243,6 +249,7 @@ class HiqeoGlassCircleButton extends StatelessWidget {
           brightness: brightness,
           emphasized: emphasized,
           overMap: overMap,
+          blurSigma: blurSigma,
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: onTap,

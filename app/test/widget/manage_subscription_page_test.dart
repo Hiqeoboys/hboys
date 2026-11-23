@@ -76,7 +76,8 @@ void main() {
     await _pump(tester, controller: await _activeController());
 
     expect(find.text('Plus aktif'), findsOneWidget);
-    expect(find.text('Aktif tanpa sinyal'), findsOneWidget);
+    expect(find.text('Aktif tanpa sinyal'), findsNothing);
+    expect(find.byKey(const ValueKey('manage-status-pill')), findsNothing);
     expect(
       find.text('Hiqeo Plus Tahunan · berakhir 1 Jun 2027'),
       findsOneWidget,
@@ -455,5 +456,35 @@ void main() {
     expect(gpxRectAfter.top, greaterThan(ownershipRect.bottom));
     expect(storeRectAfter.top, greaterThan(gpxRectAfter.bottom));
     expect(storeRectAfter.bottom, lessThanOrEqualTo(640.0 - safeBottom));
+  });
+
+  testWidgets(
+      'Plus aktif dengan lencana Ultima tetap utuh satu baris di layar sempit tanpa Aktif tanpa sinyal',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = await buildPlusController(
+      token: 'ultima-tok',
+      payload: plusPayload(planId: 'ultima'),
+    );
+    addTearDown(controller.dispose);
+
+    await pumpPlusPage(
+      tester,
+      ManageSubscriptionPage(
+        backupRepository: FakeCloudBackupRepository(cloudBackupState()),
+        exporter: RecordingGpxExporter(),
+      ),
+      controller: controller,
+      size: const Size(320, 700),
+    );
+
+    expect(find.text('Plus aktif'), findsOneWidget);
+    expect(find.text('Ultima'), findsOneWidget);
+    expect(find.text('Aktif tanpa sinyal'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

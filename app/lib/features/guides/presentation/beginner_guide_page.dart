@@ -28,7 +28,7 @@ class _BeginnerGuidePageState extends State<BeginnerGuidePage> {
   String _selectedChapterId = 'semua';
   TentType _selectedTentType = TentType.domeCross;
   TentSizeCategory _selectedTentSize = TentSizeCategory.soloDuo1to2;
-  late final Set<String> _expandedTopicIds;
+  String? _expandedTopicId;
   final Map<String, GlobalKey> _topicKeys = <String, GlobalKey>{};
 
   @override
@@ -38,13 +38,10 @@ class _BeginnerGuidePageState extends State<BeginnerGuidePage> {
       _topicKeys[topic.id] = GlobalKey();
     }
     final initial = widget.initialTopicId?.trim();
-    _expandedTopicIds = <String>{
-      if (initial != null &&
-          kBeginnerGuideTopics.any((topic) => topic.id == initial))
-        initial
-      else
-        kBeginnerGuideTopics.first.id,
-    };
+    if (initial != null &&
+        kBeginnerGuideTopics.any((topic) => topic.id == initial)) {
+      _expandedTopicId = initial;
+    }
 
     if (initial != null && initial.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -74,11 +71,7 @@ class _BeginnerGuidePageState extends State<BeginnerGuidePage> {
   void _toggleTopic(String id) {
     HapticFeedback.selectionClick();
     setState(() {
-      if (_expandedTopicIds.contains(id)) {
-        _expandedTopicIds.remove(id);
-      } else {
-        _expandedTopicIds.add(id);
-      }
+      _expandedTopicId = _expandedTopicId == id ? null : id;
     });
   }
 
@@ -137,53 +130,6 @@ class _BeginnerGuidePageState extends State<BeginnerGuidePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    HiqeoGlassCard(
-                      borderRadius: 20,
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
-                        children: <Widget>[
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: colors.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              Icons.menu_book_rounded,
-                              size: 20,
-                              color: colors.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  '100% Gratis & Bisa Dibaca Offline',
-                                  style: TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: colors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Ketuk tiap diagram teknis untuk mode zoom layar penuh.',
-                                  style: TextStyle(
-                                    fontSize: 12.2,
-                                    color: colors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
                     for (final chapter in chapters) ...<Widget>[
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -214,7 +160,7 @@ class _BeginnerGuidePageState extends State<BeginnerGuidePage> {
                         _BeginnerTopicCard(
                           key: _topicKeys[topic.id],
                           topic: topic,
-                          expanded: _expandedTopicIds.contains(topic.id),
+                          expanded: _expandedTopicId == topic.id,
                           onToggle: () => _toggleTopic(topic.id),
                           selectedTentType: _selectedTentType,
                           selectedTentSize: _selectedTentSize,
@@ -343,6 +289,9 @@ class _BeginnerTopicCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = HiqeoColors.of(context);
+    final duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 250);
     final steps = topic.isInteractiveTent
         ? buildTentPitchingSteps(selectedTentType, selectedTentSize)
         : topic.steps;
@@ -393,46 +342,61 @@ class _BeginnerTopicCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Icon(
-                      expanded
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      color: colors.textSecondary,
+                    AnimatedRotation(
+                      key: ValueKey<String>(
+                        'beginner-topic-chevron-${topic.id}',
+                      ),
+                      turns: expanded ? 0.5 : 0.0,
+                      duration: duration,
+                      curve: Curves.easeInOutCubic,
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: colors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
           ),
-          if (expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  if (topic.isInteractiveTent && tentSummary != null) ...<Widget>[
-                    _TentConfigSelector(
-                      selectedType: selectedTentType,
-                      selectedSize: selectedTentSize,
-                      summary: tentSummary,
-                      onTypeChanged: onTentTypeChanged,
-                      onSizeChanged: onTentSizeChanged,
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  IllustratedStepDeck(
-                    key: ValueKey<String>(
-                      topic.isInteractiveTent
-                          ? 'deck-${topic.id}-${selectedTentType.name}'
-                          : 'deck-${topic.id}',
-                    ),
-                    deckKeyPrefix: 'beginner-${topic.id}',
-                    sectionTitle: 'Langkah Teknis Bergambar',
-                    steps: steps,
-                  ),
-                ],
-              ),
+          ClipRect(
+            child: AnimatedSize(
+              duration: duration,
+              curve: Curves.easeInOutCubic,
+              alignment: Alignment.topCenter,
+              child: expanded
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          if (topic.isInteractiveTent &&
+                              tentSummary != null) ...<Widget>[
+                            _TentConfigSelector(
+                              selectedType: selectedTentType,
+                              selectedSize: selectedTentSize,
+                              summary: tentSummary,
+                              onTypeChanged: onTentTypeChanged,
+                              onSizeChanged: onTentSizeChanged,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          IllustratedStepDeck(
+                            key: ValueKey<String>(
+                              topic.isInteractiveTent
+                                  ? 'deck-${topic.id}-${selectedTentType.name}'
+                                  : 'deck-${topic.id}',
+                            ),
+                            deckKeyPrefix: 'beginner-${topic.id}',
+                            sectionTitle: 'Langkah Teknis Bergambar',
+                            steps: steps,
+                          ),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
+          ),
         ],
       ),
     );

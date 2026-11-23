@@ -435,25 +435,25 @@ class _StatusCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          Wrap(
+            spacing: HiqeoSpacing.sm,
+            runSpacing: HiqeoSpacing.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Expanded(
-                child: Text(
-                  _title,
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    fontSize: 28,
-                    height: 1.05,
-                    color: _dark.primary,
-                  ),
+              Text(
+                _title,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.displaySmall?.copyWith(
+                  fontSize: 28,
+                  height: 1.1,
+                  color: _dark.primary,
                 ),
               ),
-              const SizedBox(width: HiqeoSpacing.sm),
-              if (access.isUltima) ...<Widget>[
-                const UltimaBadge(),
-                const SizedBox(width: 6),
-              ],
-              _StatusPill(access: access),
+              if (access.isUltima) const UltimaBadge(),
+              if (access.state != PlusAccessState.active)
+                _StatusPill(access: access),
             ],
           ),
           const SizedBox(height: HiqeoSpacing.xs),
@@ -486,9 +486,12 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (access.state == PlusAccessState.active) {
+      return const SizedBox.shrink();
+    }
     final theme = Theme.of(context);
     final (label, icon) = switch (access.state) {
-      PlusAccessState.active => ('Aktif tanpa sinyal', HiqeoIcons.check),
+      PlusAccessState.active => ('', HiqeoIcons.check),
       PlusAccessState.grace => ('Masa tenggang', HiqeoIcons.clock),
       PlusAccessState.expired => ('Berakhir', HiqeoIcons.warning),
       PlusAccessState.free => ('Gratis', HiqeoIcons.mountain),

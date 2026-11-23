@@ -8,6 +8,7 @@ import 'package:nama_app/design/widgets/header_icon_button.dart';
 import 'package:nama_app/design/widgets/hiqeo_back_button.dart';
 import 'package:nama_app/design/widgets/hiqeo_nav_bar.dart';
 import 'package:nama_app/design/widgets/line_icons.dart';
+import 'package:nama_app/features/chat/presentation/chat_room_chrome.dart';
 import 'package:nama_app/features/plus/presentation/widgets/plus_widgets.dart';
 import 'package:nama_app/features/social/data/community_service.dart';
 import 'package:nama_app/features/social/presentation/community_chat_page.dart';
@@ -131,7 +132,7 @@ void main() {
   });
 
   testWidgets(
-      'CommunityChatPage memakai HiqeoLiquidGlassSurface untuk header, hamburger, input, tombol kirim (sorotan saat ada teks), menu, & profil pengirim',
+      'CommunityChatPage memakai HiqeoLiquidGlassSurface sigma 8 untuk header, menu, & profil pengirim, serta komposer & tombol kirim putih solid',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
@@ -173,13 +174,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Header pill, tombol hamburger, pil input, dan tombol kirim memakai Liquid Glass
-    expect(
-      tester.widget<HiqeoLiquidGlassSurface>(
-        find.byKey(const ValueKey('community-glass-header')),
-      ),
-      isNotNull,
+    // Header pill (blur ringan sigma 8) & tombol hamburger memakai Liquid Glass;
+    // pil komposer & tombol kirim putih solid tanpa Liquid Glass.
+    final headerGlass = tester.widget<HiqeoLiquidGlassSurface>(
+      find.byKey(const ValueKey('community-glass-header')),
     );
+    expect(headerGlass.blurSigma, 8.0);
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('community-hamburger-button')),
@@ -187,28 +187,105 @@ void main() {
       ),
       findsOneWidget,
     );
+    final composerFinder = find.byKey(const ValueKey('community-glass-composer'));
     expect(
-      tester.widget<HiqeoLiquidGlassSurface>(
-        find.byKey(const ValueKey('community-glass-composer')),
-      ),
+      tester.widget<ChatSolidComposerPill>(composerFinder),
       isNotNull,
     );
-
-    // Tombol kirim tidak solid putih & sorotan halus aktif hanya saat ada teks
-    final sendBtnBefore = tester.widget<HiqeoGlassCircleButton>(
-      find.byKey(const ValueKey('community-send-button')),
+    expect(
+      find.descendant(
+        of: composerFinder,
+        matching: find.byType(HiqeoLiquidGlassSurface),
+      ),
+      findsNothing,
     );
-    expect(sendBtnBefore.emphasized, isFalse);
+    expect(
+      find.descendant(
+        of: composerFinder,
+        matching: find.byType(BackdropFilter),
+      ),
+      findsNothing,
+    );
+    final composerBox = tester.widget<DecoratedBox>(
+      find.descendant(
+        of: composerFinder,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is DecoratedBox &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).shape == BoxShape.rectangle,
+        ),
+      ).first,
+    );
+    final composerDec = composerBox.decoration as BoxDecoration;
+    expect(composerDec.color, const Color(0xFFFFFFFF));
+    expect(composerDec.border, isNotNull);
+    expect(composerDec.boxShadow, isNotEmpty);
+
+    // Tombol kirim memakai lingkaran putih solid tanpa Liquid Glass (aktif #242B40, nonaktif #66242B40)
+    final sendBtnFinder = find.byKey(const ValueKey('community-send-button'));
+    expect(
+      find.descendant(
+        of: sendBtnFinder,
+        matching: find.byType(HiqeoLiquidGlassSurface),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: sendBtnFinder,
+        matching: find.byType(BackdropFilter),
+      ),
+      findsNothing,
+    );
+
+    final sendBtnBefore = tester.widget<ChatSolidSendButton>(sendBtnFinder);
+    expect(sendBtnBefore.enabled, isFalse);
+    final boxBefore = tester.widget<DecoratedBox>(
+      find.descendant(
+        of: sendBtnFinder,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is DecoratedBox &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).shape == BoxShape.circle,
+        ),
+      ),
+    );
+    final decBefore = boxBefore.decoration as BoxDecoration;
+    expect(decBefore.color, const Color(0xFFFFFFFF));
+    expect(decBefore.shape, BoxShape.circle);
+    final iconBefore = tester.widget<Icon>(
+      find.descendant(of: sendBtnFinder, matching: find.byType(Icon)),
+    );
+    expect(iconBefore.color, const Color(0x66242B40));
 
     await tester.enterText(
       find.byKey(const ValueKey('community-input')),
       'Siap meluncur!',
     );
     await tester.pump();
-    final sendBtnAfter = tester.widget<HiqeoGlassCircleButton>(
-      find.byKey(const ValueKey('community-send-button')),
+    final sendBtnAfter = tester.widget<ChatSolidSendButton>(sendBtnFinder);
+    expect(sendBtnAfter.enabled, isTrue);
+    final boxAfter = tester.widget<DecoratedBox>(
+      find.descendant(
+        of: sendBtnFinder,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is DecoratedBox &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).shape == BoxShape.circle,
+        ),
+      ),
     );
-    expect(sendBtnAfter.emphasized, isTrue);
+    expect(
+      (boxAfter.decoration as BoxDecoration).color,
+      const Color(0xFFFFFFFF),
+    );
+    final iconAfter = tester.widget<Icon>(
+      find.descendant(of: sendBtnFinder, matching: find.byType(Icon)),
+    );
+    expect(iconAfter.color, const Color(0xFF242B40));
 
     // Menu dropdown hamburger kanan atas memakai HiqeoLiquidGlassSurface
     await tester.tap(find.byKey(const ValueKey('community-hamburger-button')));

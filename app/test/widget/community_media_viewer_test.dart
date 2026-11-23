@@ -154,12 +154,24 @@ void main() {
 
   group('Widget: Community Chat Media & Fullscreen Liquid Glass Viewer', () {
     testWidgets(
-        'Header pill memiliki textShadow halus & foto bubble memakai BoxFit.contain + Hero -> buka viewer fullscreen',
+        'Header pill memiliki textShadow halus & foto bubble memakai BoxFit.cover + Hero -> buka viewer fullscreen',
         (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
+
+      final tempDir = Directory.systemTemp.createTempSync('hiqeo_photo_test_');
+      addTearDown(() {
+        PaintingBinding.instance.imageCache.clear();
+        try {
+          if (tempDir.existsSync()) {
+            tempDir.deleteSync(recursive: true);
+          }
+        } catch (_) {}
+      });
+      final photoFile = File('${tempDir.path}/photo.png')
+        ..writeAsBytesSync(_kSamplePngBytes, flush: true);
 
       final community = CommunitySummary(
         id: 'comm-media-1',
@@ -176,7 +188,7 @@ void main() {
         senderId: 'user-raka',
         senderName: 'Raka Pratama',
         messageType: CommunityMessageType.image,
-        mediaUrl: 'https://example.com/photo.webp',
+        mediaUrl: photoFile.path,
         createdAt: DateTime.utc(2026, 11, 20, 6, 37),
       );
 
@@ -203,13 +215,13 @@ void main() {
       final titleWidget = tester.widget<Text>(find.text('7 Summit Indonesia'));
       expect(titleWidget.style?.shadows, isNotEmpty);
 
-      // Foto bubble tidak memaksa BoxFit.cover yang memotong gambar dan dibungkus Hero
+      // Foto bubble mengisi bingkai ClipRRect dengan BoxFit.cover dan dibungkus Hero
       final imgFinder = find.descendant(
         of: find.byKey(const ValueKey<String>('community-photo-frame-msg-photo-1')),
         matching: find.byType(Image),
       );
       expect(imgFinder, findsOneWidget);
-      expect(tester.widget<Image>(imgFinder).fit, BoxFit.contain);
+      expect(tester.widget<Image>(imgFinder).fit, BoxFit.cover);
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('community-photo-frame-msg-photo-1')),

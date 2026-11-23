@@ -332,7 +332,6 @@ class _ChatPageState extends State<ChatPage> {
     }
     FcmNotificationService.instance.pendingSocialIntent
         .addListener(_handlePendingSocialIntent);
-    _input.addListener(_onInputChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _handlePendingSocialIntent();
     });
@@ -538,9 +537,7 @@ class _ChatPageState extends State<ChatPage> {
       unawaited(_audioPlayer?.dispose());
       unawaited(_audioRecorder?.dispose());
     } catch (_) {}
-    _input
-      ..removeListener(_onInputChanged)
-      ..dispose();
+    _input.dispose();
     _scroll.dispose();
     if (_ownsDb) unawaited(_database?.close());
     super.dispose();
@@ -755,10 +752,6 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _onSocialUnreadChanged() {
-    if (mounted) setState(() {});
-  }
-
-  void _onInputChanged() {
     if (mounted) setState(() {});
   }
 
@@ -3427,12 +3420,12 @@ class _ChatPageState extends State<ChatPage> {
                 return Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
-                    // 1. Area pesan mengalir penuh di belakang header & pil input kaca
+                    // 1. Area pesan mengalir penuh di belakang header & komposer putih solid
                     _buildRoomMessages(
                       theme,
                       colors,
                       topPadding: ChatRoomHeaderBar.listTopPadding(topPad),
-                      bottomPadding: composerBottom + 76,
+                      bottomPadding: composerBottom + 108,
                     ),
 
                     // 2. Header Melayang seragam: [<] | Pil Kaca Grup | [≡]
@@ -3736,10 +3729,11 @@ class _ChatPageState extends State<ChatPage> {
             }
             return false;
           },
-          child: ListView.builder(
-            controller: _scroll,
-            padding: EdgeInsets.fromLTRB(14, topPadding, 14, bottomPadding),
-            itemCount: _messages.length + (showLoadOlder ? 1 : 0),
+          child: RepaintBoundary(
+            child: ListView.builder(
+              controller: _scroll,
+              padding: EdgeInsets.fromLTRB(14, topPadding, 14, bottomPadding),
+              itemCount: _messages.length + (showLoadOlder ? 1 : 0),
             itemBuilder: (context, rawIndex) {
               if (showLoadOlder && rawIndex == 0) {
                 return Padding(
@@ -3823,6 +3817,7 @@ class _ChatPageState extends State<ChatPage> {
                 ],
               );
             },
+            ),
           ),
         );
       },
@@ -4043,6 +4038,8 @@ class _ChatPageState extends State<ChatPage> {
       }
     }
 
+    final Widget boxedBubble = RepaintBoundary(child: bubble);
+
     if (canInspectSender) {
       final showAvatar = cluster.isLastInGroup;
       return Row(
@@ -4061,7 +4058,7 @@ class _ChatPageState extends State<ChatPage> {
                 ? () => unawaited(_onTapGroupSender(message, reportExcerpt))
                 : null,
           ),
-          Flexible(child: bubble),
+          Flexible(child: boxedBubble),
         ],
       );
     }
@@ -4070,9 +4067,9 @@ class _ChatPageState extends State<ChatPage> {
         ? GestureDetector(
             behavior: HitTestBehavior.translucent,
             onLongPress: () => unawaited(_showOwnGroupMessageActions(message)),
-            child: bubble,
+            child: boxedBubble,
           )
-        : bubble;
+        : boxedBubble;
 
     return Align(
       alignment: outgoing ? Alignment.centerRight : Alignment.centerLeft,
@@ -4443,13 +4440,11 @@ class _ChatPageState extends State<ChatPage> {
     ThemeData theme,
     HiqeoColors colors,
   ) {
-    final hasText = _input.text.trim().isNotEmpty;
-
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
         Expanded(
-          child: HiqeoLiquidGlassSurface(
+          child: ChatSolidComposerPill(
             key: const ValueKey<String>('chat-composer-pill'),
             borderRadius: 26,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -4464,15 +4459,16 @@ class _ChatPageState extends State<ChatPage> {
                   maxLength: 2000,
                   textCapitalization: TextCapitalization.sentences,
                   textInputAction: TextInputAction.send,
+                  cursorColor: ChatSolidComposerPill.textColor,
                   onSubmitted: (_) => unawaited(_sendText()),
                   style: const TextStyle(
                     fontSize: 14.5,
-                    color: ChatRoomPalette.textPrimary,
+                    color: ChatSolidComposerPill.textColor,
                   ),
                   decoration: const InputDecoration(
                     hintText: 'Tulis pesan…',
                     hintStyle: TextStyle(
-                      color: ChatRoomPalette.textSecondary,
+                      color: ChatSolidComposerPill.hintColor,
                       fontSize: 14,
                     ),
                     counterText: '',
@@ -4486,27 +4482,20 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ),
         const SizedBox(width: 8),
-        HiqeoGlassCircleButton(
-          key: const ValueKey<String>('chat-send'),
-          semanticsLabel: 'Kirim pesan',
-          size: 50,
-          emphasized: hasText,
-          onTap: (!hasText || _sending) ? null : () => unawaited(_sendText()),
-          child: _sending
-              ? const Padding(
-                  padding: EdgeInsets.all(13),
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: ChatRoomPalette.textPrimary,
-                  ),
-                )
-              : Icon(
-                  Icons.send_rounded,
-                  size: 20,
-                  color: hasText
-                      ? ChatRoomPalette.textPrimary
-                      : ChatRoomPalette.textSecondary,
-                ),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _input,
+          builder: (context, value, _) {
+            final hasText = value.text.trim().isNotEmpty;
+            return ChatSolidSendButton(
+              key: const ValueKey<String>('chat-send'),
+              semanticsLabel: 'Kirim pesan',
+              size: 50,
+              enabled: hasText,
+              sending: _sending,
+              onTap:
+                  (!hasText || _sending) ? null : () => unawaited(_sendText()),
+            );
+          },
         ),
       ],
     );

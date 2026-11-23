@@ -316,14 +316,20 @@ void main() {
         .dy;
     expect(m2Top - m1Bottom, closeTo(3.5, 1.0));
 
-    // 5. Pesan foto: frame radius 14px, pil waktu gelap transparan di sudut kanan bawah, caption di bawah
+    // 5. Pesan foto bercaption: sudut atas membulat penuh, caption rapi di bawah, waktu di baris teks (tanpa badge sudut media)
     final photoFrame = tester.widget<ClipRRect>(
       find.byKey(const ValueKey<String>('community-photo-frame-m5')),
     );
-    expect(photoFrame.borderRadius, BorderRadius.circular(14));
+    expect(
+      photoFrame.borderRadius,
+      const BorderRadius.vertical(
+        top: Radius.circular(14),
+        bottom: Radius.circular(4),
+      ),
+    );
     expect(
       find.byKey(const ValueKey<String>('community-photo-time-m5')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('Sunrise dari Pos 3!'), findsOneWidget);
 

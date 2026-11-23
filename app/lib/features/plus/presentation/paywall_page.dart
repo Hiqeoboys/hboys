@@ -236,8 +236,7 @@ class _PaywallPageState extends State<PaywallPage> {
     final access = plus?.access;
     final isGrace = access?.isGrace ?? false;
     final isExpired = access?.isExpired ?? false;
-    final showGraceOrExpiredCard =
-        (isGrace || isExpired) && !showSocialUpgrade;
+    final showGraceOrExpiredCard = (isGrace || isExpired) && !showSocialUpgrade;
     // Saat masa tenggang berakhir / dalam masa tenggang, biarkan tombol utama
     // menawarkan pembelian ulang ketika paket tersedia.
     final active = hasPlus && !showSocialUpgrade && !isGrace;
@@ -263,7 +262,9 @@ class _PaywallPageState extends State<PaywallPage> {
                 ? 'Paket belum tersedia'
                 : (busy
                     ? 'Memproses…'
-                    : (isGrace || isExpired ? 'Berlangganan lagi' : 'Berlangganan'))),
+                    : (isGrace || isExpired
+                        ? 'Berlangganan lagi'
+                        : 'Berlangganan'))),
         onPressed: active
             ? () => context.push(PlusRoutes.manage)
             : (canBuy
@@ -631,10 +632,10 @@ class _ActivePlanCard extends StatelessWidget {
           Text(
             lifetime
                 ? 'Founding Member berlaku selamanya.'
-                : (access?.isGrace ?? false
-                    ? 'Aktif tanpa sinyal sampai masa tenggang berakhir.'
+                : (access?.isGrace ?? false)
+                    ? 'Status Plus tetap tersedia sampai masa tenggang berakhir.'
                     : 'Paket ${plan?.title ?? 'Plus'} berlaku sampai '
-                        '${_dateLabel(access?.expiresAtUtc)}.'),
+                        '${_dateLabel(access?.expiresAtUtc)}.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: colors.textSecondary,
             ),

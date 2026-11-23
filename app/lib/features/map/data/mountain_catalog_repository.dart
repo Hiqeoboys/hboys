@@ -68,18 +68,23 @@ class MountainCatalogRepository extends ChangeNotifier {
 
   Future<Set<String>> _readSyncedDownloadedIds(SharedPreferences prefs) async {
     final ids = (prefs.getStringList(_downloadedKey) ?? const <String>[]).toSet();
-    final base = MountainPackData.createDefaultPacks();
-    for (final pack in base) {
+    final baseIds = <String>{
+      for (final pack in MountainPackData.createDefaultPacks()) pack.id,
+      for (final key in prefs.getKeys())
+        if (key.startsWith(OfflinePackService.keyStatusPrefix))
+          key.substring(OfflinePackService.keyStatusPrefix.length),
+    };
+    for (final packId in baseIds) {
       final status = await _effectiveOfflineService.getStatus(
-        pack.id,
-        remoteVersion: pack.version,
+        packId,
+        remoteVersion: 1,
       );
       if (status == MountainDownloadStatus.downloaded ||
           status == MountainDownloadStatus.updateAvailable) {
-        ids.add(pack.id);
-      } else if (prefs.getString('${OfflinePackService.keyStatusPrefix}${pack.id}') ==
+        ids.add(packId);
+      } else if (prefs.getString('${OfflinePackService.keyStatusPrefix}$packId') ==
           MountainDownloadStatus.notDownloaded.name) {
-        ids.remove(pack.id);
+        ids.remove(packId);
       }
     }
     return ids;

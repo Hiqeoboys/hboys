@@ -23,6 +23,7 @@ import '../../../infrastructure/network/hiqeo_http_overrides.dart';
 import '../../../infrastructure/notifications/fcm_notification_service.dart';
 import '../../../infrastructure/storage/media_url_normalizer.dart';
 import '../../../infrastructure/supabase/supabase_services.dart';
+import '../../chat/presentation/chat_media_preview_page.dart';
 import '../../chat/presentation/chat_mute_sheet.dart';
 import '../../chat/presentation/chat_room_chrome.dart';
 import '../../plus/application/plus_navigation.dart';
@@ -107,12 +108,13 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   String? _topToastText;
   bool _topToastIsError = false;
   Timer? _topToastTimer;
-  bool _hasText = false;
 
   CommunityMessage? _replyingTo;
   MentionQueryMatch? _activeMentionMatch;
-  List<CommunityMemberEntry> _mentionSuggestions =
-      const <CommunityMemberEntry>[];
+  final ValueNotifier<List<CommunityMemberEntry>> _mentionSuggestionsNotifier =
+      ValueNotifier<List<CommunityMemberEntry>>(
+    const <CommunityMemberEntry>[],
+  );
   String? _highlightedMessageId;
   Timer? _highlightTimer;
   final Map<String, GlobalKey> _messageItemKeys = <String, GlobalKey>{};
@@ -131,7 +133,6 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   bool get _isOwner => _community.isOwner(_currentUserId);
 
   void _onTextChanged() {
-    final nextHasText = _textController.text.trim().isNotEmpty;
     final match = extractActiveMentionQuery(_textController.value);
     final nextSuggestions = match == null
         ? const <CommunityMemberEntry>[]
@@ -140,20 +141,17 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
             match.query,
             excludeUserId: _currentUserId,
           );
-    final prevIds =
-        _mentionSuggestions.map((e) => e.userId).toList(growable: false);
+    final current = _mentionSuggestionsNotifier.value;
+    final prevIds = current.map((e) => e.userId).toList(growable: false);
     final nextIds =
         nextSuggestions.map((e) => e.userId).toList(growable: false);
     final suggestionsChanged = !listEquals(prevIds, nextIds) ||
         _activeMentionMatch?.startOffset != match?.startOffset ||
         _activeMentionMatch?.endOffset != match?.endOffset ||
         _activeMentionMatch?.query != match?.query;
-    if ((nextHasText != _hasText || suggestionsChanged) && mounted) {
-      setState(() {
-        _hasText = nextHasText;
-        _activeMentionMatch = match;
-        _mentionSuggestions = nextSuggestions;
-      });
+    if (suggestionsChanged && mounted) {
+      _activeMentionMatch = match;
+      _mentionSuggestionsNotifier.value = nextSuggestions;
     }
   }
 
@@ -222,6 +220,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
     _textController
       ..removeListener(_onTextChanged)
       ..dispose();
+    _mentionSuggestionsNotifier.dispose();
     _composerFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -611,10 +610,8 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
       text: nextText,
       selection: TextSelection.collapsed(offset: nextCursor),
     );
-    setState(() {
-      _activeMentionMatch = null;
-      _mentionSuggestions = const <CommunityMemberEntry>[];
-    });
+    _activeMentionMatch = null;
+    _mentionSuggestionsNotifier.value = const <CommunityMemberEntry>[];
     _composerFocusNode.requestFocus();
   }
 
@@ -643,11 +640,11 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
       }
       _textController.clear();
       if (mounted) {
-        setState(() {
-          _replyingTo = null;
-          _activeMentionMatch = null;
-          _mentionSuggestions = const <CommunityMemberEntry>[];
-        });
+        _activeMentionMatch = null;
+        _mentionSuggestionsNotifier.value = const <CommunityMemberEntry>[];
+        if (_replyingTo != null) {
+          setState(() => _replyingTo = null);
+        }
       }
       if (widget.onSendTextWithMeta == null && widget.onSendText == null) {
         await _loadMessages(silent: true);
@@ -667,28 +664,49 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
 
   Future<void> _openFullScreenCamera() async {
     if (_sending) return;
-    final result = await Navigator.of(context).push<CapturedMediaResult>(
+    final captured = await Navigator.of(context).push<CapturedMediaResult>(
       MaterialPageRoute<CapturedMediaResult>(
         builder: (_) => const CommunityCameraPage(),
       ),
     );
-    if (result == null || !mounted) return;
+    if (captured == null || !mounted) return;
 
+    final submission = await Navigator.of(context).push<CapturedMediaSubmission>(
+      MaterialPageRoute<CapturedMediaSubmission>(
+        builder: (_) => ChatMediaPreviewPage(
+          file: captured.file,
+          isVideo: captured.isVideo,
+          durationSec: captured.durationSec,
+        ),
+      ),
+    );
+    if (submission == null || !mounted) return;
+
+    final rawCaption = submission.caption?.trim();
+    final effectiveCaption =
+        (rawCaption != null && rawCaption.isNotEmpty) ? rawCaption : null;
+    final mentionedIds = effectiveCaption == null
+        ? const <String>[]
+        : resolveMentionedUserIds(effectiveCaption, _communityMembers);
     final replyId = _replyingTo?.id;
     setState(() => _sending = true);
     try {
-      if (result.isVideo) {
+      if (submission.isVideo) {
         await CommunityService.instance.sendVideoMessage(
           communityId: _community.id,
-          videoFile: result.file,
-          durationSec: result.durationSec ?? 1,
+          videoFile: submission.file,
+          durationSec: submission.durationSec ?? 1,
+          caption: effectiveCaption,
           replyToMessageId: replyId,
+          mentionedUserIds: mentionedIds,
         );
       } else {
         await CommunityService.instance.sendImageMessage(
           communityId: _community.id,
-          imageFile: result.file,
+          imageFile: submission.file,
+          caption: effectiveCaption,
           replyToMessageId: replyId,
+          mentionedUserIds: mentionedIds,
         );
       }
       if (mounted && _replyingTo != null) {
@@ -1488,8 +1506,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
     final nowUtc = DateTime.now().toUtc();
 
     const composerHeight = 52.0;
-    final extraBottom = (canCompose && _replyingTo != null ? 64.0 : 0.0) +
-        (canCompose && _mentionSuggestions.isNotEmpty ? 120.0 : 0.0);
+    final extraBottom = canCompose && _replyingTo != null ? 64.0 : 0.0;
 
     return ChatRoomCanvas(
       child: PopScope(
@@ -1611,11 +1628,11 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                           child: RepaintBoundary(
                             child: ListView.builder(
                               controller: _scrollController,
-                              padding: EdgeInsets.fromLTRB(
+                            padding: EdgeInsets.fromLTRB(
                               14,
                               ChatRoomHeaderBar.listTopPadding(topPad),
                               14,
-                              composerBottom + composerHeight + 26 + extraBottom,
+                              composerBottom + composerHeight + 56 + extraBottom,
                             ),
                             itemCount:
                                 _messages.length + (showLoadOlder ? 1 : 0),
@@ -1895,15 +1912,25 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: <Widget>[
-                                  if (_mentionSuggestions.isNotEmpty)
-                                    Padding(
-                                      padding:
-                                          const EdgeInsets.only(bottom: 8),
-                                      child: CommunityMentionSuggestionsOverlay(
-                                        suggestions: _mentionSuggestions,
-                                        onSelect: _selectMention,
-                                      ),
-                                    ),
+                                  ValueListenableBuilder<
+                                      List<CommunityMemberEntry>>(
+                                    valueListenable:
+                                        _mentionSuggestionsNotifier,
+                                    builder: (context, suggestions, _) {
+                                      if (suggestions.isEmpty) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 8),
+                                        child:
+                                            CommunityMentionSuggestionsOverlay(
+                                          suggestions: suggestions,
+                                          onSelect: _selectMention,
+                                        ),
+                                      );
+                                    },
+                                  ),
                                   if (_replyingTo != null)
                                     Padding(
                                       padding:
@@ -1924,7 +1951,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: <Widget>[
                                       Expanded(
-                                        child: HiqeoLiquidGlassSurface(
+                                        child: ChatSolidComposerPill(
                                           key: const ValueKey(
                                             'community-glass-composer',
                                           ),
@@ -1950,18 +1977,23 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                                     minLines: 1,
                                                     maxLines: 4,
                                                     maxLength: 2000,
+                                                    cursorColor:
+                                                        ChatSolidComposerPill
+                                                            .textColor,
                                                     style: const TextStyle(
                                                       fontSize: 14.5,
-                                                      color: ChatRoomPalette
-                                                          .textPrimary,
+                                                      color:
+                                                          ChatSolidComposerPill
+                                                              .textColor,
                                                     ),
                                                     decoration:
                                                         const InputDecoration(
                                                       hintText:
                                                           'Tulis pesan komunitas…',
                                                       hintStyle: TextStyle(
-                                                        color: ChatRoomPalette
-                                                            .textSecondary,
+                                                        color:
+                                                            ChatSolidComposerPill
+                                                                .hintColor,
                                                         fontSize: 14,
                                                       ),
                                                       counterText: '',
@@ -1995,8 +2027,9 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                                           Icons
                                                               .camera_alt_outlined,
                                                           size: 22,
-                                                          color: ChatRoomPalette
-                                                              .textPrimary,
+                                                          color:
+                                                              ChatSolidComposerPill
+                                                                  .iconColor,
                                                         ),
                                                       ),
                                                     ),
@@ -2008,33 +2041,23 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                         ),
                                       ),
                                       const SizedBox(width: 8),
-                                      HiqeoGlassCircleButton(
-                                        key: const ValueKey(
-                                          'community-send-button',
-                                        ),
-                                        semanticsLabel: 'Kirim pesan komunitas',
-                                        size: 50,
-                                        emphasized: _hasText,
-                                        onTap: _sending ? null : _sendText,
-                                        child: _sending
-                                            ? const Padding(
-                                                padding: EdgeInsets.all(13),
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                  color: ChatRoomPalette
-                                                      .textPrimary,
-                                                ),
-                                              )
-                                            : Icon(
-                                                Icons.send_rounded,
-                                                size: 20,
-                                                color: _hasText
-                                                    ? ChatRoomPalette
-                                                        .textPrimary
-                                                    : ChatRoomPalette
-                                                        .textSecondary,
-                                              ),
+                                      ValueListenableBuilder<TextEditingValue>(
+                                        valueListenable: _textController,
+                                        builder: (context, value, _) {
+                                          final hasText =
+                                              value.text.trim().isNotEmpty;
+                                          return ChatSolidSendButton(
+                                            key: const ValueKey(
+                                              'community-send-button',
+                                            ),
+                                            semanticsLabel:
+                                                'Kirim pesan komunitas',
+                                            size: 50,
+                                            enabled: hasText,
+                                            sending: _sending,
+                                            onTap: _sending ? null : _sendText,
+                                          );
+                                        },
                                       ),
                                     ],
                                   ),
@@ -2399,9 +2422,10 @@ class _CommunityBubble extends StatelessWidget {
             message.messageType == CommunityMessageType.video &&
             message.mediaUrl != null;
         final hasCaption =
-            message.content != null && message.content!.isNotEmpty;
-        final maxMediaWidth = screenWidth * 0.74;
+            message.content != null && message.content!.trim().isNotEmpty;
+        final maxMediaWidth = screenWidth * 0.72;
         final quoteBox = isDeleted ? null : _buildQuoteBox(cache);
+        final hasTopHeader = showSenderName || quoteBox != null;
 
         final Widget bubble;
         if (isDeleted) {
@@ -2473,14 +2497,18 @@ class _CommunityBubble extends StatelessWidget {
             ),
           );
         } else if (isPhoto) {
+          final hasFrameChrome = hasTopHeader || hasCaption;
           bubble = ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxMediaWidth + 10),
+            constraints: BoxConstraints(
+              maxWidth: maxMediaWidth + (hasFrameChrome ? 4 : 0),
+            ),
             child: DecoratedBox(
               key: ValueKey<String>('community-bubble-${message.id}'),
               decoration:
                   chatBubbleDecoration(outgoing: isMe, cluster: cluster),
               child: Padding(
-                padding: const EdgeInsets.all(5),
+                padding:
+                    hasFrameChrome ? const EdgeInsets.all(2) : EdgeInsets.zero,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2489,7 +2517,7 @@ class _CommunityBubble extends StatelessWidget {
                       GestureDetector(
                         onTap: onTapSender,
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(7, 3, 7, 5),
+                          padding: const EdgeInsets.fromLTRB(10, 6, 10, 5),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
@@ -2514,7 +2542,7 @@ class _CommunityBubble extends StatelessWidget {
                       ),
                     if (quoteBox != null)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(7, 2, 7, 2),
+                        padding: const EdgeInsets.fromLTRB(8, 3, 8, 4),
                         child: quoteBox,
                       ),
                     _AdaptiveCommunityPhoto(
@@ -2522,15 +2550,16 @@ class _CommunityBubble extends StatelessWidget {
                       maxWidth: maxMediaWidth,
                       timeStr: timeStr,
                       isMe: isMe,
+                      hasCaption: hasCaption,
                       onTap: () => onTapMedia(null),
                     ),
-                    if (hasCaption)
+                    if (hasCaption) ...<Widget>[
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(7, 7, 7, 4),
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
                         child: Text.rich(
                           TextSpan(
                             children: buildHighlightedMentionSpans(
-                              message.content!,
+                              message.content!.trim(),
                               baseStyle: TextStyle(
                                 fontSize: 13.8,
                                 height: 1.35,
@@ -2546,20 +2575,36 @@ class _CommunityBubble extends StatelessWidget {
                           ),
                         ),
                       ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 2, 10, 6),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: _CommunityMetaRow(
+                            timeStr: timeStr,
+                            isMe: isMe,
+                            metaColor: metaColor,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
           );
         } else if (isVideo) {
+          final hasFrameChrome = hasTopHeader || hasCaption;
           bubble = ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxMediaWidth + 10),
+            constraints: BoxConstraints(
+              maxWidth: maxMediaWidth + (hasFrameChrome ? 4 : 0),
+            ),
             child: DecoratedBox(
               key: ValueKey<String>('community-bubble-${message.id}'),
               decoration:
                   chatBubbleDecoration(outgoing: isMe, cluster: cluster),
               child: Padding(
-                padding: const EdgeInsets.all(5),
+                padding:
+                    hasFrameChrome ? const EdgeInsets.all(2) : EdgeInsets.zero,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2568,7 +2613,7 @@ class _CommunityBubble extends StatelessWidget {
                       GestureDetector(
                         onTap: onTapSender,
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(7, 3, 7, 5),
+                          padding: const EdgeInsets.fromLTRB(10, 6, 10, 5),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
@@ -2593,7 +2638,7 @@ class _CommunityBubble extends StatelessWidget {
                       ),
                     if (quoteBox != null)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(7, 2, 7, 2),
+                        padding: const EdgeInsets.fromLTRB(8, 3, 8, 4),
                         child: quoteBox,
                       ),
                     _InlineVideoCard(
@@ -2605,16 +2650,19 @@ class _CommunityBubble extends StatelessWidget {
                       ),
                       maxWidth: maxMediaWidth,
                       durationSec: message.mediaDurationSec,
+                      timeStr: timeStr,
+                      isMe: isMe,
+                      hasCaption: hasCaption,
                       thumbnailCache: thumbnailCache,
                       onOpenFullscreen: onTapMedia,
                     ),
-                    if (hasCaption)
+                    if (hasCaption) ...<Widget>[
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(7, 7, 7, 2),
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
                         child: Text.rich(
                           TextSpan(
                             children: buildHighlightedMentionSpans(
-                              message.content!,
+                              message.content!.trim(),
                               baseStyle: TextStyle(
                                 fontSize: 13.8,
                                 height: 1.35,
@@ -2630,17 +2678,18 @@ class _CommunityBubble extends StatelessWidget {
                           ),
                         ),
                       ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(7, 4, 7, 3),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: _CommunityMetaRow(
-                          timeStr: timeStr,
-                          isMe: isMe,
-                          metaColor: metaColor,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 2, 10, 6),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: _CommunityMetaRow(
+                            timeStr: timeStr,
+                            isMe: isMe,
+                            metaColor: metaColor,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -2755,26 +2804,31 @@ class _CommunityBubble extends StatelessWidget {
           ],
         );
 
-        return Padding(
-          padding: EdgeInsets.only(bottom: cluster.bottomGap),
-          child: SwipeToReplyWrapper(
-            enabled: !isDeleted && onReply != null,
-            onReply: onReply ?? () {},
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              padding: isHighlighted
-                  ? const EdgeInsets.symmetric(horizontal: 4, vertical: 3)
-                  : EdgeInsets.zero,
-              decoration: isHighlighted
-                  ? BoxDecoration(
-                      color: const Color(0xFF38BDF8).withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.45),
+        return RepaintBoundary(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: cluster.bottomGap),
+            child: SwipeToReplyWrapper(
+              enabled: !isDeleted && onReply != null,
+              onReply: onReply ?? () {},
+              child: isHighlighted
+                  ? AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 3,
                       ),
+                      decoration: BoxDecoration(
+                        color:
+                            const Color(0xFF38BDF8).withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color:
+                              const Color(0xFF38BDF8).withValues(alpha: 0.45),
+                        ),
+                      ),
+                      child: rowContent,
                     )
-                  : null,
-              child: rowContent,
+                  : rowContent,
             ),
           ),
         );
@@ -2826,6 +2880,7 @@ class _AdaptiveCommunityPhoto extends StatefulWidget {
     required this.maxWidth,
     required this.timeStr,
     required this.isMe,
+    required this.hasCaption,
     required this.onTap,
   });
 
@@ -2833,6 +2888,7 @@ class _AdaptiveCommunityPhoto extends StatefulWidget {
   final double maxWidth;
   final String timeStr;
   final bool isMe;
+  final bool hasCaption;
   final VoidCallback onTap;
 
   @override
@@ -2937,15 +2993,16 @@ class _AdaptiveCommunityPhotoState extends State<_AdaptiveCommunityPhoto> {
     final rawUrl = widget.message.mediaUrl!;
     final url = MediaUrlNormalizer.normalize(rawUrl) ?? rawUrl;
     final isLocalFile = !MediaUrlNormalizer.isNetworkUrl(url);
+    final clampedAspect = _aspectRatio?.clamp(0.72, 1.78);
     final box = computeAdaptiveMediaBoxSize(
       maxWidth: widget.maxWidth,
-      minHeight: 140,
-      maxHeight: 340,
-      aspectRatio: _aspectRatio,
+      minHeight: 148,
+      maxHeight: 280,
+      aspectRatio: clampedAspect,
     );
     final int decodeWidth = (box.width * MediaQuery.devicePixelRatioOf(context))
         .round()
-        .clamp(240, 900);
+        .clamp(240, 840);
     final Widget brokenFallback = SizedBox(
       width: box.width,
       height: box.height,
@@ -2959,21 +3016,43 @@ class _AdaptiveCommunityPhotoState extends State<_AdaptiveCommunityPhoto> {
     final Widget imageWidget = isLocalFile
         ? Image.file(
             File(url),
-            fit: BoxFit.contain,
+            fit: BoxFit.cover,
             width: box.width,
             height: box.height,
             cacheWidth: decodeWidth,
+            filterQuality: FilterQuality.low,
             gaplessPlayback: true,
             errorBuilder: (_, __, ___) => brokenFallback,
           )
         : PersistentMediaImage(
             url: url,
-            fit: BoxFit.contain,
+            fit: BoxFit.cover,
             width: box.width,
             height: box.height,
             cacheWidth: decodeWidth,
+            placeholder: SizedBox(
+              width: box.width,
+              height: box.height,
+              child: const ColoredBox(
+                color: Color(0xFF1A2030),
+                child: Center(
+                  child: Icon(
+                    Icons.image_outlined,
+                    color: Color(0x66F2EFE9),
+                    size: 28,
+                  ),
+                ),
+              ),
+            ),
             errorBuilder: (_) => brokenFallback,
           );
+
+    final mediaRadius = widget.hasCaption
+        ? const BorderRadius.vertical(
+            top: Radius.circular(14),
+            bottom: Radius.circular(4),
+          )
+        : BorderRadius.circular(14);
 
     return RepaintBoundary(
       child: GestureDetector(
@@ -2981,12 +3060,12 @@ class _AdaptiveCommunityPhotoState extends State<_AdaptiveCommunityPhoto> {
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: widget.maxWidth,
-            minHeight: 140,
-            maxHeight: 340,
+            minHeight: 148,
+            maxHeight: 280,
           ),
           child: ClipRRect(
             key: ValueKey<String>('community-photo-frame-${widget.message.id}'),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: mediaRadius,
             child: ColoredBox(
               color: const Color(0xFF141926),
               child: SizedBox(
@@ -2999,44 +3078,18 @@ class _AdaptiveCommunityPhotoState extends State<_AdaptiveCommunityPhoto> {
                       tag: communityMediaHeroTag(widget.message.id),
                       child: imageWidget,
                     ),
-                    Positioned(
-                      right: 8,
-                      bottom: 8,
-                      child: Container(
-                        key: ValueKey<String>(
-                          'community-photo-time-${widget.message.id}',
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.56),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Text(
-                              widget.timeStr,
-                              style: const TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                            if (widget.isMe) ...<Widget>[
-                              const SizedBox(width: 3),
-                              const Icon(
-                                Icons.check_rounded,
-                                size: 13,
-                                color: Color(0xFFB3BCD2),
-                              ),
-                            ],
-                          ],
+                    if (!widget.hasCaption)
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: ChatMediaTimestampBadge(
+                          badgeKey: ValueKey<String>(
+                            'community-photo-time-${widget.message.id}',
+                          ),
+                          timeStr: widget.timeStr,
+                          isMe: widget.isMe,
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -3053,6 +3106,9 @@ class _InlineVideoCard extends StatefulWidget {
     required this.messageId,
     required this.url,
     required this.maxWidth,
+    required this.timeStr,
+    required this.isMe,
+    required this.hasCaption,
     required this.onOpenFullscreen,
     this.thumbnailUrl,
     this.durationSec,
@@ -3064,6 +3120,9 @@ class _InlineVideoCard extends StatefulWidget {
   final String? thumbnailUrl;
   final double maxWidth;
   final int? durationSec;
+  final String timeStr;
+  final bool isMe;
+  final bool hasCaption;
   final CommunityVideoThumbnailCache? thumbnailCache;
   final void Function(Uint8List? thumbnailBytes) onOpenFullscreen;
 
@@ -3289,16 +3348,23 @@ class _InlineVideoCardState extends State<_InlineVideoCard> {
   @override
   Widget build(BuildContext context) {
     final c = _controller;
+    final clampedAspect = _aspectRatio?.clamp(0.72, 1.78);
     final box = computeAdaptiveMediaBoxSize(
       maxWidth: widget.maxWidth,
-      minHeight: 140,
-      maxHeight: 340,
-      aspectRatio: _aspectRatio,
+      minHeight: 148,
+      maxHeight: 280,
+      aspectRatio: clampedAspect,
     );
     final showBadge = widget.durationSec != null || _initialized;
     final int decodeWidth = (box.width * MediaQuery.devicePixelRatioOf(context))
         .round()
-        .clamp(240, 900);
+        .clamp(240, 840);
+    final videoRadius = widget.hasCaption
+        ? const BorderRadius.vertical(
+            top: Radius.circular(14),
+            bottom: Radius.circular(4),
+          )
+        : BorderRadius.circular(14);
 
     return RepaintBoundary(
       child: GestureDetector(
@@ -3307,11 +3373,11 @@ class _InlineVideoCardState extends State<_InlineVideoCard> {
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: widget.maxWidth,
-            minHeight: 140,
-            maxHeight: 340,
+            minHeight: 148,
+            maxHeight: 280,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: videoRadius,
             child: ColoredBox(
               color: const Color(0xFF141926),
               child: SizedBox(
@@ -3323,46 +3389,51 @@ class _InlineVideoCardState extends State<_InlineVideoCard> {
                     Hero(
                       tag: communityMediaHeroTag(widget.messageId),
                       child: (_initialized && c != null)
-                          ? Center(
-                              child: AspectRatio(
-                                aspectRatio: c.value.aspectRatio > 0
-                                    ? c.value.aspectRatio
-                                    : 16 / 9,
-                                child: VideoPlayer(c),
+                          ? SizedBox.expand(
+                              child: FittedBox(
+                                fit: BoxFit.cover,
+                                clipBehavior: Clip.hardEdge,
+                                child: SizedBox(
+                                  width: c.value.size.width > 0
+                                      ? c.value.size.width
+                                      : 16,
+                                  height: c.value.size.height > 0
+                                      ? c.value.size.height
+                                      : 9,
+                                  child: VideoPlayer(c),
+                                ),
                               ),
                             )
                           : (_thumbBytes != null
-                              ? AnimatedOpacity(
-                                  opacity: 1.0,
-                                  duration: const Duration(milliseconds: 200),
-                                  child: Image.memory(
-                                    _thumbBytes!,
-                                    fit: BoxFit.contain,
-                                    width: box.width,
-                                    height: box.height,
-                                    cacheWidth: decodeWidth,
-                                  ),
+                              ? Image.memory(
+                                  _thumbBytes!,
+                                  fit: BoxFit.cover,
+                                  width: box.width,
+                                  height: box.height,
+                                  cacheWidth: decodeWidth,
+                                  filterQuality: FilterQuality.low,
+                                  gaplessPlayback: true,
                                 )
                               : const SizedBox.shrink()),
                     ),
                     if (!_initialized || !_isPlaying)
                       Container(
-                        width: 46,
-                        height: 46,
+                        width: 48,
+                        height: 48,
                         decoration: BoxDecoration(
-                          color: Colors.black54,
+                          color: const Color(0x99121724),
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white70),
+                          border: Border.all(color: Colors.white70, width: 1.3),
                         ),
                         child: const Icon(
                           Icons.play_arrow_rounded,
                           color: Colors.white,
-                          size: 28,
+                          size: 30,
                         ),
                       ),
                     Positioned(
                       left: 8,
-                      bottom: 6,
+                      bottom: 8,
                       child: GestureDetector(
                         key: ValueKey<String>(
                           'community-video-inline-play-${widget.messageId}',
@@ -3370,9 +3441,9 @@ class _InlineVideoCardState extends State<_InlineVideoCard> {
                         behavior: HitTestBehavior.opaque,
                         onTap: () => unawaited(_toggleInlinePlay()),
                         child: Container(
-                          padding: const EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.56),
+                          padding: const EdgeInsets.all(6),
+                          decoration: const BoxDecoration(
+                            color: Color(0x99121724),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
@@ -3387,28 +3458,25 @@ class _InlineVideoCardState extends State<_InlineVideoCard> {
                     ),
                     if (showBadge)
                       Positioned(
-                        right: 8,
-                        bottom: 6,
-                        child: Container(
-                          key: ValueKey<String>(
+                        top: 8,
+                        left: 8,
+                        child: ChatVideoDurationBadge(
+                          badgeKey: ValueKey<String>(
                             'community-video-duration-${widget.messageId}',
                           ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 3,
+                          durationText: _badgeText,
+                        ),
+                      ),
+                    if (!widget.hasCaption)
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: ChatMediaTimestampBadge(
+                          badgeKey: ValueKey<String>(
+                            'community-video-time-${widget.messageId}',
                           ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.56),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            _badgeText,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          timeStr: widget.timeStr,
+                          isMe: widget.isMe,
                         ),
                       ),
                   ],

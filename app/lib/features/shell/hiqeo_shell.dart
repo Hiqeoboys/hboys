@@ -69,6 +69,9 @@ class HiqeoShell extends StatefulWidget {
   /// Indeks cabang Grup (untuk lencana undangan & navigasi cepat banner in-app).
   static const int groupBranchIndex = 3;
 
+  /// Indeks tab aktif terkini agar animasi Beranda berhenti saat pengguna pindah tab.
+  static final ValueNotifier<int> activeBranchIndex = ValueNotifier<int>(0);
+
   static AppBackgroundPage _pageForBranch(int index) => switch (index) {
         0 => AppBackgroundPage.beranda,
         1 => AppBackgroundPage.petaPenuh,
@@ -98,6 +101,10 @@ class _HiqeoShellState extends State<HiqeoShell> {
   @override
   void initState() {
     super.initState();
+    final currentBranch = widget.navigationShell.currentIndex;
+    if (HiqeoShell.activeBranchIndex.value != currentBranch) {
+      HiqeoShell.activeBranchIndex.value = currentBranch;
+    }
     if (widget.powerController == null) {
       unawaited(_power.refresh());
     }
@@ -152,7 +159,11 @@ class _HiqeoShellState extends State<HiqeoShell> {
   @override
   void didUpdateWidget(covariant HiqeoShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.navigationShell.currentIndex == HiqeoShell.trackBranchIndex &&
+    final currentBranch = widget.navigationShell.currentIndex;
+    if (HiqeoShell.activeBranchIndex.value != currentBranch) {
+      HiqeoShell.activeBranchIndex.value = currentBranch;
+    }
+    if (currentBranch == HiqeoShell.trackBranchIndex &&
         oldWidget.navigationShell.currentIndex != HiqeoShell.trackBranchIndex) {
       unawaited(TrackingController.instance.refreshPermissionsAndResume());
     }
@@ -278,6 +289,7 @@ class _HiqeoShellState extends State<HiqeoShell> {
                             );
                           }
                           if (target == index) return;
+                          HiqeoShell.activeBranchIndex.value = target;
                           widget.navigationShell.goBranch(target);
                         },
                       ),

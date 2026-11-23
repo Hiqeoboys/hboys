@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
-import '../../../design/widgets/hiqeo_back_button.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
@@ -16,6 +15,7 @@ import '../../../design/gooey/gooey_switch.dart';
 import '../../../design/layout.dart';
 import '../../../design/theme_mode_controller.dart';
 import '../../../design/tokens.dart';
+import '../../../design/widgets/hiqeo_back_button.dart';
 import '../../../design/widgets/hiqeo_button.dart';
 import '../../auth/application/account_controller.dart';
 import '../../debug/glass_diagnostics_page.dart';
@@ -51,11 +51,19 @@ class CacheUsageSummary {
   }
 }
 
+/// Bagian Pengaturan berbentuk dropdown akordeon tunggal (maksimal 1 terbuka).
+enum SettingsDropdownSection {
+  theme,
+  privacyPolicy,
+  clearCache,
+  cancelSubscription,
+}
+
 /// Halaman Pengaturan yang diakses dari Profil.
 ///
-/// Berisi: Izin & baterai, Tema, Kebijakan privasi, Hapus cache, serta
-/// Batalkan langganan (bila Plus aktif). Keluar, ganti akun, dan hapus akun
-/// berada di halaman Akun agar tidak duplikat.
+/// Berisi: Izin & baterai, serta 4 menu dropdown akordeon (Tema, Kebijakan
+/// privasi, Hapus cache, dan Batalkan langganan). Keluar, ganti akun, dan
+/// hapus akun berada di halaman Akun agar tidak duplikat.
 ///
 /// TIDAK ada sakelar efek kaca di Pengaturan. Pada build debug (atau
 /// `--dart-define=ENABLE_GLASS_DIAGNOSTICS=true`), tekan lama label versi
@@ -103,6 +111,14 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _cacheLoading = true;
   bool _clearingCache = false;
   bool _wifiOnlyDownload = true;
+  SettingsDropdownSection? _expandedSection;
+
+  void _toggleSection(SettingsDropdownSection section) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _expandedSection = _expandedSection == section ? null : section;
+    });
+  }
 
   @override
   void initState() {
@@ -376,22 +392,24 @@ class _SettingsPageState extends State<SettingsPage> {
                     _buildPermissionsAndBatterySection(theme, colors),
                     const SizedBox(height: 12),
 
-                    // 2. Tema
+                    // 2. Tema (dropdown)
                     _buildThemeSection(theme, colors),
                     const SizedBox(height: 12),
 
-                    // 3. Kebijakan privasi
+                    // 3. Kebijakan privasi (dropdown)
                     _buildPrivacyPolicySection(theme, colors),
                     const SizedBox(height: 12),
 
-                    // 4. Hapus cache
+                    // 4. Hapus cache (dropdown)
                     _buildClearCacheSection(theme, colors),
+                    const SizedBox(height: 12),
 
-                    // 5. Batalkan langganan (hanya tampil jika Plus aktif)
-                    if (hasPlus && plus != null) ...<Widget>[
-                      const SizedBox(height: 12),
-                      _buildCancelSubscriptionSection(theme, colors, plus),
-                    ],
+                    // 5. Batalkan langganan (dropdown, tampil untuk semua paket)
+                    _buildCancelSubscriptionSection(
+                      theme,
+                      colors,
+                      hasPlus ? plus : null,
+                    ),
 
                     const SizedBox(height: 24),
                     Center(
@@ -525,61 +543,89 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildThemeSection(ThemeData theme, HiqeoColors colors) {
-    return _SectionCard(
+    return _SettingsAccordionCard(
       key: const ValueKey<String>('settings-section-theme'),
+      headerKey: const ValueKey<String>('settings-dropdown-theme'),
+      chevronKey: const ValueKey<String>('settings-chevron-theme'),
+      icon: Icons.palette_outlined,
       title: 'Tema',
-      subtitle: 'Diterapkan langsung tanpa memulai ulang aplikasi',
-      child: RadioGroup<ThemeMode>(
-        groupValue: _theme.mode,
-        onChanged: (selected) {
-          if (selected != null) {
-            unawaited(_theme.setMode(selected));
-          }
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            for (final mode in const <ThemeMode>[
-              ThemeMode.system,
-              ThemeMode.light,
-              ThemeMode.dark,
-            ])
-              RadioListTile<ThemeMode>(
-                key: ValueKey<String>('settings-theme-${mode.name}'),
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  themeModeLabel(mode),
-                  style: theme.textTheme.bodyLarge,
-                ),
-                value: mode,
-              ),
-          ],
-        ),
+      subtitle: themeModeLabel(_theme.mode),
+      expanded: _expandedSection == SettingsDropdownSection.theme,
+      onToggle: () => _toggleSection(SettingsDropdownSection.theme),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            'Diterapkan langsung tanpa memulai ulang aplikasi.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          RadioGroup<ThemeMode>(
+            groupValue: _theme.mode,
+            onChanged: (selected) {
+              if (selected != null) {
+                unawaited(_theme.setMode(selected));
+              }
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                for (final mode in const <ThemeMode>[
+                  ThemeMode.system,
+                  ThemeMode.light,
+                  ThemeMode.dark,
+                ])
+                  RadioListTile<ThemeMode>(
+                    key: ValueKey<String>('settings-theme-${mode.name}'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text(
+                      themeModeLabel(mode),
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                    value: mode,
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildPrivacyPolicySection(ThemeData theme, HiqeoColors colors) {
-    return _SectionCard(
+    return _SettingsAccordionCard(
       key: const ValueKey<String>('settings-section-privacy'),
+      headerKey: const ValueKey<String>('settings-dropdown-privacy'),
+      chevronKey: const ValueKey<String>('settings-chevron-privacy'),
+      icon: Icons.privacy_tip_outlined,
       title: 'Kebijakan privasi',
-      subtitle:
-          'Pesan grup dan berbagi lokasi bersifat sukarela serta terenkripsi ujung ke ujung',
+      subtitle: 'Enkripsi ujung ke ujung & penyimpanan lokal',
+      expanded: _expandedSection == SettingsDropdownSection.privacyPolicy,
+      onToggle: () => _toggleSection(SettingsDropdownSection.privacyPolicy),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text(
-            'Jejak pendakian disimpan di HP ini. Berbagi lokasi terakhir ke '
-            'grup bersifat sukarela (baku nonaktif), hanya berjalan saat '
-            'tracking aktif, dan dienkripsi dengan kunci grup sebelum diunggah.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.textSecondary,
-            ),
+          const _PrivacyPoint(
+            text:
+                'Jejak pendakian, statistik, dan peta offline tersimpan lokal di HP ini.',
+          ),
+          const SizedBox(height: 6),
+          const _PrivacyPoint(
+            text:
+                'Berbagi lokasi terakhir ke grup bersifat sukarela (baku nonaktif), hanya berjalan saat tracking aktif, dan dienkripsi dengan kunci grup sebelum diunggah.',
+          ),
+          const SizedBox(height: 6),
+          const _PrivacyPoint(
+            text:
+                'Keluar, ganti akun, dan hapus data akun tersedia penuh melalui halaman Akun.',
           ),
           const SizedBox(height: 12),
           HiqeoButton(
             key: const ValueKey<String>('settings-open-privacy-policy'),
-            label: 'Buka kebijakan privasi',
+            label: 'Buka kebijakan privasi lengkap',
             variant: HiqeoButtonVariant.secondary,
             onPressed: () => unawaited(_openExternalUrl(kPrivacyPolicyUrl)),
           ),
@@ -593,13 +639,31 @@ class _SettingsPageState extends State<SettingsPage> {
         ? 'Menghitung ukuran cache…'
         : 'Cache peta: ${_cache.mapLabel}, Data sementara: ${_cache.tempLabel}';
 
-    return _SectionCard(
+    return _SettingsAccordionCard(
       key: const ValueKey<String>('settings-section-cache'),
+      headerKey: const ValueKey<String>('settings-dropdown-cache'),
+      chevronKey: const ValueKey<String>('settings-chevron-cache'),
+      icon: Icons.cleaning_services_outlined,
       title: 'Hapus cache',
       subtitle: usageText,
+      expanded: _expandedSection == SettingsDropdownSection.clearCache,
+      onToggle: () => _toggleSection(SettingsDropdownSection.clearCache),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          _StatusRow(
+            label: 'Cache peta offline',
+            value: _cacheLoading ? 'Menghitung…' : _cache.mapLabel,
+          ),
+          const SizedBox(height: 6),
+          _StatusRow(
+            label: 'Data sementara',
+            value: _cacheLoading ? 'Menghitung…' : _cache.tempLabel,
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1),
+          ),
           Row(
             children: <Widget>[
               Expanded(
@@ -647,7 +711,7 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 12),
           HiqeoButton(
             key: const ValueKey<String>('settings-clear-cache-button'),
-            label: _clearingCache ? 'Membersihkan…' : 'Bersihkan cache',
+            label: _clearingCache ? 'Membersihkan…' : 'Hapus Cache',
             variant: HiqeoButtonVariant.secondary,
             onPressed: _clearingCache ? null : _confirmClearCache,
           ),
@@ -659,8 +723,45 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildCancelSubscriptionSection(
     ThemeData theme,
     HiqeoColors colors,
-    PlusController plus,
+    PlusController? plus,
   ) {
+    final isIos = defaultTargetPlatform == TargetPlatform.iOS;
+    final storeName = isIos ? 'App Store' : 'Google Play';
+    final storeUrl = isIos
+        ? 'https://apps.apple.com/account/subscriptions'
+        : 'https://play.google.com/store/account/subscriptions';
+
+    if (plus == null || !plus.hasPlus) {
+      return _SettingsAccordionCard(
+        key: const ValueKey<String>('settings-section-subscription'),
+        headerKey: const ValueKey<String>('settings-dropdown-subscription'),
+        chevronKey: const ValueKey<String>('settings-chevron-subscription'),
+        icon: Icons.credit_card_off_outlined,
+        title: 'Batalkan langganan',
+        subtitle: 'Paket Gratis · Tidak ada langganan aktif',
+        expanded:
+            _expandedSection == SettingsDropdownSection.cancelSubscription,
+        onToggle: () =>
+            _toggleSection(SettingsDropdownSection.cancelSubscription),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            const _StatusRow(label: 'Paket saat ini', value: 'Gratis'),
+            const SizedBox(height: 6),
+            const _StatusRow(label: 'Tagihan berulang', value: 'Tidak ada'),
+            const SizedBox(height: 10),
+            Text(
+              'Kamu sedang menggunakan paket Gratis. Tidak ada langganan '
+              'berbayar aktif yang perlu dibatalkan.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final access = plus.access;
     final planTitle = plus.currentPlan?.title ?? 'Hiqeo Plus';
     final String renewalText;
@@ -671,30 +772,249 @@ class _SettingsPageState extends State<SettingsPage> {
     } else {
       renewalText = 'Aktif';
     }
+    final statusBadge = access.isGrace ? 'Masa tenggang' : 'Aktif';
 
-    final storeUrl = Platform.isIOS
-        ? 'https://apps.apple.com/account/subscriptions'
-        : 'https://play.google.com/store/account/subscriptions';
-
-    return _SectionCard(
+    return _SettingsAccordionCard(
       key: const ValueKey<String>('settings-section-subscription'),
+      headerKey: const ValueKey<String>('settings-dropdown-subscription'),
+      chevronKey: const ValueKey<String>('settings-chevron-subscription'),
+      icon: Icons.credit_card_off_outlined,
       title: 'Batalkan langganan',
-      subtitle: '$planTitle · Status langganan aktif',
+      subtitle: '$planTitle · $statusBadge',
+      expanded: _expandedSection == SettingsDropdownSection.cancelSubscription,
+      onToggle: () =>
+          _toggleSection(SettingsDropdownSection.cancelSubscription),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _StatusRow(label: 'Status langganan', value: 'Aktif ($planTitle)'),
-          const SizedBox(height: 8),
+          _StatusRow(
+            label: 'Status langganan',
+            value: '$statusBadge ($planTitle)',
+          ),
+          const SizedBox(height: 6),
           _StatusRow(label: 'Perpanjangan berikutnya', value: renewalText),
+          const SizedBox(height: 10),
+          Text(
+            'Pembatalan dilakukan melalui $storeName. Menghentikan perpanjangan '
+            'tidak akan menghapus riwayat pendakian atau peta offline di HP ini.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
           const SizedBox(height: 12),
           HiqeoButton(
             key: const ValueKey<String>('settings-manage-store-subscription'),
-            label: 'Kelola langganan di Google Play / App Store',
+            label: 'Kelola & batalkan di $storeName',
             variant: HiqeoButtonVariant.secondary,
             onPressed: () => unawaited(_openExternalUrl(storeUrl)),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SettingsAccordionCard extends StatelessWidget {
+  const _SettingsAccordionCard({
+    super.key,
+    required this.headerKey,
+    required this.chevronKey,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.expanded,
+    required this.onToggle,
+    required this.child,
+  });
+
+  final Key headerKey;
+  final Key chevronKey;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+    final duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 260);
+
+    return RepaintBoundary(
+      child: HiqeoGlassCard(
+        borderRadius: 24,
+        padding: EdgeInsets.zero,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Semantics(
+              button: true,
+              expanded: expanded,
+              label: '$title, $subtitle',
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  key: headerKey,
+                  borderRadius: BorderRadius.circular(24),
+                  onTap: onToggle,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 56),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          ExcludeSemantics(
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: colors.primary.withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                icon,
+                                size: 18,
+                                color: colors.primary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: colors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          AnimatedRotation(
+                            key: chevronKey,
+                            turns: expanded ? 0.5 : 0.0,
+                            duration: duration,
+                            curve: Curves.easeInOutCubic,
+                            child: Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 22,
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            ClipRect(
+              child: AnimatedSize(
+                duration: duration,
+                curve: Curves.easeInOutCubic,
+                alignment: Alignment.topCenter,
+                child: expanded
+                    ? _AccordionReveal(
+                        duration: duration,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Divider(color: colors.hairline, height: 1),
+                              const SizedBox(height: 12),
+                              child,
+                            ],
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AccordionReveal extends StatelessWidget {
+  const _AccordionReveal({required this.duration, required this.child});
+
+  final Duration duration;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (duration == Duration.zero) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: duration,
+      curve: Curves.easeInOutCubic,
+      builder: (context, opacity, inner) =>
+          opacity >= 1.0 ? inner! : Opacity(opacity: opacity, child: inner),
+      child: child,
+    );
+  }
+}
+
+class _PrivacyPoint extends StatelessWidget {
+  const _PrivacyPoint({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = HiqeoColors.of(context);
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.only(top: 6, right: 8),
+          child: Container(
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(
+              color: colors.textSecondary,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

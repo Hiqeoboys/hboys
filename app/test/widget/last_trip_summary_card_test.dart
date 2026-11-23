@@ -6,6 +6,7 @@ import 'package:nama_app/design/app_theme.dart';
 import 'package:nama_app/design/motion/visual_effect_policy.dart';
 import 'package:nama_app/features/home/last_trip_summary_card.dart';
 import 'package:nama_app/features/kartu/domain/kartu_data.dart';
+import 'package:nama_app/features/tracking/domain/tracking_session.dart';
 import 'package:nama_app/infrastructure/power/power_profile_manager.dart';
 
 import '../support/real_font.dart';
@@ -114,7 +115,7 @@ void main() {
   testWidgets('ringkasan menampilkan nama gunung, tanggal, dan tiga angka',
       (tester) async {
     await _pump(tester, data: _data(), mountain: 'Gunung Gede');
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 800));
 
     expect(find.text('PENDAKIAN TERAKHIR'), findsOneWidget);
     expect(find.text('Gunung Gede'), findsOneWidget);
@@ -132,7 +133,7 @@ void main() {
   testWidgets('tanpa nama gunung, judul jatuh ke tanggal pendakian',
       (tester) async {
     await _pump(tester, data: _data());
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 800));
 
     expect(find.text('Pendakian 30 Okt 2026'), findsOneWidget);
   });
@@ -148,7 +149,7 @@ void main() {
     expect(find.text('12,8 km'), findsNothing);
     expect(find.text('07:12'), findsNothing);
 
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('12,8 km'), findsOneWidget);
     expect(find.text('07:12'), findsOneWidget);
   });
@@ -156,7 +157,7 @@ void main() {
   testWidgets('hanya jejak rute dan profil elevasi yang digambar',
       (tester) async {
     await _pump(tester, data: _data());
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 800));
 
     expect(find.byKey(const ValueKey<String>('ringkasan-rute')), findsOneWidget);
     expect(
@@ -176,7 +177,7 @@ void main() {
       tester,
       data: _data(profile: null, peakFraction: null),
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 800));
 
     expect(find.text('Profil elevasi belum tersedia'), findsOneWidget);
     expect(find.text('PUNCAK'), findsNothing);
@@ -192,7 +193,7 @@ void main() {
     await loadPlusJakartaSans(tester);
 
     await _pump(tester, data: _data(), mountain: 'Gunung Gede Pangrango');
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 800));
 
     expect(
       tester.getSize(find.byKey(_cardKey)).height,
@@ -203,7 +204,7 @@ void main() {
   testWidgets('tombol Lihat kartu memanggil pembuka kartu', (tester) async {
     var opened = 0;
     await _pump(tester, data: _data(), onViewKartu: () => opened++);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 800));
 
     await tester.tap(find.text('Lihat kartu'));
     expect(opened, 1);
@@ -252,7 +253,7 @@ void main() {
     );
     await tester.pump();
     expect(find.text('12,8 km'), findsNothing);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 800));
     expect(find.text('12,8 km'), findsOneWidget);
   });
 
@@ -260,7 +261,7 @@ void main() {
     final handle = tester.ensureSemantics();
     try {
       await _pump(tester, data: _data(), onViewKartu: () {});
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 800));
 
       final node = tester.getSemantics(find.bySemanticsLabel('Lihat kartu'));
       expect(node.flagsCollection.isButton, isTrue);
@@ -279,12 +280,124 @@ void main() {
     final handle = tester.ensureSemantics();
     try {
       await _pump(tester, data: _data());
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 800));
 
       final node = tester.getSemantics(find.bySemanticsLabel('Lihat kartu'));
       expect(node.flagsCollection.isEnabled, ui.Tristate.isFalse);
     } finally {
       handle.dispose();
     }
+  });
+
+  testWidgets(
+      'animasi loop profil elevasi & rute jogging berhenti otomatis saat tab tidak aktif atau app ke background',
+      (tester) async {
+    final state = ValueNotifier<({bool active, bool isJogging})>(
+      (active: true, isJogging: false),
+    );
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: hiqeoLightTheme,
+        home: Scaffold(
+          body: VisualEffectPolicyScope(
+            policy: VisualEffectPolicy.full,
+            child: ValueListenableBuilder<({bool active, bool isJogging})>(
+              valueListenable: state,
+              builder: (context, current, _) => LastTripSummaryCard(
+                data: KartuData(
+                  sessionId: current.isJogging ? 'jog-loop' : 'hike-loop',
+                  startedAtUtc: _startedAtUtc,
+                  distanceM: 6200,
+                  movingSeconds: 3600,
+                  elevationGainM: 420,
+                  profile: _profile,
+                  peakFraction: 0.5,
+                  route: _route,
+                  activityType: current.isJogging
+                      ? TrackingSession.activityJogging
+                      : TrackingSession.activityHiking,
+                ),
+                isActive: current.active,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // 1. Pendakian: loop jalan setelah intro, dibungkus RepaintBoundary, berhenti saat isActive=false & paused
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(tester.hasRunningAnimations, isTrue);
+    expect(
+      find.ancestor(
+        of: find.byKey(const ValueKey<String>('ringkasan-elevasi')),
+        matching: find.byType(RepaintBoundary),
+      ),
+      findsWidgets,
+    );
+
+    state.value = (active: false, isJogging: false);
+    await tester.pump();
+    expect(tester.hasRunningAnimations, isFalse);
+
+    state.value = (active: true, isJogging: false);
+    await tester.pump();
+    expect(tester.hasRunningAnimations, isTrue);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(tester.hasRunningAnimations, isFalse);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(tester.hasRunningAnimations, isTrue);
+
+    // 2. Jogging: loop rute GPS jalan saat aktif & berhenti saat isActive=false
+    state.value = (active: true, isJogging: true);
+    await tester.pump();
+    expect(tester.hasRunningAnimations, isTrue);
+
+    state.value = (active: false, isJogging: true);
+    await tester.pump();
+    expect(tester.hasRunningAnimations, isFalse);
+  });
+
+  test('kurva sweep animasi elevasi bergerak kiri->kanan dan jeda ~2 detik di ujung 100%', () {
+    final start = LastTripSummaryCard.loopSweepFor(0.0);
+    final mid = LastTripSummaryCard.loopSweepFor(0.28);
+    final endDraw = LastTripSummaryCard.loopSweepFor(0.56);
+    final midPause = LastTripSummaryCard.loopSweepFor(0.76);
+    final endPause = LastTripSummaryCard.loopSweepFor(0.959);
+    final fadeOut = LastTripSummaryCard.loopSweepFor(0.99);
+
+    expect(start.$1, 0.0);
+    expect(mid.$1, greaterThan(0.3));
+    expect(mid.$1, lessThan(0.7));
+    expect(mid.$2, 1.0);
+    // Jeda ~2 detik pada 100% (40% dari siklus 5000ms)
+    expect(endDraw, (1.0, 1.0));
+    expect(midPause, (1.0, 1.0));
+    expect(endPause, (1.0, 1.0));
+    expect(fadeOut.$1, 1.0);
+    expect(fadeOut.$2, lessThan(0.3));
+
+    const pts = <Offset>[
+      Offset(0, 30),
+      Offset(100, 10),
+      Offset(200, 25),
+    ];
+    final (s0, tip0) = LastTripSummaryCard.samplePolylineAt(pts, 0.0);
+    final (s50, tip50) = LastTripSummaryCard.samplePolylineAt(pts, 0.5);
+    final (s100, tip100) = LastTripSummaryCard.samplePolylineAt(pts, 1.0);
+    expect(s0.length, 1);
+    expect(tip0, pts.first);
+    expect(s50.last, tip50);
+    expect(tip50.dx, greaterThan(50));
+    expect(tip50.dx, lessThan(150));
+    expect(s100.length, 3);
+    expect(tip100, pts.last);
   });
 }
